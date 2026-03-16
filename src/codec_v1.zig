@@ -13,6 +13,7 @@ pub const version_minor: u16 = 0;
 pub const flag_lossless: u32 = 0b0000_0001;
 pub const flag_contains_ms1: u32 = 0b0000_0010;
 pub const flag_contains_ms2: u32 = 0b0000_0100;
+pub const flag_has_global_order: u32 = 0b0000_1000;
 
 pub const FileHeader = struct {
     magic_bytes: [4]u8,
@@ -35,6 +36,22 @@ pub const BlockInfo = struct {
     offset: usize,
     total_bytes: usize,
     header: block_v1.BlockHeader,
+    byte_breakdown: block_v1.BlockByteBreakdown,
+};
+
+pub const FileByteBreakdown = struct {
+    file_header_bytes: usize,
+    global_order_bytes: usize,
+    block_header_bytes: usize,
+    scan_id_bytes: usize,
+    rt_bytes: usize,
+    precursor_bytes: usize,
+    peak_count_bytes: usize,
+    mz_metadata_bytes: usize,
+    mz_payload_bytes: usize,
+    intensity_metadata_bytes: usize,
+    intensity_payload_bytes: usize,
+    total_bytes: usize,
 };
 
 pub const Inspection = struct {
@@ -44,7 +61,38 @@ pub const Inspection = struct {
     ms2_block_count: usize,
     ms1_spectra: usize,
     ms2_spectra: usize,
+    byte_breakdown: FileByteBreakdown,
 };
+
+fn emptyFileByteBreakdown(order_bytes: usize) FileByteBreakdown {
+    return .{
+        .file_header_bytes = header_len,
+        .global_order_bytes = order_bytes,
+        .block_header_bytes = 0,
+        .scan_id_bytes = 0,
+        .rt_bytes = 0,
+        .precursor_bytes = 0,
+        .peak_count_bytes = 0,
+        .mz_metadata_bytes = 0,
+        .mz_payload_bytes = 0,
+        .intensity_metadata_bytes = 0,
+        .intensity_payload_bytes = 0,
+        .total_bytes = header_len + order_bytes,
+    };
+}
+
+fn addBlockBytes(total: *FileByteBreakdown, block_bytes: block_v1.BlockByteBreakdown) void {
+    total.block_header_bytes += block_bytes.header_bytes;
+    total.scan_id_bytes += block_bytes.scan_id_bytes;
+    total.rt_bytes += block_bytes.rt_bytes;
+    total.precursor_bytes += block_bytes.precursor_bytes;
+    total.peak_count_bytes += block_bytes.peak_count_bytes;
+    total.mz_metadata_bytes += block_bytes.mz_metadata_bytes;
+    total.mz_payload_bytes += block_bytes.mz_payload_bytes;
+    total.intensity_metadata_bytes += block_bytes.intensity_metadata_bytes;
+    total.intensity_payload_bytes += block_bytes.intensity_payload_bytes;
+    total.total_bytes += block_bytes.total_bytes;
+}
 
 fn appendIntLe(list: *std.ArrayList(u8), allocator: Allocator, comptime T: type, value: T) !void {
     var buffer: [@sizeOf(T)]u8 = undefined;
@@ -95,6 +143,50 @@ fn freeSpectrumRefs(allocator: Allocator, spectra: []binary_reader.RawSpectrum) 
     allocator.free(spectra);
 }
 
+fn writeOrderEntry(bytes: []u8, entry_index: usize, value: u32) void {
+    const start = entry_index * @sizeOf(u32);
+    std.mem.writeInt(u32, bytes[start..][0..@sizeOf(u32)], value, .little);
+}
+
+fn readOrderEntry(bytes: []const u8, entry_index: usize) u32 {
+    const start = entry_index * @sizeOf(u32);
+    return readIntLe(u32, bytes[start .. start + @sizeOf(u32)]);
+}
+
+fn globalOrderTableLen(spectrum_count: u32) usize {
+    return @as(usize, spectrum_count) * @sizeOf(u32);
+}
+
+fn blocksOffset(header: FileHeader, bytes: []const u8) !usize {
+    var offset: usize = header_len;
+    if ((header.flags & flag_has_global_order) != 0) {
+        const order_len = globalOrderTableLen(header.spectrum_count);
+        if (bytes.len - offset < order_len) return error.UnexpectedEndOfStream;
+        offset += order_len;
+    }
+    return offset;
+}
+
+fn readValidatedGlobalOrderAlloc(allocator: Allocator, header: FileHeader, bytes: []const u8) ![]u32 {
+    const order_len = globalOrderTableLen(header.spectrum_count);
+    const order_bytes = bytes[header_len .. header_len + order_len];
+    const order = try allocator.alloc(u32, header.spectrum_count);
+    errdefer allocator.free(order);
+
+    const seen = try allocator.alloc(bool, header.spectrum_count);
+    defer allocator.free(seen);
+    @memset(seen, false);
+
+    for (0..order.len) |file_index| {
+        const original_index = readOrderEntry(order_bytes, file_index);
+        if (original_index >= order.len or seen[original_index]) return error.InvalidOrderTable;
+        seen[original_index] = true;
+        order[file_index] = original_index;
+    }
+
+    return order;
+}
+
 fn totalPeaks(spectra: []const binary_reader.RawSpectrum) usize {
     var total: usize = 0;
     for (spectra) |spectrum| total += spectrum.mz.len;
@@ -107,6 +199,8 @@ fn appendFilteredStreamBlocks(
     spectra: []const binary_reader.RawSpectrum,
     level: u8,
     options: EncodeOptions,
+    order_entries: []u32,
+    order_cursor: *usize,
     block_count: *u32,
 ) !usize {
     const block_capacity = @as(usize, options.block_size);
@@ -115,11 +209,13 @@ fn appendFilteredStreamBlocks(
     defer allocator.free(block_spectra);
 
     var used: usize = 0;
-    for (spectra) |spectrum| {
+    for (spectra, 0..) |spectrum, spectrum_index| {
         if (spectrum.ms_level == level) {
             block_spectra[used] = spectrum;
+            order_entries[order_cursor.*] = @intCast(spectrum_index);
             used += 1;
             matched += 1;
+            order_cursor.* += 1;
 
             if (used == block_capacity) {
                 const encoded = try block_v1.encodeBlock(allocator, block_spectra[0..used], options.block_options);
@@ -157,16 +253,25 @@ pub fn encodeFileAlloc(allocator: Allocator, spectra: []const binary_reader.RawS
 
     var file_bytes: std.ArrayList(u8) = .empty;
     errdefer file_bytes.deinit(allocator);
-    try file_bytes.appendNTimes(allocator, 0, header_len);
+    const order_len = globalOrderTableLen(@intCast(spectra.len));
+    try file_bytes.appendNTimes(allocator, 0, header_len + order_len);
+    const order_entries = try allocator.alloc(u32, spectra.len);
+    defer allocator.free(order_entries);
 
     var flags: u32 = 0;
     if (options.block_options.mode == .lossless) flags |= flag_lossless;
     if (ms1_count != 0) flags |= flag_contains_ms1;
     if (ms2_count != 0) flags |= flag_contains_ms2;
+    flags |= flag_has_global_order;
 
     var block_count: u32 = 0;
-    _ = try appendFilteredStreamBlocks(&file_bytes, allocator, spectra, 1, options, &block_count);
-    _ = try appendFilteredStreamBlocks(&file_bytes, allocator, spectra, 2, options, &block_count);
+    var order_cursor: usize = 0;
+    _ = try appendFilteredStreamBlocks(&file_bytes, allocator, spectra, 1, options, order_entries, &order_cursor, &block_count);
+    _ = try appendFilteredStreamBlocks(&file_bytes, allocator, spectra, 2, options, order_entries, &order_cursor, &block_count);
+    if (order_cursor != spectra.len) return error.InvalidOrderTable;
+
+    const order_bytes = file_bytes.items[header_len .. header_len + order_len];
+    for (order_entries, 0..) |entry, entry_index| writeOrderEntry(order_bytes, entry_index, entry);
 
     const header: FileHeader = .{
         .magic_bytes = magic,
@@ -189,11 +294,13 @@ pub fn inspectAlloc(allocator: Allocator, bytes: []const u8) !Inspection {
     const blocks = try allocator.alloc(BlockInfo, @intCast(header.block_count));
     errdefer allocator.free(blocks);
 
-    var offset: usize = header_len;
+    const initial_offset = try blocksOffset(header, bytes);
+    var offset = initial_offset;
     var ms1_block_count: usize = 0;
     var ms2_block_count: usize = 0;
     var ms1_spectra: usize = 0;
     var ms2_spectra: usize = 0;
+    var byte_breakdown = emptyFileByteBreakdown(initial_offset - header_len);
 
     for (blocks, 0..) |*block_info, idx| {
         _ = idx;
@@ -201,12 +308,15 @@ pub fn inspectAlloc(allocator: Allocator, bytes: []const u8) !Inspection {
         const block_header = try block_v1.parseHeader(bytes[offset .. offset + block_v1.header_len]);
         const total_bytes = block_v1.header_len + @as(usize, block_header.payload_bytes);
         if (bytes.len - offset < total_bytes) return error.UnexpectedEndOfStream;
+        const block_breakdown = try block_v1.inspectBlockByteBreakdown(bytes[offset .. offset + total_bytes]);
 
         block_info.* = .{
             .offset = offset,
             .total_bytes = total_bytes,
             .header = block_header,
+            .byte_breakdown = block_breakdown,
         };
+        addBlockBytes(&byte_breakdown, block_breakdown);
 
         switch (block_header.ms_level) {
             1 => {
@@ -232,6 +342,7 @@ pub fn inspectAlloc(allocator: Allocator, bytes: []const u8) !Inspection {
         .ms2_block_count = ms2_block_count,
         .ms1_spectra = ms1_spectra,
         .ms2_spectra = ms2_spectra,
+        .byte_breakdown = byte_breakdown,
     };
 }
 
@@ -243,9 +354,16 @@ pub fn decodeFileAlloc(allocator: Allocator, bytes: []const u8) ![]binary_reader
     const inspection = try inspectAlloc(allocator, bytes);
     defer freeInspection(allocator, inspection);
 
+    const global_order = if ((inspection.header.flags & flag_has_global_order) != 0)
+        try readValidatedGlobalOrderAlloc(allocator, inspection.header, bytes)
+    else
+        null;
+    defer if (global_order) |order| allocator.free(order);
+
     const spectra = try allocator.alloc(binary_reader.RawSpectrum, @intCast(inspection.header.spectrum_count));
+    var initialized: usize = 0;
     errdefer {
-        for (spectra[0..]) |spectrum| {
+        for (spectra[0..initialized]) |spectrum| {
             allocator.free(spectrum.mz);
             allocator.free(spectrum.intensity);
         }
@@ -258,10 +376,18 @@ pub fn decodeFileAlloc(allocator: Allocator, bytes: []const u8) ![]binary_reader
 
         @memcpy(spectra[spectrum_offset .. spectrum_offset + decoded.len], decoded);
         spectrum_offset += decoded.len;
+        initialized = spectrum_offset;
         allocator.free(decoded);
     }
 
-    return spectra;
+    if (global_order == null) return spectra;
+
+    const reordered = try allocator.alloc(binary_reader.RawSpectrum, spectra.len);
+    for (global_order.?, 0..) |original_index, file_index| {
+        reordered[original_index] = spectra[file_index];
+    }
+    allocator.free(spectra);
+    return reordered;
 }
 
 pub fn readFileAlloc(path: []const u8, allocator: Allocator) ![]u8 {

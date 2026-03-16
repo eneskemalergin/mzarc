@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import subprocess
 import sys
 from dataclasses import asdict
 from pathlib import Path
@@ -259,6 +260,35 @@ def repo_relative_path(path: Path) -> str:
     return Path(os.path.relpath(path, REPO_ROOT)).as_posix()
 
 
+def inspect_codec_artifact(zig_bin: Path, artifact_path: Path) -> dict[str, object]:
+    command = [repo_relative_path(zig_bin), "inspect-v1", repo_relative_path(artifact_path), "--json"]
+    try:
+        completed = subprocess.run(
+            command,
+            check=True,
+            cwd=REPO_ROOT,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+    except subprocess.CalledProcessError as exc:
+        stderr = exc.stderr or ""
+        raise RuntimeError(f"Command failed for {' '.join(command)}\n{stderr}") from exc
+
+    payload = (completed.stdout or "").strip() or (completed.stderr or "").strip()
+    if not payload:
+        raise RuntimeError(f"No inspection output returned for {artifact_path}")
+
+    inspection = json.loads(payload)
+    total_bytes = int(inspection["byte_breakdown"]["total_bytes"])
+    actual_bytes = artifact_path.stat().st_size
+    if total_bytes != actual_bytes:
+        raise ValueError(
+            f"Inspection byte total mismatch for {artifact_path}: reported {total_bytes}, actual {actual_bytes}"
+        )
+    return inspection
+
+
 def main() -> None:
     args = build_parser().parse_args()
 
@@ -308,7 +338,7 @@ def main() -> None:
         mscompress_to_dump_command_template=args.mscompress_to_dump_command_template,
         mscompress_benchmark_threaded=args.mscompress_benchmark_threaded,
     )
-    total_steps = (args.repeats * 9) + (2 * len(extra_sweep_levels)) + external_steps + 6
+    total_steps = (args.repeats * 9) + (2 * len(extra_sweep_levels)) + external_steps + 8
     progress = ProgressBar(total_steps, enabled=not args.no_progress)
 
     try:
@@ -416,6 +446,11 @@ def main() -> None:
         zstd_fidelity = zstd_result["fidelity"]
         lossless_fidelity = lossless_result["fidelity"]
         lossy_fidelity = lossy_result["fidelity"]
+
+        lossless_layout = inspect_codec_artifact(zig_bin, paths["mzv1_lossless"])
+        progress.step("inspect mzv1 lossless layout")
+        lossy_layout = inspect_codec_artifact(zig_bin, paths["mzv1_lossy"])
+        progress.step("inspect mzv1 lossy layout")
 
         sizes = {
             "mzML": {"path": repo_relative_path(input_path), "bytes": mzml_bytes},
@@ -563,6 +598,10 @@ def main() -> None:
             },
             "dataset": dataset,
             "sizes": sizes,
+            "codec_byte_breakdown": {
+                "mzv1 lossless": lossless_layout["byte_breakdown"],
+                f"mzv1 lossy q={selected_quant}": lossy_layout["byte_breakdown"],
+            },
             "timings": serialized_timings,
             "fidelity": {
                 "mzv1_lossless": lossless_fidelity,
@@ -592,6 +631,7 @@ def main() -> None:
             "sizes_mib": {name: round(item["bytes"] / (1024 * 1024), 2) for name, item in sizes.items()},
             "lossless_mean_abs_mz": lossless_fidelity["mz_abs"]["mean"],
             "lossy_p95_rel_intensity_pct": round(lossy_fidelity["intensity_rel"]["p95"] * 100.0, 4),
+            "lossless_byte_breakdown": lossless_layout["byte_breakdown"],
             "external_baselines": [
                 {
                     "name": item["name"],

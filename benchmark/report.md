@@ -29,8 +29,8 @@ External formats that actually ran end-to-end in this benchmark: mzMLb, MScompre
 | --- | ---: | ---: | ---: | ---: |
 | mzML | 79221306 | 75.55 MiB | 100.00% | 245.47% |
 | dump | 32273524 | 30.78 MiB | 40.74% | 100.00% |
-| mzv1 lossless | 20467802 | 19.52 MiB | 25.84% | 63.42% |
-| mzv1 lossy | 13778826 | 13.14 MiB | 17.39% | 42.69% |
+| mzv1 lossless | 29245109 | 27.89 MiB | 36.92% | 90.62% |
+| mzv1 lossy | 13814830 | 13.17 MiB | 17.44% | 42.81% |
 | gzip dump | 20780851 | 19.82 MiB | 26.23% | 64.39% |
 | zstd dump | 18720327 | 17.85 MiB | 23.63% | 58.01% |
 | mzMLb | 17038178 | 16.25 MiB | 21.51% | 52.79% |
@@ -39,26 +39,35 @@ External formats that actually ran end-to-end in this benchmark: mzMLb, MScompre
 
 Lossless `.mzv1` is already materially smaller than mzML on this sample, and it slightly beats `gzip` on the dump baseline while still trailing `zstd` on the dump. The selected lossy mode gives a controlled next step down in size without the catastrophic saturation behavior that the earlier intensity quantizer had.
 
+## Byte Composition
+
+| artifact | structural bytes | spectrum metadata | m/z stream | intensity stream | total |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| mzv1 lossless | 0.04 MiB (0.13%) | 0.17 MiB (0.62%) | 17.50 MiB (62.75%) | 10.18 MiB (36.50%) | 27.89 MiB |
+| mzv1 lossy q=4096 | 0.04 MiB (0.28%) | 0.17 MiB (1.30%) | 9.17 MiB (69.57%) | 3.80 MiB (28.84%) | 13.17 MiB |
+
+The lossless byte breakdown shows whether the size regression is real payload or container overhead. On this run, the m/z stream is the largest component at 17.50 MiB, which keeps the diagnosis grounded in actual encoded bytes rather than guesswork.
+
 ## Performance Overview
 
 ![Throughput Overview](plots/performance_overview.png)
 
 | artifact | direction | status | throughput | mean time | throughput basis | source format | notes |
 | --- | --- | --- | ---: | ---: | --- | --- | --- |
-| gzip dump | compression | measured | 18.69 MiB/s | 1.6467s | input | dump |  |
-| gzip dump | decompression | measured | 152.6 MiB/s | 0.20166s | output | gzip dump |  |
-| zstd dump | compression | measured | 166.3 MiB/s | 0.18512s | input | dump |  |
-| zstd dump | decompression | measured | 574 MiB/s | 0.05362s | output | zstd dump |  |
-| mzv1 lossless | compression | measured | 58.4 MiB/s | 0.527s | input | dump |  |
-| mzv1 lossless | decompression | measured | 68.81 MiB/s | 0.44731s | output | mzv1 lossless |  |
-| mzv1 lossy q=4096 | compression | measured | 32.93 MiB/s | 0.93467s | input | dump |  |
-| mzv1 lossy q=4096 | decompression | measured | 53.43 MiB/s | 0.57605s | output | mzv1 lossy q=4096 |  |
-| mzMLb | compression | measured | 3.387 MiB/s | 22.309s | input | mzML |  |
-| mzMLb | decompression | measured | 6.311 MiB/s | 4.877s | output | mzMLb |  |
-| MScompress | compression | measured | 105.5 MiB/s | 0.71622s | input | mzML |  |
-| MScompress | decompression | measured | 4.295 MiB/s | 7.1654s | output | MScompress |  |
-| MScompress threaded | compression | measured | 599.3 MiB/s | 0.12606s | input | mzML |  |
-| MScompress threaded | decompression | measured | 6.278 MiB/s | 4.9028s | output | MScompress threaded |  |
+| gzip dump | compression | measured | 18.7 MiB/s | 1.6457s | input | dump |  |
+| gzip dump | decompression | measured | 153.1 MiB/s | 0.201s | output | gzip dump |  |
+| zstd dump | compression | measured | 165.1 MiB/s | 0.18646s | input | dump |  |
+| zstd dump | decompression | measured | 579.7 MiB/s | 0.05309s | output | zstd dump |  |
+| mzv1 lossless | compression | measured | 123.7 MiB/s | 0.24874s | input | dump |  |
+| mzv1 lossless | decompression | measured | 167.2 MiB/s | 0.18409s | output | mzv1 lossless |  |
+| mzv1 lossy q=4096 | compression | measured | 128.9 MiB/s | 0.2387s | input | dump |  |
+| mzv1 lossy q=4096 | decompression | measured | 167.9 MiB/s | 0.18331s | output | mzv1 lossy q=4096 |  |
+| mzMLb | compression | measured | 3.363 MiB/s | 22.466s | input | mzML |  |
+| mzMLb | decompression | measured | 6.211 MiB/s | 4.9553s | output | mzMLb |  |
+| MScompress | compression | measured | 105.6 MiB/s | 0.71551s | input | mzML |  |
+| MScompress | decompression | measured | 4.252 MiB/s | 7.2393s | output | MScompress |  |
+| MScompress threaded | compression | measured | 587.1 MiB/s | 0.12868s | input | mzML |  |
+| MScompress threaded | decompression | measured | 6.25 MiB/s | 4.9249s | output | MScompress threaded |  |
 
 ## Timing Variability
 
@@ -68,21 +77,21 @@ The chart above uses all 10 runs per operation. Gray dots are individual runs. B
 
 | operation | mean ± sd | median | 95% CI of mean | min | max | throughput | basis |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
-| mzML -> dump | 4.5946s ± 0.0358s | 4.5902s | [4.5689s, 4.6202s] | 4.5477s | 4.6603s | 16.44 MiB/s | input |
-| dump -> gzip dump | 1.6467s ± 0.0040s | 1.6455s | [1.6439s, 1.6496s] | 1.6427s | 1.6556s | 18.69 MiB/s | input |
-| gzip dump -> dump | 0.2017s ± 0.0010s | 0.2016s | [0.2010s, 0.2023s] | 0.2007s | 0.2042s | 152.62 MiB/s | output |
-| dump -> zstd dump | 0.1851s ± 0.0038s | 0.1837s | [0.1824s, 0.1879s] | 0.1813s | 0.1928s | 166.26 MiB/s | input |
-| zstd dump -> dump | 0.0536s ± 0.0005s | 0.0536s | [0.0533s, 0.0540s] | 0.0530s | 0.0548s | 574.01 MiB/s | output |
-| dump -> mzv1 lossless | 0.5270s ± 0.0576s | 0.5102s | [0.4858s, 0.5682s] | 0.5029s | 0.6907s | 58.40 MiB/s | input |
-| mzv1 lossless -> dump | 0.4473s ± 0.0042s | 0.4479s | [0.4443s, 0.4503s] | 0.4409s | 0.4539s | 68.81 MiB/s | output |
-| dump -> mzv1 lossy q=4096 | 0.9347s ± 0.0083s | 0.9347s | [0.9288s, 0.9406s] | 0.9245s | 0.9472s | 32.93 MiB/s | input |
-| mzv1 lossy q=4096 -> dump | 0.5760s ± 0.0072s | 0.5766s | [0.5709s, 0.5812s] | 0.5667s | 0.5856s | 53.43 MiB/s | output |
-| mzML -> mzMLb | 22.3086s ± 0.5009s | 22.1453s | [21.9503s, 22.6669s] | 21.8202s | 23.6509s | 3.39 MiB/s | input |
-| mzMLb -> dump | 4.8770s ± 0.0989s | 4.8511s | [4.8063s, 4.9477s] | 4.7773s | 5.1226s | 6.31 MiB/s | output |
-| mzML -> MScompress | 0.7162s ± 0.0057s | 0.7161s | [0.7121s, 0.7203s] | 0.7072s | 0.7275s | 105.49 MiB/s | input |
-| MScompress -> dump | 7.1654s ± 0.0997s | 7.1860s | [7.0941s, 7.2367s] | 6.9067s | 7.2788s | 4.30 MiB/s | output |
-| mzML -> MScompress threaded | 0.1261s ± 0.0041s | 0.1255s | [0.1231s, 0.1290s] | 0.1206s | 0.1321s | 599.32 MiB/s | input |
-| MScompress threaded -> dump | 4.9028s ± 0.0551s | 4.8939s | [4.8634s, 4.9422s] | 4.8368s | 4.9922s | 6.28 MiB/s | output |
+| mzML -> dump | 4.5715s ± 0.0247s | 4.5742s | [4.5538s, 4.5892s] | 4.5380s | 4.6082s | 16.53 MiB/s | input |
+| dump -> gzip dump | 1.6457s ± 0.0034s | 1.6450s | [1.6432s, 1.6481s] | 1.6403s | 1.6507s | 18.70 MiB/s | input |
+| gzip dump -> dump | 0.2010s ± 0.0004s | 0.2010s | [0.2007s, 0.2013s] | 0.2005s | 0.2017s | 153.13 MiB/s | output |
+| dump -> zstd dump | 0.1865s ± 0.0045s | 0.1848s | [0.1832s, 0.1897s] | 0.1827s | 0.1963s | 165.07 MiB/s | input |
+| zstd dump -> dump | 0.0531s ± 0.0003s | 0.0531s | [0.0529s, 0.0533s] | 0.0528s | 0.0537s | 579.75 MiB/s | output |
+| dump -> mzv1 lossless | 0.2487s ± 0.0040s | 0.2482s | [0.2459s, 0.2516s] | 0.2424s | 0.2571s | 123.74 MiB/s | input |
+| mzv1 lossless -> dump | 0.1841s ± 0.0028s | 0.1836s | [0.1821s, 0.1861s] | 0.1809s | 0.1902s | 167.19 MiB/s | output |
+| dump -> mzv1 lossy q=4096 | 0.2387s ± 0.0023s | 0.2377s | [0.2370s, 0.2404s] | 0.2359s | 0.2425s | 128.94 MiB/s | input |
+| mzv1 lossy q=4096 -> dump | 0.1833s ± 0.0012s | 0.1834s | [0.1824s, 0.1842s] | 0.1815s | 0.1854s | 167.90 MiB/s | output |
+| mzML -> mzMLb | 22.4658s ± 0.6487s | 22.3030s | [22.0018s, 22.9298s] | 21.9795s | 24.0863s | 3.36 MiB/s | input |
+| mzMLb -> dump | 4.9553s ± 0.1089s | 4.9463s | [4.8774s, 5.0332s] | 4.8072s | 5.1678s | 6.21 MiB/s | output |
+| mzML -> MScompress | 0.7155s ± 0.0071s | 0.7158s | [0.7104s, 0.7206s] | 0.7058s | 0.7284s | 105.59 MiB/s | input |
+| MScompress -> dump | 7.2393s ± 0.1330s | 7.2400s | [7.1442s, 7.3345s] | 6.9162s | 7.4213s | 4.25 MiB/s | output |
+| mzML -> MScompress threaded | 0.1287s ± 0.0041s | 0.1277s | [0.1258s, 0.1316s] | 0.1241s | 0.1377s | 587.13 MiB/s | input |
+| MScompress threaded -> dump | 4.9249s ± 0.0861s | 4.9025s | [4.8633s, 4.9864s] | 4.8360s | 5.0853s | 6.25 MiB/s | output |
 
 ## External Baselines
 
@@ -100,8 +109,8 @@ The chart above uses all 10 runs per operation. Gray dots are individual runs. B
 | --- | --- | ---: | ---: | ---: | ---: | ---: | --- |
 | gzip dump | measured | true | 0 | 0 | 0 | 0.000% |  |
 | zstd dump | measured | true | 0 | 0 | 0 | 0.000% |  |
-| mzv1 lossless | measured | false | 1.00000011e-06 | 0 | 0 | 0.000% |  |
-| mzv1 lossy q=4096 | measured | false | 1.00000011e-06 | 695.252613 | 3177472 | 0.218% |  |
+| mzv1 lossless | measured | true | 0 | 0 | 0 | 0.000% |  |
+| mzv1 lossy q=4096 | measured | true | 1.00000011e-06 | 695.252613 | 3177472 | 0.218% |  |
 | mzMLb | measured | true | 0 | 0 | 0 | 0.000% |  |
 | MScompress | measured | true | 0 | 0 | 0 | 0.000% |  |
 | MScompress threaded | measured | true | 0 | 0 | 0 | 0.000% |  |
@@ -112,13 +121,13 @@ The chart above uses all 10 runs per operation. Gray dots are individual runs. B
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | gzip dump | true | true | true | 0 | 0 | 0 | 0 | 0.000% | 0.000% | 0 |
 | zstd dump | true | true | true | 0 | 0 | 0 | 0 | 0.000% | 0.000% | 0 |
-| mzv1 lossless | false | true | true | 5.00068204e-07 | 1.00000011e-06 | 0 | 0 | 0.000% | 0.000% | 0 |
-| mzv1 lossy q=4096 | false | true | true | 5.00068204e-07 | 1.00000011e-06 | 695.252613 | 10758.6615 | 0.218% | 0.238% | 0.00113669413 |
+| mzv1 lossless | true | true | true | 0 | 0 | 0 | 0 | 0.000% | 0.000% | 0 |
+| mzv1 lossy q=4096 | true | true | true | 5.00068204e-07 | 1.00000011e-06 | 695.252613 | 10758.6615 | 0.218% | 0.238% | 0.00113669413 |
 | mzMLb | true | true | true | 0 | 0 | 0 | 0 | 0.000% | 0.000% | 0 |
 | MScompress | true | true | true | 0 | 0 | 0 | 0 | 0.000% | 0.000% | 0 |
 | MScompress threaded | true | true | true | 0 | 0 | 0 | 0 | 0.000% | 0.000% | 0 |
 
-On the current run, `gzip dump`, `zstd dump`, `mzMLb`, `MScompress`, and `MScompress threaded` round-trip exactly. `mzv1 lossless` is intensity-exact but still carries the expected fixed-point m/z quantization, and `mzv1 lossy` adds the configured intensity quantization on top of that. Global order is still not preserved for `mzv1` because MS1 and MS2 are written as separate streams.
+On the current run, `gzip dump`, `zstd dump`, `mzv1 lossless`, `mzMLb`, `MScompress`, and `MScompress threaded` round-trip exactly. `mzv1 lossless` round-trips exactly, including m/z values and original scan order. `mzv1 lossy` preserves original scan order while keeping m/z and intensity error within the current quantization bounds.
 
 ## Lossy Sweep
 
@@ -126,10 +135,10 @@ On the current run, `gzip dump`, `zstd dump`, `mzMLb`, `MScompress`, and `MScomp
 
 | q | bytes | size | p95 rel intensity err | p99 rel intensity err | mean rel intensity err |
 | ---: | ---: | ---: | ---: | ---: | ---: |
-| 256 | 12444574 | 11.87 MiB | 3.499% | 3.813% | 1.820% |
-| 1024 | 13111717 | 12.50 MiB | 0.874% | 0.950% | 0.455% |
-| 4096 | 13778826 | 13.14 MiB | 0.218% | 0.238% | 0.114% |
-| 16384 | 14445949 | 13.78 MiB | 0.055% | 0.059% | 0.028% |
+| 256 | 12480578 | 11.90 MiB | 3.499% | 3.813% | 1.820% |
+| 1024 | 13147721 | 12.54 MiB | 0.874% | 0.950% | 0.455% |
+| 4096 | 13814830 | 13.17 MiB | 0.218% | 0.238% | 0.114% |
+| 16384 | 14481953 | 13.81 MiB | 0.055% | 0.059% | 0.028% |
 
 The selected `q` stays user-controlled. Higher `q` means more preserved log-intensity precision and usually a larger file; lower `q` buys size at the cost of broader relative error tails.
 
@@ -141,7 +150,7 @@ The selected `q` stays user-controlled. Higher `q` means more preserved log-inte
 | --- | --- | ---: | ---: | ---: | --- |
 | gzip dump | not-measured | n/a | n/a | n/a | Requires downstream peptide identification and FDR measurements on the original and round-tripped spectra. Dump round-trip was numerically exact on the current comparison. |
 | zstd dump | not-measured | n/a | n/a | n/a | Requires downstream peptide identification and FDR measurements on the original and round-tripped spectra. Dump round-trip was numerically exact on the current comparison. |
-| mzv1 lossless | not-measured | n/a | n/a | n/a | Requires downstream peptide identification and FDR measurements on the original and round-tripped spectra. |
+| mzv1 lossless | not-measured | n/a | n/a | n/a | Requires downstream peptide identification and FDR measurements on the original and round-tripped spectra. Dump round-trip was numerically exact on the current comparison. |
 | mzv1 lossy q=4096 | not-measured | n/a | n/a | n/a | Requires downstream peptide identification and FDR measurements on the original and round-tripped spectra. |
 | mzMLb | not-measured | n/a | n/a | n/a | Requires downstream peptide identification and FDR measurements on the original and round-tripped spectra. Dump round-trip was numerically exact on the current comparison. |
 | MScompress | not-measured | n/a | n/a | n/a | Requires downstream peptide identification and FDR measurements on the original and round-tripped spectra. Dump round-trip was numerically exact on the current comparison. |

@@ -70,3 +70,27 @@ test "binary dump supports empty spectra" {
     try std.testing.expectEqual(@as(usize, 0), loaded[0].mz.len);
     try std.testing.expectEqual(@as(usize, 0), loaded[0].intensity.len);
 }
+
+test "binary dump parser rejects truncated payloads" {
+    var mz = [_]f64{ 100.0, 100.00000125 };
+    var intensity = [_]f32{ 1.0, 2.0 };
+
+    const spectra = [_]binary_reader.RawSpectrum{
+        .{
+            .scan_id = 7,
+            .rt_seconds = 3.5,
+            .ms_level = 1,
+            .precursor_mz = 0.0,
+            .mz = mz[0..],
+            .intensity = intensity[0..],
+        },
+    };
+
+    const dump_bytes = try binary_reader.writeDumpAlloc(std.testing.allocator, &spectra);
+    defer std.testing.allocator.free(dump_bytes);
+
+    try std.testing.expectError(
+        error.UnexpectedEndOfStream,
+        binary_reader.parseDump(dump_bytes[0 .. dump_bytes.len - 1], std.testing.allocator),
+    );
+}

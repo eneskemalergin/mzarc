@@ -84,6 +84,12 @@ pub fn unpackForU64(allocator: Allocator, packed_values: PackedU64) ![]u64 {
     const values = try allocator.alloc(u64, packed_values.count);
     errdefer allocator.free(values);
 
+    const required_payload_len = if (packed_values.bit_width == 0)
+        0
+    else
+        ((@as(usize, packed_values.bit_width) * packed_values.count) + 7) / 8;
+    if (packed_values.payload.len < required_payload_len) return error.UnexpectedEndOfStream;
+
     if (packed_values.count == 0) return values;
 
     if (packed_values.bit_width == 0) {

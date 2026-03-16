@@ -8,7 +8,7 @@ fn printUsage() void {
             "  mzarc dump-inspect <input.bin>\n" ++
             "  mzarc encode-v1 <input.bin> -o <output.mzv1> [--lossy] [--intensity-quant <levels>]\n" ++
             "  mzarc decode-v1 <input.mzv1> -o <output.bin>\n" ++
-            "  mzarc inspect-v1 <input.mzv1>\n",
+            "  mzarc inspect-v1 <input.mzv1> [--json]\n",
         .{},
     );
 }
@@ -94,11 +94,90 @@ fn commandDecodeV1(allocator: std.mem.Allocator, args: []const [:0]const u8) !vo
     std.debug.print("decoded: {s} -> {s}\n", .{ input_path, output_path });
 }
 
-fn commandInspectV1(allocator: std.mem.Allocator, path: []const u8) !void {
-    const inspection = try codec_v1.inspectFileAlloc(allocator, path);
+fn printInspectionJson(path: []const u8, inspection: codec_v1.Inspection) void {
+    const bytes = inspection.byte_breakdown;
+    std.debug.print(
+        "{{\n" ++
+            "  \"file\": \"{s}\",\n" ++
+            "  \"version_major\": {},\n" ++
+            "  \"version_minor\": {},\n" ++
+            "  \"spectrum_count\": {},\n" ++
+            "  \"block_count\": {},\n" ++
+            "  \"total_peaks\": {},\n" ++
+            "  \"block_size\": {},\n" ++
+            "  \"ms1_block_count\": {},\n" ++
+            "  \"ms2_block_count\": {},\n" ++
+            "  \"ms1_spectra\": {},\n" ++
+            "  \"ms2_spectra\": {},\n" ++
+            "  \"byte_breakdown\": {{\n" ++
+            "    \"file_header_bytes\": {},\n" ++
+            "    \"global_order_bytes\": {},\n" ++
+            "    \"block_header_bytes\": {},\n" ++
+            "    \"scan_id_bytes\": {},\n" ++
+            "    \"rt_bytes\": {},\n" ++
+            "    \"precursor_bytes\": {},\n" ++
+            "    \"peak_count_bytes\": {},\n" ++
+            "    \"mz_metadata_bytes\": {},\n" ++
+            "    \"mz_payload_bytes\": {},\n" ++
+            "    \"intensity_metadata_bytes\": {},\n" ++
+            "    \"intensity_payload_bytes\": {},\n" ++
+            "    \"total_bytes\": {}\n" ++
+            "  }}\n" ++
+            "}}\n",
+        .{
+            path,
+            inspection.header.version_major,
+            inspection.header.version_minor,
+            inspection.header.spectrum_count,
+            inspection.header.block_count,
+            inspection.header.total_peaks,
+            inspection.header.block_size,
+            inspection.ms1_block_count,
+            inspection.ms2_block_count,
+            inspection.ms1_spectra,
+            inspection.ms2_spectra,
+            bytes.file_header_bytes,
+            bytes.global_order_bytes,
+            bytes.block_header_bytes,
+            bytes.scan_id_bytes,
+            bytes.rt_bytes,
+            bytes.precursor_bytes,
+            bytes.peak_count_bytes,
+            bytes.mz_metadata_bytes,
+            bytes.mz_payload_bytes,
+            bytes.intensity_metadata_bytes,
+            bytes.intensity_payload_bytes,
+            bytes.total_bytes,
+        },
+    );
+}
+
+fn commandInspectV1(allocator: std.mem.Allocator, args: []const [:0]const u8) !void {
+    if (args.len < 3 or args.len > 4) return error.InvalidArguments;
+
+    var path: ?[]const u8 = null;
+    var json_output = false;
+    for (args[2..]) |arg| {
+        if (std.mem.eql(u8, arg, "--json")) {
+            json_output = true;
+        } else if (path == null) {
+            path = arg;
+        } else {
+            return error.InvalidArguments;
+        }
+    }
+    if (path == null) return error.InvalidArguments;
+    const input_path = path.?;
+
+    const inspection = try codec_v1.inspectFileAlloc(allocator, input_path);
     defer codec_v1.freeInspection(allocator, inspection);
 
-    std.debug.print("file: {s}\n", .{path});
+    if (json_output) {
+        printInspectionJson(input_path, inspection);
+        return;
+    }
+
+    std.debug.print("file: {s}\n", .{input_path});
     std.debug.print("version: {}.{}\n", .{ inspection.header.version_major, inspection.header.version_minor });
     std.debug.print("spectra: {}\n", .{inspection.header.spectrum_count});
     std.debug.print("blocks: {}\n", .{inspection.header.block_count});
@@ -108,6 +187,18 @@ fn commandInspectV1(allocator: std.mem.Allocator, path: []const u8) !void {
     std.debug.print("ms2 blocks: {}\n", .{inspection.ms2_block_count});
     std.debug.print("ms1 spectra: {}\n", .{inspection.ms1_spectra});
     std.debug.print("ms2 spectra: {}\n", .{inspection.ms2_spectra});
+    std.debug.print("file header bytes: {}\n", .{inspection.byte_breakdown.file_header_bytes});
+    std.debug.print("global order bytes: {}\n", .{inspection.byte_breakdown.global_order_bytes});
+    std.debug.print("block header bytes: {}\n", .{inspection.byte_breakdown.block_header_bytes});
+    std.debug.print("scan id bytes: {}\n", .{inspection.byte_breakdown.scan_id_bytes});
+    std.debug.print("rt bytes: {}\n", .{inspection.byte_breakdown.rt_bytes});
+    std.debug.print("precursor bytes: {}\n", .{inspection.byte_breakdown.precursor_bytes});
+    std.debug.print("peak count bytes: {}\n", .{inspection.byte_breakdown.peak_count_bytes});
+    std.debug.print("mz metadata bytes: {}\n", .{inspection.byte_breakdown.mz_metadata_bytes});
+    std.debug.print("mz payload bytes: {}\n", .{inspection.byte_breakdown.mz_payload_bytes});
+    std.debug.print("intensity metadata bytes: {}\n", .{inspection.byte_breakdown.intensity_metadata_bytes});
+    std.debug.print("intensity payload bytes: {}\n", .{inspection.byte_breakdown.intensity_payload_bytes});
+    std.debug.print("total bytes: {}\n", .{inspection.byte_breakdown.total_bytes});
 }
 
 pub fn main(init: std.process.Init) !void {
@@ -139,11 +230,7 @@ pub fn main(init: std.process.Init) !void {
     }
 
     if (std.mem.eql(u8, args[1], "inspect-v1")) {
-        if (args.len != 3) {
-            printUsage();
-            return error.InvalidArguments;
-        }
-        try commandInspectV1(allocator, args[2]);
+        try commandInspectV1(allocator, args);
         return;
     }
 

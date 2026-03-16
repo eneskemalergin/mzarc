@@ -54,3 +54,39 @@ test "FOR bit-packing collapses constant arrays to zero-bit payload" {
 
     try std.testing.expectEqualSlices(u64, &input, unpacked);
 }
+
+test "FOR bit-packing round-trips adversarial bit widths" {
+    const cases = [_]struct {
+        values: []const u64,
+        expected_bit_width: u8,
+    }{
+        .{ .values = &[_]u64{ 5, 4, 5, 4, 5 }, .expected_bit_width = 1 },
+        .{ .values = &[_]u64{ 100, 227, 163, 191, 150 }, .expected_bit_width = 7 },
+        .{ .values = &[_]u64{ 1000, 1255, 1000, 1020 }, .expected_bit_width = 8 },
+        .{ .values = &[_]u64{ 5000, 5512, 5000, 5256 }, .expected_bit_width = 10 },
+        .{ .values = &[_]u64{ 1 << 40, (1 << 40) + (@as(u64, 1) << 31), (1 << 40) + 17 }, .expected_bit_width = 32 },
+        .{ .values = &[_]u64{ 0, (@as(u64, 1) << 63) - 1 }, .expected_bit_width = 63 },
+    };
+
+    for (cases) |case| {
+        const packed_values = try bitpack.packForU64(std.testing.allocator, case.values);
+        defer packed_values.deinit(std.testing.allocator);
+
+        try std.testing.expectEqual(case.expected_bit_width, packed_values.bit_width);
+
+        const unpacked = try bitpack.unpackForU64(std.testing.allocator, packed_values);
+        defer std.testing.allocator.free(unpacked);
+        try std.testing.expectEqualSlices(u64, case.values, unpacked);
+    }
+}
+
+test "FOR unpack rejects truncated payload" {
+    const packed_values = bitpack.PackedU64{
+        .base = 10,
+        .bit_width = 9,
+        .count = 4,
+        .payload = &[_]u8{ 0xaa, 0xbb, 0xcc },
+    };
+
+    try std.testing.expectError(error.UnexpectedEndOfStream, bitpack.unpackForU64(std.testing.allocator, packed_values));
+}

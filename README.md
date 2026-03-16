@@ -61,11 +61,12 @@ What this means in practice:
 - the repo can turn it into a repeatable binary fixture format
 - the Zig prototype can already exercise the transform stack on real spectral data
 - the block layer is no longer hypothetical
+- the lossless `.mzv1` path now round-trips exactly, including original global scan order
 
 What is still deliberately unfinished:
 
-- exact m/z losslessness inside the current container
-- preservation of original global scan order across MS1 and MS2
+- stronger exact-lossless compression so the m/z stream stops dominating file size
+- downstream search-impact measurements on peptide IDs and FDR
 - SIMD and the more ambitious format work from later phases
 
 ---
@@ -109,17 +110,18 @@ This is why the repository currently looks smaller and more concrete than the ea
 
 ### Current benchmark snapshot
 
-- On `data/PXD075509/15HCD_1.mzML`, lossless `.mzv1` is `19.52 MiB`, down from `75.55 MiB` for mzML and `30.78 MiB` for the internal dump.
-- Selected lossy `.mzv1` at `q=4096` is `13.14 MiB`, with `0.218%` p95 relative intensity error and `0.238%` p99 relative intensity error.
-- Over 10 runs, lossless encode and decode average `0.5270s` and `0.4473s`; lossy encode and decode average `0.9347s` and `0.5760s`.
-- Against generic dump baselines, lossless `.mzv1` is slightly smaller than `gzip dump` (`19.82 MiB`) but still larger than `zstd dump` (`17.85 MiB`).
+- On `data/PXD075509/15HCD_1.mzML`, lossless `.mzv1` is `27.89 MiB`, down from `75.55 MiB` for mzML and `30.78 MiB` for the internal dump.
+- Selected lossy `.mzv1` at `q=4096` is `13.17 MiB`, with `0.218%` p95 relative intensity error and `0.238%` p99 relative intensity error.
+- Over 10 `ReleaseFast` runs, lossless encode and decode average `0.2487s` and `0.1841s`; lossy encode and decode average `0.2387s` and `0.1833s`.
+- Against generic dump baselines, lossless `.mzv1` is smaller than the dump itself and `gzip dump` (`19.82 MiB`) still trails `zstd dump` (`17.85 MiB`) and `mzMLb` (`16.25 MiB`) on this sample.
 - The active external comparison set in the public report is `mzMLb` (`16.25 MiB`), `MScompress` (`21.63 MiB`), and `MScompress threaded` (`21.53 MiB`).
-- The current lossless path is still not truly lossless for m/z: mean absolute m/z error is about `5.0e-7`, intensity is exact on this sample, and original global order is not yet preserved.
+- The current lossless path is exact on this sample: mean absolute m/z error is `0.0`, intensity is exact, and original global order is preserved.
+- Byte accounting in the benchmark report shows the remaining lossless size pressure is mostly the exact m/z stream itself: `17.50 MiB` of the `27.89 MiB` artifact.
 
 ### Validation
 
 - unit tests cover dump IO, quantization, delta coding, bit-packing, and block round-trips
-- the current CLI can encode, decode, and inspect a real `.mzv1` file end-to-end
+- the current CLI can encode, decode, and inspect a real `.mzv1` file end-to-end, including byte-breakdown inspection
 - the checked-in benchmark report currently uses `10` timing repeats per operation and records means, standard deviations, and two-sided 95% confidence intervals on real mzML input
 
 ---
@@ -128,9 +130,9 @@ This is why the repository currently looks smaller and more concrete than the ea
 
 The next development steps are straightforward and close to the code that already exists:
 
-1. make the current lossless path truly lossless for m/z
-2. preserve original global scan order across decode
-3. add a second, more representative DIA dataset once the current benchmark path is stable
+1. improve exact-lossless m/z compression without giving up exact reconstruction or fast decode
+2. add a second, more representative DIA dataset once the current benchmark path is stable
+3. measure downstream search impact instead of stopping at numeric fidelity
 4. keep MS-Numpress as a future external comparison once the tooling path is stable again
 
 After that, the project will be in a position to make stronger claims about whether the format direction is worth continuing.
@@ -189,6 +191,7 @@ export ZIG="$PWD/zig-x86_64-linux-0.16.0-dev.2905+5d71e3051/zig"
 uv sync
 $ZIG build test
 $ZIG build
+$ZIG build -Doptimize=ReleaseFast
 ```
 
 Current working commands:
@@ -199,6 +202,7 @@ uv run python tools/inspect_dump.py data/PXD075509/15HCD_1.bin
 ./zig-out/bin/mzarc dump-inspect data/PXD075509/15HCD_1.bin
 ./zig-out/bin/mzarc encode-v1 data/PXD075509/15HCD_1.bin -o data/PXD075509/15HCD_1.lossless.mzv1
 ./zig-out/bin/mzarc decode-v1 data/PXD075509/15HCD_1.lossless.mzv1 -o data/PXD075509/15HCD_1.roundtrip.bin
+$ZIG build -Doptimize=ReleaseFast
 uv run python tools/benchmark_v1.py --repeats 10 --external-baselines mzmlb,mscompress --mscompress-benchmark-threaded data/PXD075509/15HCD_1.mzML
 ```
 

@@ -55,6 +55,7 @@ def render_markdown(report: dict) -> str:
     fidelity_metrics = report.get("fidelity_metrics", [])
     fidelity_rows = report.get("fidelity_rows", [])
     search_impact_rows = report.get("search_impact_rows", [])
+    codec_byte_breakdown = report.get("codec_byte_breakdown", {})
 
     lines: list[str] = []
 
@@ -148,6 +149,43 @@ def render_markdown(report: dict) -> str:
     paragraph(
         "Lossless `.mzv1` is already materially smaller than mzML on this sample, and it slightly beats `gzip` on the dump baseline while still trailing `zstd` on the dump. The selected lossy mode gives a controlled next step down in size without the catastrophic saturation behavior that the earlier intensity quantizer had."
     )
+
+    if codec_byte_breakdown:
+        section("Byte Composition")
+        table(
+            ["artifact", "structural bytes", "spectrum metadata", "m/z stream", "intensity stream", "total"],
+            [
+                [
+                    artifact,
+                    f"{format_bytes(data['file_header_bytes'] + data['global_order_bytes'] + data['block_header_bytes'])} ({((data['file_header_bytes'] + data['global_order_bytes'] + data['block_header_bytes']) / data['total_bytes']) * 100:.2f}%)",
+                    f"{format_bytes(data['scan_id_bytes'] + data['rt_bytes'] + data['precursor_bytes'] + data['peak_count_bytes'])} ({((data['scan_id_bytes'] + data['rt_bytes'] + data['precursor_bytes'] + data['peak_count_bytes']) / data['total_bytes']) * 100:.2f}%)",
+                    f"{format_bytes(data['mz_metadata_bytes'] + data['mz_payload_bytes'])} ({((data['mz_metadata_bytes'] + data['mz_payload_bytes']) / data['total_bytes']) * 100:.2f}%)",
+                    f"{format_bytes(data['intensity_metadata_bytes'] + data['intensity_payload_bytes'])} ({((data['intensity_metadata_bytes'] + data['intensity_payload_bytes']) / data['total_bytes']) * 100:.2f}%)",
+                    format_bytes(data['total_bytes']),
+                ]
+                for artifact, data in codec_byte_breakdown.items()
+            ],
+            ["left", "right", "right", "right", "right", "right"],
+        )
+
+        lossless_bytes = codec_byte_breakdown.get("mzv1 lossless")
+        if lossless_bytes is not None:
+            structural_bytes = lossless_bytes["file_header_bytes"] + lossless_bytes["global_order_bytes"] + lossless_bytes["block_header_bytes"]
+            spectrum_metadata_bytes = lossless_bytes["scan_id_bytes"] + lossless_bytes["rt_bytes"] + lossless_bytes["precursor_bytes"] + lossless_bytes["peak_count_bytes"]
+            mz_stream_bytes = lossless_bytes["mz_metadata_bytes"] + lossless_bytes["mz_payload_bytes"]
+            intensity_stream_bytes = lossless_bytes["intensity_metadata_bytes"] + lossless_bytes["intensity_payload_bytes"]
+            dominant_component = max(
+                [
+                    ("structural overhead", structural_bytes),
+                    ("per-spectrum metadata", spectrum_metadata_bytes),
+                    ("the m/z stream", mz_stream_bytes),
+                    ("the intensity stream", intensity_stream_bytes),
+                ],
+                key=lambda item: item[1],
+            )
+            paragraph(
+                f"The lossless byte breakdown shows whether the size regression is real payload or container overhead. On this run, {dominant_component[0]} is the largest component at {format_bytes(dominant_component[1])}, which keeps the diagnosis grounded in actual encoded bytes rather than guesswork."
+            )
 
     section("Performance Overview")
     image("Throughput Overview", f"plots/{report['plots']['performance_overview']}")
@@ -254,8 +292,38 @@ def render_markdown(report: dict) -> str:
         ["left", "right", "right", "right", "right", "right", "right", "right", "right", "right", "right"],
     )
     exact_artifacts = [f"`{item['artifact']}`" for item in fidelity_metrics if item["status"] == "measured" and float(item.get("max_abs_mz_error") or 0.0) == 0.0 and float(item.get("max_abs_intensity_error") or 0.0) == 0.0]
+    lossless_row = next((row["data"] for row in fidelity_rows if row["artifact"] == "mzv1 lossless"), None)
+    lossy_row = next((row["data"] for row in fidelity_rows if str(row["artifact"]).startswith("mzv1 lossy q=")), None)
+
+    lossless_summary = "`mzv1 lossless` was not included in this run."
+    if lossless_row is not None:
+        lossless_exact = (
+            float(lossless_row["mz_abs"]["max"]) == 0.0 and
+            float(lossless_row["intensity_abs"]["max"]) == 0.0
+        )
+        if lossless_exact and bool(lossless_row["global_order_preserved"]):
+            lossless_summary = "`mzv1 lossless` round-trips exactly, including m/z values and original scan order."
+        elif lossless_exact:
+            lossless_summary = "`mzv1 lossless` is numerically exact but still does not preserve original global scan order."
+        else:
+            lossless_summary = "`mzv1 lossless` still carries measurable round-trip error and needs more work before it can be treated as exact."
+
+    lossy_summary = "`mzv1 lossy` was not included in this run."
+    if lossy_row is not None:
+        lossy_summary = (
+            "`mzv1 lossy` preserves original scan order while keeping m/z and intensity error within the current quantization bounds."
+            if bool(lossy_row["global_order_preserved"])
+            else "`mzv1 lossy` keeps m/z and intensity error within the current quantization bounds, but it still does not preserve original global scan order."
+        )
+
+    exact_sentence = (
+        f"On the current run, {_join_with_and(exact_artifacts)} round-trip exactly."
+        if exact_artifacts
+        else "On the current run, no measured artifact round-trips exactly."
+    )
+
     paragraph(
-        f"On the current run, {_join_with_and(exact_artifacts)} round-trip exactly. `mzv1 lossless` is intensity-exact but still carries the expected fixed-point m/z quantization, and `mzv1 lossy` adds the configured intensity quantization on top of that. Global order is still not preserved for `mzv1` because MS1 and MS2 are written as separate streams."
+        f"{exact_sentence} {lossless_summary} {lossy_summary}"
     )
 
     section("Lossy Sweep")
