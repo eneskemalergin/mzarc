@@ -52,7 +52,7 @@ What exists today:
 - scalar intra-spectrum delta coding in `src/delta.zig`
 - scalar frame-of-reference bit-packing in `src/bitpack.zig`
 - first composed block encoder and decoder in `src/block_v1.zig`
-- a minimal CLI entry point in `src/main.zig` with `dump-inspect`
+- a CLI entry point in `src/main.zig` with dump inspection plus `.mzv1` encode, decode, and inspect commands
 - unit tests for each implemented layer
 
 What this means in practice:
@@ -101,7 +101,7 @@ This is why the repository currently looks smaller and more concrete than the ea
 
 ### Benchmarking
 
-- `tools/benchmark_v1.py` benchmarks mzML ingest, `.mzv1` encode and decode, size, and round-trip fidelity.
+- `tools/benchmark_v1.py` benchmarks mzML ingest, `.mzv1` encode and decode, size, round-trip fidelity, and repeated timing intervals with confidence bounds.
 - [benchmark/report.md](benchmark/report.md) contains the current public benchmark summary and plot references.
 - [benchmark/report.json](benchmark/report.json) contains the machine-readable benchmark output.
 - repo-root `benchmark/` contains the pushable report and plots.
@@ -111,15 +111,16 @@ This is why the repository currently looks smaller and more concrete than the ea
 
 - On `data/PXD075509/15HCD_1.mzML`, lossless `.mzv1` is `19.52 MiB`, down from `75.55 MiB` for mzML and `30.78 MiB` for the internal dump.
 - Selected lossy `.mzv1` at `q=4096` is `13.14 MiB`, with `0.218%` p95 relative intensity error and `0.238%` p99 relative intensity error.
-- Over 10 runs, lossless encode and decode average `0.7521s` and `0.7832s`; lossy encode and decode average `1.1657s` and `0.8638s`.
+- Over 10 runs, lossless encode and decode average `0.5270s` and `0.4473s`; lossy encode and decode average `0.9347s` and `0.5760s`.
 - Against generic dump baselines, lossless `.mzv1` is slightly smaller than `gzip dump` (`19.82 MiB`) but still larger than `zstd dump` (`17.85 MiB`).
+- The active external comparison set in the public report is `mzMLb` (`16.25 MiB`), `MScompress` (`21.63 MiB`), and `MScompress threaded` (`21.53 MiB`).
 - The current lossless path is still not truly lossless for m/z: mean absolute m/z error is about `5.0e-7`, intensity is exact on this sample, and original global order is not yet preserved.
 
 ### Validation
 
 - unit tests cover dump IO, quantization, delta coding, bit-packing, and block round-trips
 - the current CLI can encode, decode, and inspect a real `.mzv1` file end-to-end
-- the benchmark report runs repeated timings and records confidence intervals, size tradeoffs, and fidelity summaries on real mzML input
+- the checked-in benchmark report currently uses `10` timing repeats per operation and records means, standard deviations, and two-sided 95% confidence intervals on real mzML input
 
 ---
 
@@ -130,7 +131,7 @@ The next development steps are straightforward and close to the code that alread
 1. make the current lossless path truly lossless for m/z
 2. preserve original global scan order across decode
 3. add a second, more representative DIA dataset once the current benchmark path is stable
-4. start comparing against external proteomics-specific baselines such as Numpress, mzMLb, mz5, or Aird
+4. keep MS-Numpress as a future external comparison once the tooling path is stable again
 
 After that, the project will be in a position to make stronger claims about whether the format direction is worth continuing.
 
@@ -164,6 +165,8 @@ mzarc/
 │   └── test_quantize.zig
 └── tools/
     ├── benchmark_core.py
+    ├── benchmark_external.py
+    ├── benchmark_metrics.py
     ├── benchmark_plotting.py
     ├── benchmark_report.py
     ├── benchmark_v1.py
@@ -196,7 +199,7 @@ uv run python tools/inspect_dump.py data/PXD075509/15HCD_1.bin
 ./zig-out/bin/mzarc dump-inspect data/PXD075509/15HCD_1.bin
 ./zig-out/bin/mzarc encode-v1 data/PXD075509/15HCD_1.bin -o data/PXD075509/15HCD_1.lossless.mzv1
 ./zig-out/bin/mzarc decode-v1 data/PXD075509/15HCD_1.lossless.mzv1 -o data/PXD075509/15HCD_1.roundtrip.bin
-uv run python tools/benchmark_v1.py data/PXD075509/15HCD_1.mzML
+uv run python tools/benchmark_v1.py --repeats 10 --external-baselines mzmlb,mscompress --mscompress-benchmark-threaded data/PXD075509/15HCD_1.mzML
 ```
 
 The important rule for this stage is simple: every new step should leave behind a runnable command and a testable artifact.

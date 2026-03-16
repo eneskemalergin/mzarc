@@ -20,27 +20,19 @@ from benchmark_core import (
 )
 from mzml_dump import dump_mzmlb
 
-
-DEFAULT_EXTERNAL_BASELINES = ("mzmlb", "ms-numpress", "mz5", "aird", "mspack", "mscompress")
+DEFAULT_EXTERNAL_BASELINES = ("mzmlb", "mscompress")
 
 DISPLAY_NAMES = {
     "mzmlb": "mzMLb",
     "ms-numpress": "MS-Numpress in mzML",
-    "mz5": "mz5",
-    "aird": "Aird",
-    "mspack": "mspack",
     "mscompress": "MScompress",
 }
 
 OUTPUT_SUFFIXES = {
     "mzmlb": ".mzMLb",
     "ms-numpress": ".numpress.mzML",
-    "mz5": ".mz5",
-    "aird": ".aird",
-    "mspack": ".mspack",
     "mscompress": ".msz",
 }
-
 
 def parse_external_baselines(value: str | None) -> tuple[str, ...]:
     if value is None:
@@ -57,9 +49,6 @@ def parse_external_baselines(value: str | None) -> tuple[str, ...]:
         "ms-numpress": "ms-numpress",
         "ms_numpress": "ms-numpress",
         "numpress": "ms-numpress",
-        "mz5": "mz5",
-        "aird": "aird",
-        "mspack": "mspack",
         "mscompress": "mscompress",
         "msz": "mscompress",
     }
@@ -76,7 +65,6 @@ def parse_external_baselines(value: str | None) -> tuple[str, ...]:
             items.append(canonical)
     return tuple(items)
 
-
 def builtin_numpress_available() -> tuple[bool, str | None]:
     if importlib.util.find_spec("pynumpress") is not None:
         return True, None
@@ -85,12 +73,10 @@ def builtin_numpress_available() -> tuple[bool, str | None]:
         "psims and pyteomics can use MS-Numpress, but the required `pynumpress` backend is not available in this environment. The upstream PyMSNumpress package currently fails to build on Python 3.12 here.",
     )
 
-
 def builtin_mscompress_available() -> tuple[bool, str | None]:
     if importlib.util.find_spec("mscompress") is not None:
         return True, None
     return False, "MScompress Python package is not installed in the active benchmark environment."
-
 
 def estimate_external_steps(
     requested: tuple[str, ...],
@@ -98,14 +84,9 @@ def estimate_external_steps(
     *,
     numpress_command_template: str | None = None,
     numpress_to_dump_command_template: str | None = None,
-    mz5_command_template: str | None = None,
-    mz5_to_dump_command_template: str | None = None,
-    aird_command_template: str | None = None,
-    aird_to_dump_command_template: str | None = None,
-    mspack_command_template: str | None = None,
-    mspack_to_dump_command_template: str | None = None,
     mscompress_command_template: str | None = None,
     mscompress_to_dump_command_template: str | None = None,
+    mscompress_benchmark_threaded: bool = False,
 ) -> int:
     steps = 0
     builtin_numpress_ok, _ = builtin_numpress_available()
@@ -123,30 +104,6 @@ def estimate_external_steps(
         else:
             steps += 1
 
-    if "mz5" in requested:
-        if mz5_command_template is not None:
-            steps += repeats
-            if mz5_to_dump_command_template is not None:
-                steps += repeats + 1
-        else:
-            steps += 1
-
-    if "aird" in requested:
-        if aird_command_template is not None:
-            steps += repeats
-            if aird_to_dump_command_template is not None:
-                steps += repeats + 1
-        else:
-            steps += 1
-
-    if "mspack" in requested:
-        if mspack_command_template is not None:
-            steps += repeats
-            if mspack_to_dump_command_template is not None:
-                steps += repeats + 1
-        else:
-            steps += 1
-
     if "mscompress" in requested:
         builtin_mscompress_ok, _ = builtin_mscompress_available()
         if mscompress_command_template is not None:
@@ -155,11 +112,12 @@ def estimate_external_steps(
                 steps += repeats + 1
         elif builtin_mscompress_ok:
             steps += repeats * 2 + 1
+            if mscompress_benchmark_threaded:
+                steps += repeats * 2 + 1
         else:
             steps += 1
 
     return steps
-
 
 def _dump_mzmlb_quietly(input_path: Path, output_path: Path) -> None:
     with contextlib.redirect_stdout(io.StringIO()):
@@ -169,12 +127,20 @@ def _dump_mzmlb_quietly(input_path: Path, output_path: Path) -> None:
 def convert_mzml_to_mzmlb(input_path: Path, output_path: Path, *, h5_compression: str) -> None:
     from psims.document import ReferentialIntegrityWarning
     from psims.transform.mzml import MzMLToMzMLb
+    from uuid import uuid4
 
-    transformer = MzMLToMzMLb(str(input_path), str(output_path), h5_compression=h5_compression)
+    temp_output_path = output_path.with_name(f"{output_path.name}.{uuid4().hex}.tmp")
+    transformer = MzMLToMzMLb(str(input_path), str(temp_output_path), h5_compression=h5_compression)
     transformer.log = lambda *args, **kwargs: None
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore", ReferentialIntegrityWarning)
-        transformer.write()
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", ReferentialIntegrityWarning)
+            transformer.write()
+    finally:
+        writer = getattr(transformer, "writer", None)
+        if writer is not None:
+            writer.close()
+    temp_output_path.replace(output_path)
 
 
 def convert_mzml_to_numpress_mzml(input_path: Path, output_path: Path) -> None:
@@ -219,7 +185,8 @@ def convert_mzml_to_mscompress(input_path: Path, output_path: Path, *, threads: 
     import mscompress
 
     mzml = mscompress.read(str(input_path))
-    mzml.arguments.threads = threads
+    if threads is not None:
+        mzml.arguments.threads = threads
     mzml.compress(str(output_path))
 
 
@@ -228,9 +195,61 @@ def convert_mscompress_to_dump(input_path: Path, output_path: Path, *, threads: 
 
     roundtrip_mzml = output_path.with_suffix(".mscompress.roundtrip.mzML")
     artifact = mscompress.read(str(input_path))
-    artifact.arguments.threads = threads
+    if threads is not None:
+        artifact.arguments.threads = threads
     artifact.decompress(str(roundtrip_mzml))
     run_dump_mzml_quietly(roundtrip_mzml, output_path)
+
+
+def _benchmark_callable_baseline(
+    *,
+    records: list[dict[str, object]],
+    sizes: dict[str, dict[str, object]],
+    timings: list[TimingResult],
+    display_name: str,
+    input_path: Path,
+    artifact_path: Path,
+    roundtrip_path: Path,
+    reference_dump: list[Spectrum],
+    dump_bytes: int,
+    repeats: int,
+    repo_relative_path,
+    progress,
+    encode_callable,
+    decode_callable,
+    reason: str,
+) -> None:
+    encode_timing = run_timed_callable(
+        f"mzML -> {display_name}",
+        encode_callable,
+        repeats=repeats,
+        input_bytes=input_path.stat().st_size,
+        progress_callback=progress.callback(f"mzML -> {display_name}"),
+    )
+    decode_timing = run_timed_callable(
+        f"{display_name} -> dump",
+        decode_callable,
+        repeats=repeats,
+        input_bytes=artifact_path.stat().st_size,
+        output_bytes=dump_bytes,
+        progress_callback=progress.callback(f"{display_name} -> dump"),
+    )
+    fidelity = asdict(compare_dumps(display_name, reference_dump, read_dump(roundtrip_path)))
+    progress.step(f"compare {display_name} fidelity")
+    records.append(
+        {
+            "name": display_name,
+            "status": "benchmarked",
+            "reason": reason,
+            "artifact_path": repo_relative_path(artifact_path),
+            "artifact_bytes": artifact_path.stat().st_size,
+            "encode_operation": encode_timing.name,
+            "decode_operation": decode_timing.name,
+            "fidelity": fidelity,
+        }
+    )
+    sizes[display_name] = {"path": repo_relative_path(artifact_path), "bytes": artifact_path.stat().st_size}
+    timings.extend([encode_timing, decode_timing])
 
 
 def _format_template_command(template: str, input_path: Path, output_path: Path) -> list[str]:
@@ -336,14 +355,10 @@ def run_external_baselines(
     progress,
     numpress_command_template: str | None = None,
     numpress_to_dump_command_template: str | None = None,
-    mz5_command_template: str | None = None,
-    mz5_to_dump_command_template: str | None = None,
-    aird_command_template: str | None = None,
-    aird_to_dump_command_template: str | None = None,
-    mspack_command_template: str | None = None,
-    mspack_to_dump_command_template: str | None = None,
     mscompress_command_template: str | None = None,
     mscompress_to_dump_command_template: str | None = None,
+    mscompress_benchmark_threaded: bool = False,
+    mscompress_thread_count: int | None = None,
 ) -> dict[str, object]:
     records: list[dict[str, object]] = []
     sizes: dict[str, dict[str, object]] = {}
@@ -352,37 +367,23 @@ def run_external_baselines(
     if "mzmlb" in requested:
         artifact_path = private_workdir / f"{sample_name}{OUTPUT_SUFFIXES['mzmlb']}"
         roundtrip_path = private_workdir / f"{sample_name}.mzmlb.roundtrip.bin"
-        encode_timing = run_timed_callable(
-            "mzML -> mzMLb",
-            lambda: convert_mzml_to_mzmlb(input_path, artifact_path, h5_compression=mzmlb_compression),
+        _benchmark_callable_baseline(
+            records=records,
+            sizes=sizes,
+            timings=timings,
+            display_name="mzMLb",
+            input_path=input_path,
+            artifact_path=artifact_path,
+            roundtrip_path=roundtrip_path,
+            reference_dump=reference_dump,
+            dump_bytes=dump_bytes,
             repeats=repeats,
-            input_bytes=input_path.stat().st_size,
-            progress_callback=progress.callback("mzML -> mzMLb"),
+            repo_relative_path=repo_relative_path,
+            progress=progress,
+            encode_callable=lambda: convert_mzml_to_mzmlb(input_path, artifact_path, h5_compression=mzmlb_compression),
+            decode_callable=lambda: _dump_mzmlb_quietly(artifact_path, roundtrip_path),
+            reason=f"Converted with psims MzMLToMzMLb using HDF5 compression `{mzmlb_compression}`.",
         )
-        decode_timing = run_timed_callable(
-            "mzMLb -> dump",
-            lambda: _dump_mzmlb_quietly(artifact_path, roundtrip_path),
-            repeats=repeats,
-            input_bytes=artifact_path.stat().st_size,
-            output_bytes=dump_bytes,
-            progress_callback=progress.callback("mzMLb -> dump"),
-        )
-        fidelity = asdict(compare_dumps("mzMLb", reference_dump, read_dump(roundtrip_path)))
-        progress.step("compare mzMLb fidelity")
-        records.append(
-            {
-                "name": "mzMLb",
-                "status": "benchmarked",
-                "reason": f"Converted with psims MzMLToMzMLb using HDF5 compression `{mzmlb_compression}`.",
-                "artifact_path": repo_relative_path(artifact_path),
-                "artifact_bytes": artifact_path.stat().st_size,
-                "encode_operation": encode_timing.name,
-                "decode_operation": decode_timing.name,
-                "fidelity": fidelity,
-            }
-        )
-        sizes["mzMLb"] = {"path": repo_relative_path(artifact_path), "bytes": artifact_path.stat().st_size}
-        timings.extend([encode_timing, decode_timing])
 
     if "ms-numpress" in requested:
         display_name = DISPLAY_NAMES["ms-numpress"]
@@ -409,118 +410,23 @@ def run_external_baselines(
                 _record_unavailable(records, progress, display_name, reason or "MS-Numpress backend unavailable")
             else:
                 roundtrip_path = private_workdir / f"{sample_name}.numpress.roundtrip.bin"
-                encode_timing = run_timed_callable(
-                    f"mzML -> {display_name}",
-                    lambda: convert_mzml_to_numpress_mzml(input_path, artifact_path),
+                _benchmark_callable_baseline(
+                    records=records,
+                    sizes=sizes,
+                    timings=timings,
+                    display_name=display_name,
+                    input_path=input_path,
+                    artifact_path=artifact_path,
+                    roundtrip_path=roundtrip_path,
+                    reference_dump=reference_dump,
+                    dump_bytes=dump_bytes,
                     repeats=repeats,
-                    input_bytes=input_path.stat().st_size,
-                    progress_callback=progress.callback(f"mzML -> {display_name}"),
+                    repo_relative_path=repo_relative_path,
+                    progress=progress,
+                    encode_callable=lambda: convert_mzml_to_numpress_mzml(input_path, artifact_path),
+                    decode_callable=lambda: run_dump_mzml_quietly(artifact_path, roundtrip_path),
+                    reason="Converted with psims and per-array MS-Numpress compression settings.",
                 )
-                decode_timing = run_timed_callable(
-                    f"{display_name} -> dump",
-                    lambda: run_dump_mzml_quietly(artifact_path, roundtrip_path),
-                    repeats=repeats,
-                    input_bytes=artifact_path.stat().st_size,
-                    output_bytes=dump_bytes,
-                    progress_callback=progress.callback(f"{display_name} -> dump"),
-                )
-                fidelity = asdict(compare_dumps(display_name, reference_dump, read_dump(roundtrip_path)))
-                progress.step(f"compare {display_name} fidelity")
-                records.append(
-                    {
-                        "name": display_name,
-                        "status": "benchmarked",
-                        "reason": "Converted with psims and per-array MS-Numpress compression settings.",
-                        "artifact_path": repo_relative_path(artifact_path),
-                        "artifact_bytes": artifact_path.stat().st_size,
-                        "encode_operation": encode_timing.name,
-                        "decode_operation": decode_timing.name,
-                        "fidelity": fidelity,
-                    }
-                )
-                sizes[display_name] = {"path": repo_relative_path(artifact_path), "bytes": artifact_path.stat().st_size}
-                timings.extend([encode_timing, decode_timing])
-
-    if "mz5" in requested:
-        display_name = DISPLAY_NAMES["mz5"]
-        artifact_path = private_workdir / f"{sample_name}{OUTPUT_SUFFIXES['mz5']}"
-        if mz5_command_template is None:
-            _record_unavailable(
-                records,
-                progress,
-                display_name,
-                "No mz5 converter is bundled in this repository. Provide `--mz5-command-template` and optionally `--mz5-to-dump-command-template` to benchmark an external converter.",
-            )
-        else:
-            _benchmark_template_baseline(
-                records=records,
-                sizes=sizes,
-                timings=timings,
-                display_name=display_name,
-                input_path=input_path,
-                artifact_path=artifact_path,
-                reference_dump=reference_dump,
-                dump_bytes=dump_bytes,
-                repeats=repeats,
-                repo_relative_path=repo_relative_path,
-                progress=progress,
-                encode_template=mz5_command_template,
-                decode_template=mz5_to_dump_command_template,
-            )
-
-    if "aird" in requested:
-        display_name = DISPLAY_NAMES["aird"]
-        artifact_path = private_workdir / f"{sample_name}{OUTPUT_SUFFIXES['aird']}"
-        if aird_command_template is None:
-            _record_unavailable(
-                records,
-                progress,
-                display_name,
-                "No Aird converter is bundled in this repository. Provide `--aird-command-template` and optionally `--aird-to-dump-command-template` to benchmark an external converter.",
-            )
-        else:
-            _benchmark_template_baseline(
-                records=records,
-                sizes=sizes,
-                timings=timings,
-                display_name=display_name,
-                input_path=input_path,
-                artifact_path=artifact_path,
-                reference_dump=reference_dump,
-                dump_bytes=dump_bytes,
-                repeats=repeats,
-                repo_relative_path=repo_relative_path,
-                progress=progress,
-                encode_template=aird_command_template,
-                decode_template=aird_to_dump_command_template,
-            )
-
-    if "mspack" in requested:
-        display_name = DISPLAY_NAMES["mspack"]
-        artifact_path = private_workdir / f"{sample_name}{OUTPUT_SUFFIXES['mspack']}"
-        if mspack_command_template is None:
-            _record_unavailable(
-                records,
-                progress,
-                display_name,
-                "No mspack command is configured. Provide `--mspack-command-template` and optionally `--mspack-to-dump-command-template` to benchmark it.",
-            )
-        else:
-            _benchmark_template_baseline(
-                records=records,
-                sizes=sizes,
-                timings=timings,
-                display_name=display_name,
-                input_path=input_path,
-                artifact_path=artifact_path,
-                reference_dump=reference_dump,
-                dump_bytes=dump_bytes,
-                repeats=repeats,
-                repo_relative_path=repo_relative_path,
-                progress=progress,
-                encode_template=mspack_command_template,
-                decode_template=mspack_to_dump_command_template,
-            )
 
     if "mscompress" in requested:
         display_name = DISPLAY_NAMES["mscompress"]
@@ -550,37 +456,68 @@ def run_external_baselines(
                 builtin_mscompress_reason or "MScompress is unavailable in this environment.",
             )
         else:
-            roundtrip_path = private_workdir / f"{sample_name}.mscompress.roundtrip.bin"
-            encode_timing = run_timed_callable(
-                f"mzML -> {display_name}",
-                lambda: convert_mzml_to_mscompress(input_path, artifact_path, threads=1),
+            _benchmark_callable_baseline(
+                records=records,
+                sizes=sizes,
+                timings=timings,
+                display_name=display_name,
+                input_path=input_path,
+                artifact_path=artifact_path,
+                roundtrip_path=private_workdir / f"{sample_name}.mscompress.roundtrip.bin",
+                reference_dump=reference_dump,
+                dump_bytes=dump_bytes,
                 repeats=repeats,
-                input_bytes=input_path.stat().st_size,
-                progress_callback=progress.callback(f"mzML -> {display_name}"),
+                repo_relative_path=repo_relative_path,
+                progress=progress,
+                encode_callable=lambda: convert_mzml_to_mscompress(input_path, artifact_path, threads=1),
+                decode_callable=lambda: convert_mscompress_to_dump(
+                    artifact_path,
+                    private_workdir / f"{sample_name}.mscompress.roundtrip.bin",
+                    threads=1,
+                ),
+                reason="Converted with the MScompress Python package using 1 thread for single-thread comparability.",
             )
-            decode_timing = run_timed_callable(
-                f"{display_name} -> dump",
-                lambda: convert_mscompress_to_dump(artifact_path, roundtrip_path, threads=1),
-                repeats=repeats,
-                input_bytes=artifact_path.stat().st_size,
-                output_bytes=dump_bytes,
-                progress_callback=progress.callback(f"{display_name} -> dump"),
-            )
-            fidelity = asdict(compare_dumps(display_name, reference_dump, read_dump(roundtrip_path)))
-            progress.step(f"compare {display_name} fidelity")
-            records.append(
-                {
-                    "name": display_name,
-                    "status": "benchmarked",
-                    "reason": "Converted with the MScompress Python package using 1 thread for single-thread comparability.",
-                    "artifact_path": repo_relative_path(artifact_path),
-                    "artifact_bytes": artifact_path.stat().st_size,
-                    "encode_operation": encode_timing.name,
-                    "decode_operation": decode_timing.name,
-                    "fidelity": fidelity,
-                }
-            )
-            sizes[display_name] = {"path": repo_relative_path(artifact_path), "bytes": artifact_path.stat().st_size}
-            timings.extend([encode_timing, decode_timing])
+
+            if mscompress_benchmark_threaded:
+                threaded_name = (
+                    f"MScompress ({mscompress_thread_count} threads)"
+                    if mscompress_thread_count is not None
+                    else "MScompress threaded"
+                )
+                threaded_suffix = (
+                    f".threads{mscompress_thread_count}.msz"
+                    if mscompress_thread_count is not None
+                    else ".threaded.msz"
+                )
+                threaded_roundtrip = private_workdir / f"{sample_name}.mscompress.threaded.roundtrip.bin"
+                _benchmark_callable_baseline(
+                    records=records,
+                    sizes=sizes,
+                    timings=timings,
+                    display_name=threaded_name,
+                    input_path=input_path,
+                    artifact_path=private_workdir / f"{sample_name}{threaded_suffix}",
+                    roundtrip_path=threaded_roundtrip,
+                    reference_dump=reference_dump,
+                    dump_bytes=dump_bytes,
+                    repeats=repeats,
+                    repo_relative_path=repo_relative_path,
+                    progress=progress,
+                    encode_callable=lambda: convert_mzml_to_mscompress(
+                        input_path,
+                        private_workdir / f"{sample_name}{threaded_suffix}",
+                        threads=mscompress_thread_count,
+                    ),
+                    decode_callable=lambda: convert_mscompress_to_dump(
+                        private_workdir / f"{sample_name}{threaded_suffix}",
+                        threaded_roundtrip,
+                        threads=mscompress_thread_count,
+                    ),
+                    reason=(
+                        f"Converted with the MScompress Python package using {mscompress_thread_count} threads."
+                        if mscompress_thread_count is not None
+                        else "Converted with the MScompress Python package using its default thread setting."
+                    ),
+                )
 
     return {"records": records, "sizes": sizes, "timings": timings}

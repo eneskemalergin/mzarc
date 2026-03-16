@@ -14,13 +14,13 @@ from benchmark_core import (
     REPO_ROOT,
     collect_file_stats,
     compare_dumps,
-    encode_lossy_command,
     parse_lossy_sweep,
     read_dump,
     require_tool,
     run_dump_mzml_quietly,
     run_timed_callable,
     run_timed_command,
+    run_timed_path_command,
     serialize_timing_result,
 )
 from benchmark_external import (
@@ -29,7 +29,6 @@ from benchmark_external import (
     run_external_baselines,
 )
 from benchmark_metrics import (
-    build_coverage_rows,
     build_fidelity_metric_rows,
     build_performance_rows,
     build_search_impact_rows,
@@ -73,6 +72,88 @@ class ProgressBar:
             sys.stderr.flush()
 
 
+def timed_command(
+    name: str,
+    command: list[str],
+    *,
+    repeats: int,
+    progress: ProgressBar,
+    progress_label: str,
+    input_bytes: int | None = None,
+    output_bytes: int | None = None,
+    output_path: Path | None = None,
+    stdout_path: Path | None = None,
+):
+    common = {
+        "repeats": repeats,
+        "input_bytes": input_bytes,
+        "output_bytes": output_bytes,
+        "progress_callback": progress.callback(progress_label),
+    }
+    if output_path is not None:
+        return run_timed_path_command(name, command, output_path=output_path, **common)
+    return run_timed_command(name, command, stdout_path=stdout_path, **common)
+
+
+def benchmark_roundtrip(
+    *,
+    artifact: str,
+    fidelity_name: str,
+    encode_name: str,
+    encode_command: list[str],
+    encode_progress: str,
+    encode_path: Path,
+    decode_name: str,
+    decode_command: list[str],
+    decode_progress: str,
+    decode_path: Path,
+    reference_dump,
+    repeats: int,
+    progress: ProgressBar,
+    encode_input_bytes: int,
+    decode_output_bytes: int,
+    encode_writes_file: bool = False,
+    decode_writes_file: bool = False,
+) -> dict[str, object]:
+    encode_timing = timed_command(
+        encode_name,
+        encode_command,
+        repeats=repeats,
+        progress=progress,
+        progress_label=encode_progress,
+        input_bytes=encode_input_bytes,
+        output_path=encode_path if encode_writes_file else None,
+        stdout_path=None if encode_writes_file else encode_path,
+    )
+    decode_timing = timed_command(
+        decode_name,
+        decode_command,
+        repeats=repeats,
+        progress=progress,
+        progress_label=decode_progress,
+        input_bytes=encode_path.stat().st_size,
+        output_bytes=decode_output_bytes,
+        output_path=decode_path if decode_writes_file else None,
+        stdout_path=None if decode_writes_file else decode_path,
+    )
+    fidelity = asdict(compare_dumps(fidelity_name, reference_dump, read_dump(decode_path)))
+    progress.step(f"compare {artifact} fidelity")
+    return {"path": encode_path, "encode_timing": encode_timing, "decode_timing": decode_timing, "fidelity": fidelity}
+
+
+def lossy_sweep_row(*, quant: int, encoded_path: Path, encoded_rel: str, fidelity: dict[str, object]) -> dict[str, object]:
+    return {
+        "intensity_quant": quant,
+        "path": encoded_rel,
+        "bytes": encoded_path.stat().st_size,
+        "size_mib": encoded_path.stat().st_size / (1024 * 1024),
+        "fidelity": fidelity,
+        "p95_rel_intensity_error_pct": fidelity["intensity_rel"]["p95"] * 100.0,
+        "p99_rel_intensity_error_pct": fidelity["intensity_rel"]["p99"] * 100.0,
+        "mean_rel_intensity_error_pct": fidelity["intensity_rel"]["mean"] * 100.0,
+    }
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Benchmark the current mzarc prototype using the modular benchmark stack.")
     parser.add_argument("input", type=Path, help="Path to the mzML file to benchmark")
@@ -111,7 +192,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--external-baselines",
         type=str,
         default="all",
-        help="Comma-separated external baselines to attempt: mzmlb, ms-numpress, mz5, aird, all, or none",
+        help="Comma-separated external baselines to attempt: mzmlb, ms-numpress, mscompress, all, or none",
     )
     parser.add_argument(
         "--mzmlb-compression",
@@ -132,42 +213,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="Optional command template to convert the MS-Numpress artifact back to a dump using {input} and {output}",
     )
     parser.add_argument(
-        "--mz5-command-template",
-        type=str,
-        default=None,
-        help="Optional external command template for mz5 conversion using {input} and {output} placeholders",
-    )
-    parser.add_argument(
-        "--mz5-to-dump-command-template",
-        type=str,
-        default=None,
-        help="Optional command template to convert the mz5 artifact back to a dump using {input} and {output}",
-    )
-    parser.add_argument(
-        "--aird-command-template",
-        type=str,
-        default=None,
-        help="Optional external command template for Aird conversion using {input} and {output} placeholders",
-    )
-    parser.add_argument(
-        "--aird-to-dump-command-template",
-        type=str,
-        default=None,
-        help="Optional command template to convert the Aird artifact back to a dump using {input} and {output}",
-    )
-    parser.add_argument(
-        "--mspack-command-template",
-        type=str,
-        default=None,
-        help="Optional external command template for mspack conversion using {input} and {output} placeholders",
-    )
-    parser.add_argument(
-        "--mspack-to-dump-command-template",
-        type=str,
-        default=None,
-        help="Optional command template to convert the mspack artifact back to a dump using {input} and {output}",
-    )
-    parser.add_argument(
         "--mscompress-command-template",
         type=str,
         default=None,
@@ -178,6 +223,17 @@ def build_parser() -> argparse.ArgumentParser:
         type=str,
         default=None,
         help="Optional command template to convert the MScompress artifact back to a dump using {input} and {output}",
+    )
+    parser.add_argument(
+        "--mscompress-benchmark-threaded",
+        action="store_true",
+        help="Also benchmark a second MScompress run using its threaded/default configuration",
+    )
+    parser.add_argument(
+        "--mscompress-thread-count",
+        type=int,
+        default=None,
+        help="Explicit thread count for the additional threaded MScompress benchmark; omitted means use MScompress defaults",
     )
     parser.add_argument(
         "--search-impact-json",
@@ -221,7 +277,6 @@ def main() -> None:
     selected_quant = int(args.lossy_intensity_quant)
     lossy_sweep = parse_lossy_sweep(args.lossy_sweep, selected_quant)
     requested_external = parse_external_baselines(args.external_baselines)
-    sample_name = input_path.stem
     private_workdir = resolve_private_workdir(input_path, args.private_workdir.resolve() if args.private_workdir else None)
     public_dir = args.public_dir.resolve()
     plot_dir = public_dir / "plots"
@@ -229,6 +284,7 @@ def main() -> None:
     private_workdir.mkdir(parents=True, exist_ok=True)
     plot_dir.mkdir(parents=True, exist_ok=True)
 
+    sample_name = input_path.stem
     paths = {
         "mzml": input_path,
         "dump": private_workdir / f"{sample_name}.bin",
@@ -248,14 +304,9 @@ def main() -> None:
         args.repeats,
         numpress_command_template=args.ms_numpress_command_template,
         numpress_to_dump_command_template=args.ms_numpress_to_dump_command_template,
-        mz5_command_template=args.mz5_command_template,
-        mz5_to_dump_command_template=args.mz5_to_dump_command_template,
-        aird_command_template=args.aird_command_template,
-        aird_to_dump_command_template=args.aird_to_dump_command_template,
-        mspack_command_template=args.mspack_command_template,
-        mspack_to_dump_command_template=args.mspack_to_dump_command_template,
         mscompress_command_template=args.mscompress_command_template,
         mscompress_to_dump_command_template=args.mscompress_to_dump_command_template,
+        mscompress_benchmark_threaded=args.mscompress_benchmark_threaded,
     )
     total_steps = (args.repeats * 9) + (2 * len(extra_sweep_levels)) + external_steps + 6
     progress = ProgressBar(total_steps, enabled=not args.no_progress)
@@ -288,93 +339,83 @@ def main() -> None:
         zstd_dump_rel = repo_relative_path(paths["zstd_dump"])
         zstd_dump_roundtrip_rel = repo_relative_path(paths["zstd_dump_roundtrip"])
 
-        lossless_encode_cmd = [zig_bin_rel, "encode-v1", dump_rel, "-o", lossless_path_rel]
-        lossless_decode_cmd = [zig_bin_rel, "decode-v1", lossless_path_rel, "-o", lossless_roundtrip_rel]
-        lossy_encode_cmd = encode_lossy_command(zig_bin, paths["dump"], paths["mzv1_lossy"], selected_quant)
-        lossy_encode_cmd = [zig_bin_rel, "encode-v1", dump_rel, "-o", lossy_path_rel, "--lossy", "--intensity-quant", str(selected_quant)]
-        lossy_decode_cmd = [zig_bin_rel, "decode-v1", lossy_path_rel, "-o", lossy_roundtrip_rel]
+        gzip_result = benchmark_roundtrip(
+            artifact="gzip dump",
+            fidelity_name="gzip_dump",
+            encode_name="dump -> gzip dump",
+            encode_command=["gzip", "-n", "-c", dump_rel],
+            encode_progress="dump -> gzip dump",
+            encode_path=paths["gzip_dump"],
+            decode_name="gzip dump -> dump",
+            decode_command=["gzip", "-d", "-c", gzip_dump_rel],
+            decode_progress="gzip dump -> dump",
+            decode_path=paths["gzip_dump_roundtrip"],
+            reference_dump=reference_dump,
+            repeats=args.repeats,
+            progress=progress,
+            encode_input_bytes=dump_bytes,
+            decode_output_bytes=dump_bytes,
+        )
+        zstd_result = benchmark_roundtrip(
+            artifact="zstd dump",
+            fidelity_name="zstd_dump",
+            encode_name="dump -> zstd dump",
+            encode_command=["zstd", "-q", "-c", dump_rel],
+            encode_progress="dump -> zstd dump",
+            encode_path=paths["zstd_dump"],
+            decode_name="zstd dump -> dump",
+            decode_command=["zstd", "-q", "-d", "-c", zstd_dump_rel],
+            decode_progress="zstd dump -> dump",
+            decode_path=paths["zstd_dump_roundtrip"],
+            reference_dump=reference_dump,
+            repeats=args.repeats,
+            progress=progress,
+            encode_input_bytes=dump_bytes,
+            decode_output_bytes=dump_bytes,
+        )
+        lossless_result = benchmark_roundtrip(
+            artifact="mzv1 lossless",
+            fidelity_name="mzv1_lossless",
+            encode_name="dump -> mzv1 lossless",
+            encode_command=[zig_bin_rel, "encode-v1", dump_rel, "-o", lossless_path_rel],
+            encode_progress="dump -> mzv1 lossless",
+            encode_path=paths["mzv1_lossless"],
+            decode_name="mzv1 lossless -> dump",
+            decode_command=[zig_bin_rel, "decode-v1", lossless_path_rel, "-o", lossless_roundtrip_rel],
+            decode_progress="mzv1 lossless -> dump",
+            decode_path=paths["roundtrip_lossless"],
+            reference_dump=reference_dump,
+            repeats=args.repeats,
+            progress=progress,
+            encode_input_bytes=dump_bytes,
+            decode_output_bytes=dump_bytes,
+            encode_writes_file=True,
+            decode_writes_file=True,
+        )
+        lossy_result = benchmark_roundtrip(
+            artifact=f"mzv1 lossy q={selected_quant}",
+            fidelity_name="mzv1_lossy",
+            encode_name=f"dump -> mzv1 lossy q={selected_quant}",
+            encode_command=[zig_bin_rel, "encode-v1", dump_rel, "-o", lossy_path_rel, "--lossy", "--intensity-quant", str(selected_quant)],
+            encode_progress=f"dump -> mzv1 lossy q={selected_quant}",
+            encode_path=paths["mzv1_lossy"],
+            decode_name=f"mzv1 lossy q={selected_quant} -> dump",
+            decode_command=[zig_bin_rel, "decode-v1", lossy_path_rel, "-o", lossy_roundtrip_rel],
+            decode_progress=f"mzv1 lossy q={selected_quant} -> dump",
+            decode_path=paths["roundtrip_lossy"],
+            reference_dump=reference_dump,
+            repeats=args.repeats,
+            progress=progress,
+            encode_input_bytes=dump_bytes,
+            decode_output_bytes=dump_bytes,
+            encode_writes_file=True,
+            decode_writes_file=True,
+        )
 
-        gzip_dump_cmd = ["gzip", "-n", "-c", dump_rel]
-        gzip_dump_decode_cmd = ["gzip", "-d", "-c", gzip_dump_rel]
-        zstd_dump_cmd = ["zstd", "-q", "-c", dump_rel]
-        zstd_dump_decode_cmd = ["zstd", "-q", "-d", "-c", zstd_dump_rel]
-
-        timing_gzip_dump = run_timed_command(
-            "dump -> gzip dump",
-            gzip_dump_cmd,
-            repeats=args.repeats,
-            input_bytes=dump_bytes,
-            stdout_path=paths["gzip_dump"],
-            progress_callback=progress.callback("dump -> gzip dump"),
-        )
-        timing_gzip_dump_decode = run_timed_command(
-            "gzip dump -> dump",
-            gzip_dump_decode_cmd,
-            repeats=args.repeats,
-            input_bytes=paths["gzip_dump"].stat().st_size,
-            output_bytes=dump_bytes,
-            stdout_path=paths["gzip_dump_roundtrip"],
-            progress_callback=progress.callback("gzip dump -> dump"),
-        )
-        timing_zstd_dump = run_timed_command(
-            "dump -> zstd dump",
-            zstd_dump_cmd,
-            repeats=args.repeats,
-            input_bytes=dump_bytes,
-            stdout_path=paths["zstd_dump"],
-            progress_callback=progress.callback("dump -> zstd dump"),
-        )
-        timing_zstd_dump_decode = run_timed_command(
-            "zstd dump -> dump",
-            zstd_dump_decode_cmd,
-            repeats=args.repeats,
-            input_bytes=paths["zstd_dump"].stat().st_size,
-            output_bytes=dump_bytes,
-            stdout_path=paths["zstd_dump_roundtrip"],
-            progress_callback=progress.callback("zstd dump -> dump"),
-        )
-        gzip_fidelity = asdict(compare_dumps("gzip_dump", reference_dump, read_dump(paths["gzip_dump_roundtrip"])))
-        progress.step("compare gzip dump fidelity")
-        zstd_fidelity = asdict(compare_dumps("zstd_dump", reference_dump, read_dump(paths["zstd_dump_roundtrip"])))
-        progress.step("compare zstd dump fidelity")
-
-        timing_lossless_encode = run_timed_command(
-            "dump -> mzv1 lossless",
-            lossless_encode_cmd,
-            repeats=args.repeats,
-            input_bytes=dump_bytes,
-            progress_callback=progress.callback("dump -> mzv1 lossless"),
-        )
-        timing_lossless_decode = run_timed_command(
-            "mzv1 lossless -> dump",
-            lossless_decode_cmd,
-            repeats=args.repeats,
-            input_bytes=paths["mzv1_lossless"].stat().st_size,
-            output_bytes=dump_bytes,
-            progress_callback=progress.callback("mzv1 lossless -> dump"),
-        )
-        lossless_roundtrip = read_dump(paths["roundtrip_lossless"])
-        lossless_fidelity = asdict(compare_dumps("mzv1_lossless", reference_dump, lossless_roundtrip))
-        progress.step("compare mzv1 lossless fidelity")
-
-        timing_lossy_encode = run_timed_command(
-            f"dump -> mzv1 lossy q={selected_quant}",
-            lossy_encode_cmd,
-            repeats=args.repeats,
-            input_bytes=dump_bytes,
-            progress_callback=progress.callback(f"dump -> mzv1 lossy q={selected_quant}"),
-        )
-        timing_lossy_decode = run_timed_command(
-            f"mzv1 lossy q={selected_quant} -> dump",
-            lossy_decode_cmd,
-            repeats=args.repeats,
-            input_bytes=paths["mzv1_lossy"].stat().st_size,
-            output_bytes=dump_bytes,
-            progress_callback=progress.callback(f"mzv1 lossy q={selected_quant} -> dump"),
-        )
-        lossy_roundtrip = read_dump(paths["roundtrip_lossy"])
-        lossy_fidelity = asdict(compare_dumps("mzv1_lossy", reference_dump, lossy_roundtrip))
-        progress.step(f"compare mzv1 lossy q={selected_quant} fidelity")
+        gzip_fidelity = gzip_result["fidelity"]
+        zstd_fidelity = zstd_result["fidelity"]
+        lossless_fidelity = lossless_result["fidelity"]
+        lossy_fidelity = lossy_result["fidelity"]
 
         sizes = {
             "mzML": {"path": repo_relative_path(input_path), "bytes": mzml_bytes},
@@ -398,28 +439,20 @@ def main() -> None:
             progress=progress,
             numpress_command_template=args.ms_numpress_command_template,
             numpress_to_dump_command_template=args.ms_numpress_to_dump_command_template,
-            mz5_command_template=args.mz5_command_template,
-            mz5_to_dump_command_template=args.mz5_to_dump_command_template,
-            aird_command_template=args.aird_command_template,
-            aird_to_dump_command_template=args.aird_to_dump_command_template,
-            mspack_command_template=args.mspack_command_template,
-            mspack_to_dump_command_template=args.mspack_to_dump_command_template,
             mscompress_command_template=args.mscompress_command_template,
             mscompress_to_dump_command_template=args.mscompress_to_dump_command_template,
+            mscompress_benchmark_threaded=args.mscompress_benchmark_threaded,
+            mscompress_thread_count=args.mscompress_thread_count,
         )
         sizes.update(external_results["sizes"])
 
         lossy_sweep_rows: list[dict[str, object]] = []
-        selected_sweep_row = {
-            "intensity_quant": selected_quant,
-            "path": lossy_path_rel,
-            "bytes": paths["mzv1_lossy"].stat().st_size,
-            "size_mib": paths["mzv1_lossy"].stat().st_size / (1024 * 1024),
-            "fidelity": lossy_fidelity,
-            "p95_rel_intensity_error_pct": lossy_fidelity["intensity_rel"]["p95"] * 100.0,
-            "p99_rel_intensity_error_pct": lossy_fidelity["intensity_rel"]["p99"] * 100.0,
-            "mean_rel_intensity_error_pct": lossy_fidelity["intensity_rel"]["mean"] * 100.0,
-        }
+        selected_sweep_row = lossy_sweep_row(
+            quant=selected_quant,
+            encoded_path=paths["mzv1_lossy"],
+            encoded_rel=lossy_path_rel,
+            fidelity=lossy_fidelity,
+        )
         lossy_sweep_rows.append(selected_sweep_row)
 
         for quant in extra_sweep_levels:
@@ -448,16 +481,12 @@ def main() -> None:
 
             fidelity = asdict(compare_dumps(f"mzv1_lossy_q{quant}", reference_dump, read_dump(decoded_path)))
             lossy_sweep_rows.append(
-                {
-                    "intensity_quant": quant,
-                    "path": encoded_rel,
-                    "bytes": encoded_path.stat().st_size,
-                    "size_mib": encoded_path.stat().st_size / (1024 * 1024),
-                    "fidelity": fidelity,
-                    "p95_rel_intensity_error_pct": fidelity["intensity_rel"]["p95"] * 100.0,
-                    "p99_rel_intensity_error_pct": fidelity["intensity_rel"]["p99"] * 100.0,
-                    "mean_rel_intensity_error_pct": fidelity["intensity_rel"]["mean"] * 100.0,
-                }
+                lossy_sweep_row(
+                    quant=quant,
+                    encoded_path=encoded_path,
+                    encoded_rel=encoded_rel,
+                    fidelity=fidelity,
+                )
             )
 
         lossy_sweep_rows.sort(key=lambda row: int(row["intensity_quant"]))
@@ -474,14 +503,14 @@ def main() -> None:
 
         serialized_timings = [
             serialize_timing_result(timing_dump),
-            serialize_timing_result(timing_gzip_dump),
-            serialize_timing_result(timing_gzip_dump_decode),
-            serialize_timing_result(timing_zstd_dump),
-            serialize_timing_result(timing_zstd_dump_decode),
-            serialize_timing_result(timing_lossless_encode),
-            serialize_timing_result(timing_lossless_decode),
-            serialize_timing_result(timing_lossy_encode),
-            serialize_timing_result(timing_lossy_decode),
+            serialize_timing_result(gzip_result["encode_timing"]),
+            serialize_timing_result(gzip_result["decode_timing"]),
+            serialize_timing_result(zstd_result["encode_timing"]),
+            serialize_timing_result(zstd_result["decode_timing"]),
+            serialize_timing_result(lossless_result["encode_timing"]),
+            serialize_timing_result(lossless_result["decode_timing"]),
+            serialize_timing_result(lossy_result["encode_timing"]),
+            serialize_timing_result(lossy_result["decode_timing"]),
         ]
         serialized_timings.extend(serialize_timing_result(item) for item in external_results["timings"])
 
@@ -501,22 +530,10 @@ def main() -> None:
             search_impact_data=search_impact_data,
             fidelity_metric_rows=fidelity_metric_rows,
         )
-        coverage_rows = build_coverage_rows(
-            selected_quant=selected_quant,
-            external_baselines=external_results["records"],
-            performance_rows=performance_rows,
-            fidelity_metric_rows=fidelity_metric_rows,
-            search_impact_rows=search_impact_rows,
-        )
-
         plot_rows = {
-            "sizes": [
-                {"artifact": name, "size_mib": item["bytes"] / (1024 * 1024)}
-                for name, item in sizes.items()
-            ],
+            "sizes": [{"artifact": name, "size_mib": item["bytes"] / (1024 * 1024)} for name, item in sizes.items()],
             "performance": performance_rows,
             "fidelity": fidelity_metric_rows,
-            "coverage": coverage_rows,
             "lossy_sweep": [
                 {
                     "intensity_quant": row["intensity_quant"],
@@ -526,19 +543,11 @@ def main() -> None:
                 for row in lossy_sweep_rows
             ],
             "intensity_quantiles": [
-                {
-                    "artifact": "lossless",
-                    "quantile_label": label,
-                    "value_pct": value * 100.0,
-                }
+                {"artifact": "lossless", "quantile_label": label, "value_pct": value * 100.0}
                 for label, value in lossless_fidelity["intensity_rel"]["quantiles"].items()
             ]
             + [
-                {
-                    "artifact": "selected lossy",
-                    "quantile_label": label,
-                    "value_pct": value * 100.0,
-                }
+                {"artifact": "selected lossy", "quantile_label": label, "value_pct": value * 100.0}
                 for label, value in lossy_fidelity["intensity_rel"]["quantiles"].items()
             ],
         }
@@ -563,7 +572,6 @@ def main() -> None:
             "fidelity_metrics": fidelity_metric_rows,
             "performance_rows": performance_rows,
             "search_impact_rows": search_impact_rows,
-            "coverage_rows": coverage_rows,
             "lossy_sweep": lossy_sweep_rows,
             "plot_rows": plot_rows,
             "external_baselines": external_results["records"],

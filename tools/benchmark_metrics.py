@@ -259,32 +259,3 @@ def build_search_impact_rows(
 
     return rows
 
-
-def build_coverage_rows(
-    *,
-    selected_quant: int,
-    external_baselines: list[dict[str, object]],
-    performance_rows: list[dict[str, object]],
-    fidelity_metric_rows: list[dict[str, object]],
-    search_impact_rows: list[dict[str, object]],
-) -> list[dict[str, object]]:
-    performance_index = {
-        (str(item["artifact"]), str(item["direction"])): str(item["status"])
-        for item in performance_rows
-    }
-    fidelity_index = {str(item["artifact"]): str(item["status"]) for item in fidelity_metric_rows}
-    search_index = {str(item["artifact"]): str(item["status"]) for item in search_impact_rows}
-
-    rows: list[dict[str, object]] = []
-    for artifact in comparison_artifact_order(selected_quant, external_baselines):
-        rows.append(
-            {
-                "artifact": artifact,
-                "size": "measured",
-                "compression_speed": performance_index.get((artifact, "compression"), "unavailable"),
-                "decompression_speed": performance_index.get((artifact, "decompression"), "unavailable"),
-                "data_fidelity": fidelity_index.get(artifact, "unavailable"),
-                "search_impact": search_index.get(artifact, "not-measured"),
-            }
-        )
-    return rows

@@ -95,58 +95,65 @@ fn freeSpectrumRefs(allocator: Allocator, spectra: []binary_reader.RawSpectrum) 
     allocator.free(spectra);
 }
 
-fn collectByMsLevel(allocator: Allocator, spectra: []const binary_reader.RawSpectrum, level: u8) ![]binary_reader.RawSpectrum {
-    var count: usize = 0;
-    for (spectra) |spectrum| {
-        if (spectrum.ms_level != 1 and spectrum.ms_level != 2) return error.UnsupportedMsLevel;
-        if (spectrum.ms_level == level) count += 1;
-    }
-
-    const out = try allocator.alloc(binary_reader.RawSpectrum, count);
-    var idx: usize = 0;
-    for (spectra) |spectrum| {
-        if (spectrum.ms_level == level) {
-            out[idx] = spectrum;
-            idx += 1;
-        }
-    }
-    return out;
-}
-
 fn totalPeaks(spectra: []const binary_reader.RawSpectrum) usize {
     var total: usize = 0;
     for (spectra) |spectrum| total += spectrum.mz.len;
     return total;
 }
 
-fn appendStreamBlocks(
+fn appendFilteredStreamBlocks(
     file_bytes: *std.ArrayList(u8),
     allocator: Allocator,
     spectra: []const binary_reader.RawSpectrum,
+    level: u8,
     options: EncodeOptions,
     block_count: *u32,
-) !void {
-    if (spectra.len == 0) return;
+) !usize {
+    const block_capacity = @as(usize, options.block_size);
+    var matched: usize = 0;
+    const block_spectra = try allocator.alloc(binary_reader.RawSpectrum, block_capacity);
+    defer allocator.free(block_spectra);
 
-    var offset: usize = 0;
-    while (offset < spectra.len) {
-        const end = @min(offset + @as(usize, options.block_size), spectra.len);
-        const encoded = try block_v1.encodeBlock(allocator, spectra[offset..end], options.block_options);
+    var used: usize = 0;
+    for (spectra) |spectrum| {
+        if (spectrum.ms_level == level) {
+            block_spectra[used] = spectrum;
+            used += 1;
+            matched += 1;
+
+            if (used == block_capacity) {
+                const encoded = try block_v1.encodeBlock(allocator, block_spectra[0..used], options.block_options);
+                defer allocator.free(encoded);
+                try file_bytes.appendSlice(allocator, encoded);
+                block_count.* += 1;
+                used = 0;
+            }
+        }
+    }
+
+    if (used != 0) {
+        const encoded = try block_v1.encodeBlock(allocator, block_spectra[0..used], options.block_options);
         defer allocator.free(encoded);
         try file_bytes.appendSlice(allocator, encoded);
         block_count.* += 1;
-        offset = end;
     }
+
+    return matched;
 }
 
 pub fn encodeFileAlloc(allocator: Allocator, spectra: []const binary_reader.RawSpectrum, options: EncodeOptions) ![]u8 {
     if (options.block_size == 0) return error.InvalidBlockSize;
     if (spectra.len > std.math.maxInt(u32)) return error.TooManySpectra;
 
-    const ms1 = try collectByMsLevel(allocator, spectra, 1);
-    defer freeSpectrumRefs(allocator, ms1);
-    const ms2 = try collectByMsLevel(allocator, spectra, 2);
-    defer freeSpectrumRefs(allocator, ms2);
+    var ms1_count: usize = 0;
+    var ms2_count: usize = 0;
+    for (spectra) |spectrum| {
+        switch (spectrum.ms_level) {
+            1 => ms1_count += 1,
+            2 => ms2_count += 1,
+            else => return error.UnsupportedMsLevel,
+        }
+    }
 
     var file_bytes: std.ArrayList(u8) = .empty;
     errdefer file_bytes.deinit(allocator);
@@ -154,12 +161,12 @@ pub fn encodeFileAlloc(allocator: Allocator, spectra: []const binary_reader.RawS
 
     var flags: u32 = 0;
     if (options.block_options.mode == .lossless) flags |= flag_lossless;
-    if (ms1.len != 0) flags |= flag_contains_ms1;
-    if (ms2.len != 0) flags |= flag_contains_ms2;
+    if (ms1_count != 0) flags |= flag_contains_ms1;
+    if (ms2_count != 0) flags |= flag_contains_ms2;
 
     var block_count: u32 = 0;
-    try appendStreamBlocks(&file_bytes, allocator, ms1, options, &block_count);
-    try appendStreamBlocks(&file_bytes, allocator, ms2, options, &block_count);
+    _ = try appendFilteredStreamBlocks(&file_bytes, allocator, spectra, 1, options, &block_count);
+    _ = try appendFilteredStreamBlocks(&file_bytes, allocator, spectra, 2, options, &block_count);
 
     const header: FileHeader = .{
         .magic_bytes = magic,

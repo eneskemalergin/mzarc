@@ -9,7 +9,6 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import pandas as pd
 import seaborn as sns
-from matplotlib.patches import Patch, Rectangle
 
 
 def _apply_style() -> None:
@@ -45,8 +44,6 @@ def _artifact_palette(artifact_names: list[str]) -> list[str]:
         "mzv1 lossy": "#d97706",
         "mzMLb": "#0ea5e9",
         "MS-Numpress in mzML": "#7c3aed",
-        "mz5": "#059669",
-        "Aird": "#dc2626",
     }
     colors: list[str] = []
     for name in artifact_names:
@@ -201,73 +198,6 @@ def plot_fidelity_overview(fidelity_rows: list[dict[str, object]], path: Path) -
     plt.close(fig)
 
 
-def plot_metric_coverage(coverage_rows: list[dict[str, object]], path: Path) -> None:
-    _apply_style()
-    columns = [
-        ("size", "Size"),
-        ("compression_speed", "Compression\nSpeed"),
-        ("decompression_speed", "Decompression\nSpeed"),
-        ("data_fidelity", "Data\nFidelity"),
-        ("search_impact", "Search\nImpact"),
-    ]
-    status_colors = {
-        "measured": "#0f766e",
-        "not-measured": "#d97706",
-        "encode-only": "#2563eb",
-        "unavailable": "#dc2626",
-    }
-    status_labels = {
-        "measured": "measured",
-        "not-measured": "pending",
-        "encode-only": "partial",
-        "unavailable": "blocked",
-    }
-
-    fig, ax = plt.subplots(figsize=(12.8, max(4.5, 0.68 * len(coverage_rows) + 1.8)))
-    ax.set_xlim(0, len(columns))
-    ax.set_ylim(0, len(coverage_rows))
-    ax.invert_yaxis()
-    ax.axis("off")
-
-    for row_index, row in enumerate(coverage_rows):
-        ax.text(-0.12, row_index + 0.5, str(row["artifact"]), ha="right", va="center", fontsize=11, fontweight="bold")
-        for col_index, (column, label) in enumerate(columns):
-            status = str(row[column])
-            rect = Rectangle(
-                (col_index, row_index),
-                0.96,
-                0.92,
-                facecolor=status_colors.get(status, "#94a3b8"),
-                edgecolor="#ffffff",
-                linewidth=2,
-                joinstyle="round",
-            )
-            ax.add_patch(rect)
-            ax.text(
-                col_index + 0.48,
-                row_index + 0.46,
-                status_labels.get(status, status),
-                ha="center",
-                va="center",
-                fontsize=9,
-                color="#f8fafc",
-                fontweight="bold",
-            )
-
-    for col_index, (_, label) in enumerate(columns):
-        ax.text(col_index + 0.48, -0.18, label, ha="center", va="bottom", fontsize=11, fontweight="bold")
-
-    legend = [
-        Patch(facecolor=color, edgecolor="none", label=status_labels[status])
-        for status, color in status_colors.items()
-    ]
-    ax.legend(handles=legend, loc="lower left", bbox_to_anchor=(0.0, -0.14), ncol=4, frameon=False, fontsize=10)
-    ax.set_title("Benchmark Coverage by Artifact", fontsize=20, fontweight="bold", pad=18)
-    fig.tight_layout()
-    fig.savefig(path, bbox_inches="tight")
-    plt.close(fig)
-
-
 def plot_timing_intervals(timing_rows: list[dict[str, object]], path: Path) -> None:
     _apply_style()
     order = [str(row["name"]) for row in timing_rows]
@@ -402,7 +332,6 @@ def generate_plots(report: dict, plot_dir: Path) -> dict[str, str]:
     size_path = plot_dir / "size_comparison.png"
     performance_path = plot_dir / "performance_overview.png"
     fidelity_path = plot_dir / "fidelity_overview.png"
-    coverage_path = plot_dir / "metric_coverage.png"
     timing_path = plot_dir / "timing_intervals.png"
     tradeoff_path = plot_dir / "lossy_tradeoff.png"
     quantile_path = plot_dir / "intensity_relative_quantiles.png"
@@ -410,7 +339,6 @@ def generate_plots(report: dict, plot_dir: Path) -> dict[str, str]:
     plot_size_comparison(report["plot_rows"]["sizes"], size_path)
     plot_performance_overview(report["plot_rows"]["performance"], performance_path)
     plot_fidelity_overview(report["plot_rows"]["fidelity"], fidelity_path)
-    plot_metric_coverage(report["plot_rows"]["coverage"], coverage_path)
     plot_timing_intervals(report["timings"], timing_path)
     plot_lossy_tradeoff(report["plot_rows"]["lossy_sweep"], report["selected_lossy_intensity_quant"], tradeoff_path)
     plot_intensity_quantiles(report["plot_rows"]["intensity_quantiles"], quantile_path)
@@ -419,7 +347,6 @@ def generate_plots(report: dict, plot_dir: Path) -> dict[str, str]:
         "size_comparison": size_path.name,
         "performance_overview": performance_path.name,
         "fidelity_overview": fidelity_path.name,
-        "metric_coverage": coverage_path.name,
         "timing_intervals": timing_path.name,
         "lossy_tradeoff": tradeoff_path.name,
         "intensity_relative_quantiles": quantile_path.name,
