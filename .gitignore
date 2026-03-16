@@ -1,0 +1,9 @@
+
+
+# ignore folders
+plan/
+zig-x86_64-linux-0.16.0-dev.2905+5d71e3051/
+data/
+.venv/
+.zig-cache/
+zig-out/
