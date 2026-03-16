@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 
 pub const Allocator = std.mem.Allocator;
 const io = std.Io.Threaded.global_single_threaded.io();
@@ -34,6 +35,14 @@ pub fn writeDumpAlloc(allocator: Allocator, spectra: []const RawSpectrum) ![]u8 
     var bytes: std.ArrayList(u8) = .empty;
     errdefer bytes.deinit(allocator);
 
+    var total_len: usize = 0;
+    for (spectra) |spectrum| {
+        total_len += record_header_len;
+        total_len += std.mem.sliceAsBytes(spectrum.mz).len;
+        total_len += std.mem.sliceAsBytes(spectrum.intensity).len;
+    }
+    try bytes.ensureTotalCapacityPrecise(allocator, total_len);
+
     for (spectra) |spectrum| {
         try appendIntLe(&bytes, allocator, u32, spectrum.scan_id);
         try appendIntLe(&bytes, allocator, u32, @as(u32, @bitCast(spectrum.rt_seconds)));
@@ -43,12 +52,17 @@ pub fn writeDumpAlloc(allocator: Allocator, spectra: []const RawSpectrum) ![]u8 
         try appendIntLe(&bytes, allocator, u32, @intCast(spectrum.mz.len));
         try bytes.appendSlice(allocator, &record_padding_2);
 
-        for (spectrum.mz) |mz_value| {
-            try appendIntLe(&bytes, allocator, u64, @as(u64, @bitCast(mz_value)));
-        }
+        if (builtin.cpu.arch.endian() == .little) {
+            try bytes.appendSlice(allocator, std.mem.sliceAsBytes(spectrum.mz));
+            try bytes.appendSlice(allocator, std.mem.sliceAsBytes(spectrum.intensity));
+        } else {
+            for (spectrum.mz) |mz_value| {
+                try appendIntLe(&bytes, allocator, u64, @as(u64, @bitCast(mz_value)));
+            }
 
-        for (spectrum.intensity) |intensity_value| {
-            try appendIntLe(&bytes, allocator, u32, @as(u32, @bitCast(intensity_value)));
+            for (spectrum.intensity) |intensity_value| {
+                try appendIntLe(&bytes, allocator, u32, @as(u32, @bitCast(intensity_value)));
+            }
         }
     }
 
@@ -91,17 +105,25 @@ pub fn parseDump(bytes: []const u8, allocator: Allocator) ![]RawSpectrum {
         const intensity = try allocator.alloc(f32, peak_count);
         errdefer allocator.free(intensity);
 
-        for (mz, 0..) |*mz_value, idx| {
-            const start = offset + (idx * @sizeOf(f64));
-            const bits = readIntLe(u64, bytes[start..][0..@sizeOf(f64)]);
-            mz_value.* = @bitCast(bits);
+        if (builtin.cpu.arch.endian() == .little) {
+            @memcpy(std.mem.sliceAsBytes(mz), bytes[offset .. offset + mz_bytes_len]);
+        } else {
+            for (mz, 0..) |*mz_value, idx| {
+                const start = offset + (idx * @sizeOf(f64));
+                const bits = readIntLe(u64, bytes[start..][0..@sizeOf(f64)]);
+                mz_value.* = @bitCast(bits);
+            }
         }
         offset += mz_bytes_len;
 
-        for (intensity, 0..) |*intensity_value, idx| {
-            const start = offset + (idx * @sizeOf(f32));
-            const bits = readIntLe(u32, bytes[start..][0..@sizeOf(f32)]);
-            intensity_value.* = @bitCast(bits);
+        if (builtin.cpu.arch.endian() == .little) {
+            @memcpy(std.mem.sliceAsBytes(intensity), bytes[offset .. offset + intensity_bytes_len]);
+        } else {
+            for (intensity, 0..) |*intensity_value, idx| {
+                const start = offset + (idx * @sizeOf(f32));
+                const bits = readIntLe(u32, bytes[start..][0..@sizeOf(f32)]);
+                intensity_value.* = @bitCast(bits);
+            }
         }
         offset += intensity_bytes_len;
 

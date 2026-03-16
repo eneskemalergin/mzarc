@@ -1,6 +1,5 @@
 <p align="center">
-    <strong>LOGO PENDING</strong><br />
-    <sub>Artwork will be added after the prototype shape settles.</sub>
+    <img src="assets/Spectrum-Archive-rect.png" alt="mzarc logo" width="120" />
 </p>
 
 <h1 align="center">mzarc</h1>

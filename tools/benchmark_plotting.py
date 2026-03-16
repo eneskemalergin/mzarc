@@ -9,6 +9,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import pandas as pd
 import seaborn as sns
+from matplotlib.patches import Patch, Rectangle
 
 
 def _apply_style() -> None:
@@ -17,9 +18,19 @@ def _apply_style() -> None:
         {
             "figure.dpi": 180,
             "savefig.dpi": 180,
+            "figure.facecolor": "#f8fafc",
+            "axes.facecolor": "#fdfdfc",
             "axes.spines.top": False,
             "axes.spines.right": False,
             "axes.titleweight": "bold",
+            "axes.edgecolor": "#cbd5e1",
+            "axes.labelcolor": "#0f172a",
+            "axes.titlesize": 18,
+            "grid.color": "#cbd5e1",
+            "grid.alpha": 0.35,
+            "text.color": "#0f172a",
+            "xtick.color": "#334155",
+            "ytick.color": "#334155",
         }
     )
 
@@ -28,15 +39,28 @@ def _artifact_palette(artifact_names: list[str]) -> list[str]:
     palette_map = {
         "mzML": "#64748b",
         "dump": "#2563eb",
+        "gzip dump": "#475569",
+        "zstd dump": "#0f172a",
         "mzv1 lossless": "#0f766e",
         "mzv1 lossy": "#d97706",
+        "mzMLb": "#0ea5e9",
+        "MS-Numpress in mzML": "#7c3aed",
+        "mz5": "#059669",
+        "Aird": "#dc2626",
     }
-    return [palette_map.get(name, "#475569") for name in artifact_names]
+    colors: list[str] = []
+    for name in artifact_names:
+        if name.startswith("mzv1 lossy q="):
+            colors.append(palette_map["mzv1 lossy"])
+        else:
+            colors.append(palette_map.get(name, "#475569"))
+    return colors
 
 
 def plot_size_comparison(size_rows: list[dict[str, object]], path: Path) -> None:
     _apply_style()
     frame = pd.DataFrame(size_rows)
+    mzml_size = float(frame.loc[frame["artifact"] == "mzML", "size_mib"].iloc[0])
 
     fig, ax = plt.subplots(figsize=(10.5, 4.8))
     sns.barplot(
@@ -52,10 +76,12 @@ def plot_size_comparison(size_rows: list[dict[str, object]], path: Path) -> None
     )
 
     for patch, (_, row) in zip(ax.patches, frame.iterrows(), strict=True):
+        reduction = (1.0 - (float(row["size_mib"]) / mzml_size)) * 100.0
+        detail = "baseline" if str(row["artifact"]) == "mzML" else f"{reduction:.1f}% smaller than mzML"
         ax.text(
             patch.get_width() + 0.05,
             patch.get_y() + patch.get_height() / 2,
-            f"{row['size_mib']:.2f} MiB",
+            f"{row['size_mib']:.2f} MiB  |  {detail}",
             va="center",
             ha="left",
             fontsize=11,
@@ -65,6 +91,178 @@ def plot_size_comparison(size_rows: list[dict[str, object]], path: Path) -> None
     ax.set_xlabel("size (MiB)")
     ax.set_ylabel("")
     ax.margins(x=0.18)
+    fig.tight_layout()
+    fig.savefig(path, bbox_inches="tight")
+    plt.close(fig)
+
+
+def plot_performance_overview(performance_rows: list[dict[str, object]], path: Path) -> None:
+    _apply_style()
+    frame = pd.DataFrame(performance_rows)
+    frame = frame[(frame["status"] == "measured") & frame["throughput_mib_s"].notna()].copy()
+    if frame.empty:
+        fig, ax = plt.subplots(figsize=(10.0, 3.2))
+        ax.axis("off")
+        ax.text(0.5, 0.5, "No measured throughput rows available for this run", ha="center", va="center", fontsize=16)
+        fig.tight_layout()
+        fig.savefig(path, bbox_inches="tight")
+        plt.close(fig)
+        return
+
+    order = list(dict.fromkeys(str(item["artifact"]) for item in performance_rows if str(item["status"]) == "measured"))
+    directions = [("compression", "Compression Speed (MiB/s)"), ("decompression", "Decompression Speed (MiB/s)")]
+    fig, axes = plt.subplots(1, 2, figsize=(14.5, max(4.8, 0.62 * len(order) + 1.8)), sharey=True)
+
+    for index, (direction, title) in enumerate(directions):
+        ax = axes[index]
+        subset = frame[frame["direction"] == direction].copy()
+        if subset.empty:
+            ax.axis("off")
+            continue
+        subset_order = [name for name in order if name in set(subset["artifact"])]
+        ordered = subset.set_index("artifact").loc[subset_order].reset_index()
+        colors = _artifact_palette(subset_order)
+        ax.barh(ordered["artifact"], ordered["throughput_mib_s"], color=colors)
+        max_value = float(ordered["throughput_mib_s"].max())
+        for patch, (_, row) in zip(ax.patches, ordered.iterrows(), strict=True):
+            basis = "restored bytes" if row.get("throughput_basis") == "output" else "source bytes"
+            ax.text(
+                patch.get_width() + max(max_value * 0.015, 0.05),
+                patch.get_y() + patch.get_height() / 2,
+                f"{float(row['throughput_mib_s']):.2f}  |  {basis}",
+                va="center",
+                ha="left",
+                fontsize=10,
+            )
+        ax.set_title(title)
+        ax.set_xlabel("MiB/s")
+        ax.set_ylabel("")
+        ax.margins(x=0.22)
+
+        if direction == "compression":
+            ax.invert_yaxis()
+
+    fig.suptitle("Throughput Overview", y=1.02, fontsize=20, fontweight="bold")
+    fig.tight_layout()
+    fig.savefig(path, bbox_inches="tight")
+    plt.close(fig)
+
+
+def plot_fidelity_overview(fidelity_rows: list[dict[str, object]], path: Path) -> None:
+    _apply_style()
+    frame = pd.DataFrame(fidelity_rows)
+    frame = frame[frame["status"] == "measured"].copy()
+    if frame.empty:
+        fig, ax = plt.subplots(figsize=(10.0, 3.2))
+        ax.axis("off")
+        ax.text(0.5, 0.5, "No measured fidelity rows available for this run", ha="center", va="center", fontsize=16)
+        fig.tight_layout()
+        fig.savefig(path, bbox_inches="tight")
+        plt.close(fig)
+        return
+
+    order = list(frame.sort_values(["max_abs_mz_error", "mean_abs_intensity_error", "artifact"], ascending=[True, True, True])["artifact"])
+    metrics = [
+        ("max_abs_mz_error", "Max m/z Error", 1e-12, "{:.3g}"),
+        ("mean_abs_intensity_error", "Mean Intensity Error", 1e-3, "{:.3g}"),
+        ("p95_rel_intensity_error_pct", "P95 Rel Intensity Error (%)", 1e-4, "{:.3f}%"),
+    ]
+    fig, axes = plt.subplots(1, 3, figsize=(17.5, max(4.8, 0.62 * len(order) + 1.6)), sharey=True)
+
+    for axis_index, (column, title, linthresh, value_format) in enumerate(metrics):
+        ax = axes[axis_index]
+        ordered = frame.set_index("artifact").loc[order].reset_index()
+        colors = _artifact_palette(order)
+        ax.barh(ordered["artifact"], ordered[column], color=colors)
+        ax.set_xscale("symlog", linthresh=linthresh)
+        for patch, (_, row) in zip(ax.patches, ordered.iterrows(), strict=True):
+            value = float(row[column])
+            anchor = max(abs(value), linthresh)
+            text_x = anchor + (anchor * 0.18) + linthresh
+            ax.text(
+                text_x,
+                patch.get_y() + patch.get_height() / 2,
+                value_format.format(value),
+                va="center",
+                ha="left",
+                fontsize=10,
+            )
+        ax.set_title(title)
+        ax.set_xlabel("")
+        ax.set_ylabel("")
+        ax.margins(x=0.3)
+
+        if axis_index == 0:
+            ax.invert_yaxis()
+
+    fig.suptitle("Data Fidelity Overview", y=1.02, fontsize=20, fontweight="bold")
+    fig.tight_layout()
+    fig.savefig(path, bbox_inches="tight")
+    plt.close(fig)
+
+
+def plot_metric_coverage(coverage_rows: list[dict[str, object]], path: Path) -> None:
+    _apply_style()
+    columns = [
+        ("size", "Size"),
+        ("compression_speed", "Compression\nSpeed"),
+        ("decompression_speed", "Decompression\nSpeed"),
+        ("data_fidelity", "Data\nFidelity"),
+        ("search_impact", "Search\nImpact"),
+    ]
+    status_colors = {
+        "measured": "#0f766e",
+        "not-measured": "#d97706",
+        "encode-only": "#2563eb",
+        "unavailable": "#dc2626",
+    }
+    status_labels = {
+        "measured": "measured",
+        "not-measured": "pending",
+        "encode-only": "partial",
+        "unavailable": "blocked",
+    }
+
+    fig, ax = plt.subplots(figsize=(12.8, max(4.5, 0.68 * len(coverage_rows) + 1.8)))
+    ax.set_xlim(0, len(columns))
+    ax.set_ylim(0, len(coverage_rows))
+    ax.invert_yaxis()
+    ax.axis("off")
+
+    for row_index, row in enumerate(coverage_rows):
+        ax.text(-0.12, row_index + 0.5, str(row["artifact"]), ha="right", va="center", fontsize=11, fontweight="bold")
+        for col_index, (column, label) in enumerate(columns):
+            status = str(row[column])
+            rect = Rectangle(
+                (col_index, row_index),
+                0.96,
+                0.92,
+                facecolor=status_colors.get(status, "#94a3b8"),
+                edgecolor="#ffffff",
+                linewidth=2,
+                joinstyle="round",
+            )
+            ax.add_patch(rect)
+            ax.text(
+                col_index + 0.48,
+                row_index + 0.46,
+                status_labels.get(status, status),
+                ha="center",
+                va="center",
+                fontsize=9,
+                color="#f8fafc",
+                fontweight="bold",
+            )
+
+    for col_index, (_, label) in enumerate(columns):
+        ax.text(col_index + 0.48, -0.18, label, ha="center", va="bottom", fontsize=11, fontweight="bold")
+
+    legend = [
+        Patch(facecolor=color, edgecolor="none", label=status_labels[status])
+        for status, color in status_colors.items()
+    ]
+    ax.legend(handles=legend, loc="lower left", bbox_to_anchor=(0.0, -0.14), ncol=4, frameon=False, fontsize=10)
+    ax.set_title("Benchmark Coverage by Artifact", fontsize=20, fontweight="bold", pad=18)
     fig.tight_layout()
     fig.savefig(path, bbox_inches="tight")
     plt.close(fig)
@@ -202,17 +400,26 @@ def generate_plots(report: dict, plot_dir: Path) -> dict[str, str]:
     plot_dir.mkdir(parents=True, exist_ok=True)
 
     size_path = plot_dir / "size_comparison.png"
+    performance_path = plot_dir / "performance_overview.png"
+    fidelity_path = plot_dir / "fidelity_overview.png"
+    coverage_path = plot_dir / "metric_coverage.png"
     timing_path = plot_dir / "timing_intervals.png"
     tradeoff_path = plot_dir / "lossy_tradeoff.png"
     quantile_path = plot_dir / "intensity_relative_quantiles.png"
 
     plot_size_comparison(report["plot_rows"]["sizes"], size_path)
+    plot_performance_overview(report["plot_rows"]["performance"], performance_path)
+    plot_fidelity_overview(report["plot_rows"]["fidelity"], fidelity_path)
+    plot_metric_coverage(report["plot_rows"]["coverage"], coverage_path)
     plot_timing_intervals(report["timings"], timing_path)
     plot_lossy_tradeoff(report["plot_rows"]["lossy_sweep"], report["selected_lossy_intensity_quant"], tradeoff_path)
     plot_intensity_quantiles(report["plot_rows"]["intensity_quantiles"], quantile_path)
 
     return {
         "size_comparison": size_path.name,
+        "performance_overview": performance_path.name,
+        "fidelity_overview": fidelity_path.name,
+        "metric_coverage": coverage_path.name,
         "timing_intervals": timing_path.name,
         "lossy_tradeoff": tradeoff_path.name,
         "intensity_relative_quantiles": quantile_path.name,

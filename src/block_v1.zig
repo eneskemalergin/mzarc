@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const binary_reader = @import("binary_reader");
 const quantize = @import("quantize");
 const delta = @import("delta");
@@ -136,37 +137,35 @@ fn flattenMzDeltas(allocator: Allocator, spectra: []const binary_reader.RawSpect
 
     var offset: usize = 0;
     for (spectra) |spectrum| {
-        const quantized = try quantize.quantizeMzArray(allocator, spectrum.mz, scale_factor);
-        defer allocator.free(quantized);
-
-        const deltas = try delta.deltaEncodeU64(allocator, quantized);
-        defer allocator.free(deltas);
-
-        @memcpy(flat[offset .. offset + deltas.len], deltas);
-        offset += deltas.len;
+        var previous: u64 = 0;
+        for (spectrum.mz, 0..) |value, idx| {
+            const quantized = try quantize.quantizeMzValue(value, scale_factor);
+            if (idx != 0 and quantized < previous) return error.NonMonotonicInput;
+            flat[offset] = if (idx == 0) quantized else quantized - previous;
+            previous = quantized;
+            offset += 1;
+        }
     }
 
     return flat;
 }
 
-fn flattenIntensityLossy(allocator: Allocator, spectra: []const binary_reader.RawSpectrum, quant_factor: u16) ![]u16 {
+fn flattenIntensityLossyToU64(
+    allocator: Allocator,
+    spectra: []const binary_reader.RawSpectrum,
+    quant_factor: u16,
+    log_max: f32,
+) ![]u64 {
     const total_peaks = try totalPeakCount(spectra);
-    const flat = try allocator.alloc(u16, total_peaks);
+    const flat = try allocator.alloc(u64, total_peaks);
     errdefer allocator.free(flat);
-
-    var log_max = @as(f32, 0.0);
-    for (spectra) |spectrum| {
-        const candidate = quantize.intensityLogMax(spectrum.intensity);
-        if (candidate > log_max) log_max = candidate;
-    }
 
     var offset: usize = 0;
     for (spectra) |spectrum| {
-        const quantized = try quantize.quantizeIntensityArrayScaled(allocator, spectrum.intensity, quant_factor, log_max);
-        defer allocator.free(quantized);
-
-        @memcpy(flat[offset .. offset + quantized.len], quantized);
-        offset += quantized.len;
+        for (spectrum.intensity) |value| {
+            flat[offset] = try quantize.quantizeIntensityValueScaled(value, quant_factor, log_max);
+            offset += 1;
+        }
     }
 
     return flat;
@@ -218,19 +217,24 @@ pub fn encodeBlock(allocator: Allocator, spectra: []const binary_reader.RawSpect
     if (options.mode == .lossless) {
         flags |= flag_lossless_intensity_raw;
         for (spectra) |spectrum| {
-            for (spectrum.intensity) |value| {
-                try appendF32Le(&payload, allocator, value);
+            if (builtin.cpu.arch.endian() == .little) {
+                try payload.appendSlice(allocator, std.mem.sliceAsBytes(spectrum.intensity));
+            } else {
+                for (spectrum.intensity) |value| {
+                    try appendF32Le(&payload, allocator, value);
+                }
             }
         }
     } else {
-        const quantized_intensity = try flattenIntensityLossy(allocator, spectra, options.intensity_quant);
+        const quantized_intensity = try flattenIntensityLossyToU64(
+            allocator,
+            spectra,
+            options.intensity_quant,
+            intensity_log_scale,
+        );
         defer allocator.free(quantized_intensity);
 
-        const as_u64 = try allocator.alloc(u64, quantized_intensity.len);
-        defer allocator.free(as_u64);
-        for (quantized_intensity, 0..) |value, idx| as_u64[idx] = value;
-
-        const packed_intensity = try bitpack.packForU64(allocator, as_u64);
+        const packed_intensity = try bitpack.packForU64(allocator, quantized_intensity);
         defer packed_intensity.deinit(allocator);
 
         if (packed_intensity.base > std.math.maxInt(u16)) return error.IntensityOverflow;
@@ -341,12 +345,17 @@ pub fn decodeBlock(allocator: Allocator, block_bytes: []const u8) ![]binary_read
 
     var mz_cursor: usize = 0;
     for (peak_counts) |peak_count| {
-        const deltas_for_spectrum = mz_offsets[mz_cursor .. mz_cursor + peak_count];
-        const absolute = try delta.deltaDecodeU64(allocator, deltas_for_spectrum);
-        defer allocator.free(absolute);
-        const decoded = try quantize.dequantizeMzArray(allocator, absolute, header.mz_scale_factor);
-        defer allocator.free(decoded);
-        @memcpy(flat_mz[mz_cursor .. mz_cursor + peak_count], decoded);
+        var previous: u64 = 0;
+        for (0..peak_count) |local_idx| {
+            const delta_value = mz_offsets[mz_cursor + local_idx];
+            const absolute = if (local_idx == 0) delta_value else blk: {
+                const sum = @addWithOverflow(previous, delta_value);
+                if (sum[1] != 0) return error.Overflow;
+                break :blk sum[0];
+            };
+            flat_mz[mz_cursor + local_idx] = try quantize.dequantizeMzValue(absolute, header.mz_scale_factor);
+            previous = absolute;
+        }
         mz_cursor += peak_count;
     }
 
@@ -356,9 +365,13 @@ pub fn decodeBlock(allocator: Allocator, block_bytes: []const u8) ![]binary_read
     if ((header.flags & flag_lossless_intensity_raw) != 0) {
         const raw_len = total_peaks * @sizeOf(f32);
         if (payload.len - offset < raw_len) return error.UnexpectedEndOfStream;
-        for (flat_intensity, 0..) |*value, idx| {
-            const start = offset + (idx * @sizeOf(f32));
-            value.* = readF32Le(payload[start .. start + @sizeOf(f32)]);
+        if (builtin.cpu.arch.endian() == .little) {
+            @memcpy(std.mem.sliceAsBytes(flat_intensity), payload[offset .. offset + raw_len]);
+        } else {
+            for (flat_intensity, 0..) |*value, idx| {
+                const start = offset + (idx * @sizeOf(f32));
+                value.* = readF32Le(payload[start .. start + @sizeOf(f32)]);
+            }
         }
         offset += raw_len;
     } else {

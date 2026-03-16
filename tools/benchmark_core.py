@@ -88,6 +88,9 @@ class TimingResult:
     min_seconds: float
     max_seconds: float
     throughput_mib_s: float | None
+    throughput_input_mib_s: float | None
+    throughput_output_mib_s: float | None
+    throughput_basis: str | None
     input_bytes: int | None
     output_bytes: int | None
 
@@ -179,9 +182,22 @@ def finalize_timing(
 ) -> TimingResult:
     median_seconds = statistics.median(runs)
     mean_seconds = statistics.fmean(runs)
+    throughput_input_mib_s = None
+    throughput_output_mib_s = None
     throughput_mib_s = None
+    throughput_basis = None
     if input_bytes:
-        throughput_mib_s = (input_bytes / (1024 * 1024)) / mean_seconds
+        throughput_input_mib_s = (input_bytes / (1024 * 1024)) / mean_seconds
+    if output_bytes:
+        throughput_output_mib_s = (output_bytes / (1024 * 1024)) / mean_seconds
+
+    if output_bytes:
+        throughput_mib_s = throughput_output_mib_s
+        throughput_basis = "output"
+    elif input_bytes:
+        throughput_mib_s = throughput_input_mib_s
+        throughput_basis = "input"
+
     return TimingResult(
         name=name,
         command=command,
@@ -191,6 +207,9 @@ def finalize_timing(
         min_seconds=min(runs),
         max_seconds=max(runs),
         throughput_mib_s=throughput_mib_s,
+        throughput_input_mib_s=throughput_input_mib_s,
+        throughput_output_mib_s=throughput_output_mib_s,
+        throughput_basis=throughput_basis,
         input_bytes=input_bytes,
         output_bytes=output_bytes,
     )
@@ -258,6 +277,40 @@ def run_timed_command(
         finally:
             if stdout_handle is not None:
                 stdout_handle.close()
+
+    return finalize_timing(name, command, runs, input_bytes, output_bytes)
+
+
+def run_timed_path_command(
+    name: str,
+    command: list[str],
+    *,
+    repeats: int,
+    output_path: Path,
+    input_bytes: int | None = None,
+    output_bytes: int | None = None,
+    progress_callback: Callable[[str, int, int], None] | None = None,
+) -> TimingResult:
+    runs: list[float] = []
+    for run_index in range(repeats):
+        if output_path.exists():
+            output_path.unlink()
+
+        try:
+            start = time.perf_counter()
+            subprocess.run(
+                command,
+                check=True,
+                cwd=REPO_ROOT,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
+            )
+            runs.append(time.perf_counter() - start)
+            if progress_callback is not None:
+                progress_callback(name, run_index + 1, repeats)
+        except subprocess.CalledProcessError as exc:
+            stderr = exc.stderr.decode("utf-8", errors="replace") if exc.stderr else ""
+            raise RuntimeError(f"Command failed for {name}: {' '.join(command)}\n{stderr}") from exc
 
     return finalize_timing(name, command, runs, input_bytes, output_bytes)
 

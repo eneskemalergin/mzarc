@@ -23,6 +23,18 @@ from benchmark_core import (
     run_timed_command,
     serialize_timing_result,
 )
+from benchmark_external import (
+    estimate_external_steps,
+    parse_external_baselines,
+    run_external_baselines,
+)
+from benchmark_metrics import (
+    build_coverage_rows,
+    build_fidelity_metric_rows,
+    build_performance_rows,
+    build_search_impact_rows,
+    load_search_impact,
+)
 from benchmark_plotting import generate_plots
 from benchmark_report import FUTURE_BASELINES, render_markdown
 
@@ -96,6 +108,84 @@ def build_parser() -> argparse.ArgumentParser:
         help="Comma-separated lossy sweep levels, e.g. 256,1024,4096,16384",
     )
     parser.add_argument(
+        "--external-baselines",
+        type=str,
+        default="all",
+        help="Comma-separated external baselines to attempt: mzmlb, ms-numpress, mz5, aird, all, or none",
+    )
+    parser.add_argument(
+        "--mzmlb-compression",
+        type=str,
+        default="blosc:zstd",
+        help="HDF5 compression mode for psims mzMLb output",
+    )
+    parser.add_argument(
+        "--ms-numpress-command-template",
+        type=str,
+        default=None,
+        help="Optional external command template for MS-Numpress output using {input} and {output} placeholders",
+    )
+    parser.add_argument(
+        "--ms-numpress-to-dump-command-template",
+        type=str,
+        default=None,
+        help="Optional command template to convert the MS-Numpress artifact back to a dump using {input} and {output}",
+    )
+    parser.add_argument(
+        "--mz5-command-template",
+        type=str,
+        default=None,
+        help="Optional external command template for mz5 conversion using {input} and {output} placeholders",
+    )
+    parser.add_argument(
+        "--mz5-to-dump-command-template",
+        type=str,
+        default=None,
+        help="Optional command template to convert the mz5 artifact back to a dump using {input} and {output}",
+    )
+    parser.add_argument(
+        "--aird-command-template",
+        type=str,
+        default=None,
+        help="Optional external command template for Aird conversion using {input} and {output} placeholders",
+    )
+    parser.add_argument(
+        "--aird-to-dump-command-template",
+        type=str,
+        default=None,
+        help="Optional command template to convert the Aird artifact back to a dump using {input} and {output}",
+    )
+    parser.add_argument(
+        "--mspack-command-template",
+        type=str,
+        default=None,
+        help="Optional external command template for mspack conversion using {input} and {output} placeholders",
+    )
+    parser.add_argument(
+        "--mspack-to-dump-command-template",
+        type=str,
+        default=None,
+        help="Optional command template to convert the mspack artifact back to a dump using {input} and {output}",
+    )
+    parser.add_argument(
+        "--mscompress-command-template",
+        type=str,
+        default=None,
+        help="Optional external command template for MScompress conversion using {input} and {output} placeholders",
+    )
+    parser.add_argument(
+        "--mscompress-to-dump-command-template",
+        type=str,
+        default=None,
+        help="Optional command template to convert the MScompress artifact back to a dump using {input} and {output}",
+    )
+    parser.add_argument(
+        "--search-impact-json",
+        type=Path,
+        default=None,
+        help="Optional JSON file containing peptide-identification and FDR deltas keyed by artifact name",
+    )
+    parser.add_argument(
         "--no-progress",
         action="store_true",
         help="Disable the terminal progress bar",
@@ -130,6 +220,7 @@ def main() -> None:
 
     selected_quant = int(args.lossy_intensity_quant)
     lossy_sweep = parse_lossy_sweep(args.lossy_sweep, selected_quant)
+    requested_external = parse_external_baselines(args.external_baselines)
     sample_name = input_path.stem
     private_workdir = resolve_private_workdir(input_path, args.private_workdir.resolve() if args.private_workdir else None)
     public_dir = args.public_dir.resolve()
@@ -152,11 +243,26 @@ def main() -> None:
     }
 
     extra_sweep_levels = [level for level in lossy_sweep if level != selected_quant]
-    total_steps = (args.repeats * 9) + (2 * len(extra_sweep_levels)) + 4
+    external_steps = estimate_external_steps(
+        requested_external,
+        args.repeats,
+        numpress_command_template=args.ms_numpress_command_template,
+        numpress_to_dump_command_template=args.ms_numpress_to_dump_command_template,
+        mz5_command_template=args.mz5_command_template,
+        mz5_to_dump_command_template=args.mz5_to_dump_command_template,
+        aird_command_template=args.aird_command_template,
+        aird_to_dump_command_template=args.aird_to_dump_command_template,
+        mspack_command_template=args.mspack_command_template,
+        mspack_to_dump_command_template=args.mspack_to_dump_command_template,
+        mscompress_command_template=args.mscompress_command_template,
+        mscompress_to_dump_command_template=args.mscompress_to_dump_command_template,
+    )
+    total_steps = (args.repeats * 9) + (2 * len(extra_sweep_levels)) + external_steps + 6
     progress = ProgressBar(total_steps, enabled=not args.no_progress)
 
     try:
         mzml_bytes = input_path.stat().st_size
+        search_impact_data = load_search_impact(args.search_impact_json.resolve() if args.search_impact_json else None)
 
         timing_dump = run_timed_callable(
             "mzML -> dump",
@@ -227,6 +333,10 @@ def main() -> None:
             stdout_path=paths["zstd_dump_roundtrip"],
             progress_callback=progress.callback("zstd dump -> dump"),
         )
+        gzip_fidelity = asdict(compare_dumps("gzip_dump", reference_dump, read_dump(paths["gzip_dump_roundtrip"])))
+        progress.step("compare gzip dump fidelity")
+        zstd_fidelity = asdict(compare_dumps("zstd_dump", reference_dump, read_dump(paths["zstd_dump_roundtrip"])))
+        progress.step("compare zstd dump fidelity")
 
         timing_lossless_encode = run_timed_command(
             "dump -> mzv1 lossless",
@@ -274,6 +384,30 @@ def main() -> None:
             "gzip dump": {"path": gzip_dump_rel, "bytes": paths["gzip_dump"].stat().st_size},
             "zstd dump": {"path": zstd_dump_rel, "bytes": paths["zstd_dump"].stat().st_size},
         }
+
+        external_results = run_external_baselines(
+            requested=requested_external,
+            input_path=input_path,
+            sample_name=sample_name,
+            private_workdir=private_workdir,
+            reference_dump=reference_dump,
+            dump_bytes=dump_bytes,
+            repeats=args.repeats,
+            mzmlb_compression=args.mzmlb_compression,
+            repo_relative_path=repo_relative_path,
+            progress=progress,
+            numpress_command_template=args.ms_numpress_command_template,
+            numpress_to_dump_command_template=args.ms_numpress_to_dump_command_template,
+            mz5_command_template=args.mz5_command_template,
+            mz5_to_dump_command_template=args.mz5_to_dump_command_template,
+            aird_command_template=args.aird_command_template,
+            aird_to_dump_command_template=args.aird_to_dump_command_template,
+            mspack_command_template=args.mspack_command_template,
+            mspack_to_dump_command_template=args.mspack_to_dump_command_template,
+            mscompress_command_template=args.mscompress_command_template,
+            mscompress_to_dump_command_template=args.mscompress_to_dump_command_template,
+        )
+        sizes.update(external_results["sizes"])
 
         lossy_sweep_rows: list[dict[str, object]] = []
         selected_sweep_row = {
@@ -328,11 +462,61 @@ def main() -> None:
 
         lossy_sweep_rows.sort(key=lambda row: int(row["intensity_quant"]))
 
+        fidelity_rows = [
+            {"artifact": "gzip dump", "data": gzip_fidelity},
+            {"artifact": "zstd dump", "data": zstd_fidelity},
+            {"artifact": "mzv1 lossless", "data": lossless_fidelity},
+            {"artifact": f"mzv1 lossy q={selected_quant}", "data": lossy_fidelity},
+        ]
+        for item in external_results["records"]:
+            if item["fidelity"] is not None:
+                fidelity_rows.append({"artifact": item["name"], "data": item["fidelity"]})
+
+        serialized_timings = [
+            serialize_timing_result(timing_dump),
+            serialize_timing_result(timing_gzip_dump),
+            serialize_timing_result(timing_gzip_dump_decode),
+            serialize_timing_result(timing_zstd_dump),
+            serialize_timing_result(timing_zstd_dump_decode),
+            serialize_timing_result(timing_lossless_encode),
+            serialize_timing_result(timing_lossless_decode),
+            serialize_timing_result(timing_lossy_encode),
+            serialize_timing_result(timing_lossy_decode),
+        ]
+        serialized_timings.extend(serialize_timing_result(item) for item in external_results["timings"])
+
+        performance_rows = build_performance_rows(
+            serialized_timings,
+            selected_quant=selected_quant,
+            external_baselines=external_results["records"],
+        )
+        fidelity_metric_rows = build_fidelity_metric_rows(
+            fidelity_rows,
+            selected_quant=selected_quant,
+            external_baselines=external_results["records"],
+        )
+        search_impact_rows = build_search_impact_rows(
+            selected_quant=selected_quant,
+            external_baselines=external_results["records"],
+            search_impact_data=search_impact_data,
+            fidelity_metric_rows=fidelity_metric_rows,
+        )
+        coverage_rows = build_coverage_rows(
+            selected_quant=selected_quant,
+            external_baselines=external_results["records"],
+            performance_rows=performance_rows,
+            fidelity_metric_rows=fidelity_metric_rows,
+            search_impact_rows=search_impact_rows,
+        )
+
         plot_rows = {
             "sizes": [
                 {"artifact": name, "size_mib": item["bytes"] / (1024 * 1024)}
                 for name, item in sizes.items()
             ],
+            "performance": performance_rows,
+            "fidelity": fidelity_metric_rows,
+            "coverage": coverage_rows,
             "lossy_sweep": [
                 {
                     "intensity_quant": row["intensity_quant"],
@@ -370,23 +554,19 @@ def main() -> None:
             },
             "dataset": dataset,
             "sizes": sizes,
-            "timings": [
-                serialize_timing_result(timing_dump),
-                serialize_timing_result(timing_gzip_dump),
-                serialize_timing_result(timing_gzip_dump_decode),
-                serialize_timing_result(timing_zstd_dump),
-                serialize_timing_result(timing_zstd_dump_decode),
-                serialize_timing_result(timing_lossless_encode),
-                serialize_timing_result(timing_lossless_decode),
-                serialize_timing_result(timing_lossy_encode),
-                serialize_timing_result(timing_lossy_decode),
-            ],
+            "timings": serialized_timings,
             "fidelity": {
                 "mzv1_lossless": lossless_fidelity,
                 "mzv1_lossy": lossy_fidelity,
             },
+            "fidelity_rows": fidelity_rows,
+            "fidelity_metrics": fidelity_metric_rows,
+            "performance_rows": performance_rows,
+            "search_impact_rows": search_impact_rows,
+            "coverage_rows": coverage_rows,
             "lossy_sweep": lossy_sweep_rows,
             "plot_rows": plot_rows,
+            "external_baselines": external_results["records"],
             "comparison_candidates": FUTURE_BASELINES,
         }
 
@@ -404,6 +584,14 @@ def main() -> None:
             "sizes_mib": {name: round(item["bytes"] / (1024 * 1024), 2) for name, item in sizes.items()},
             "lossless_mean_abs_mz": lossless_fidelity["mz_abs"]["mean"],
             "lossy_p95_rel_intensity_pct": round(lossy_fidelity["intensity_rel"]["p95"] * 100.0, 4),
+            "external_baselines": [
+                {
+                    "name": item["name"],
+                    "status": item["status"],
+                    "size_mib": None if item["artifact_bytes"] is None else round(item["artifact_bytes"] / (1024 * 1024), 2),
+                }
+                for item in external_results["records"]
+            ],
         }
         print(json.dumps(summary, indent=2))
     finally:

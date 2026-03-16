@@ -73,7 +73,7 @@ def _normalized_arrays(spectrum: dict) -> tuple[np.ndarray, np.ndarray]:
     return mz_array[order], intensity_array[order]
 
 
-def dump_mzml(input_path: Path, output_path: Path) -> None:
+def _dump_reader(reader, input_path: Path, output_path: Path) -> None:
     total_spectra = 0
     total_peaks = 0
     ms1_count = 0
@@ -81,34 +81,33 @@ def dump_mzml(input_path: Path, output_path: Path) -> None:
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with output_path.open("wb") as out_handle:
-        with mzml.read(str(input_path)) as reader:
-            for spectrum in reader:
-                scan = ((spectrum.get("scanList") or {}).get("scan") or [{}])[0]
-                rt_seconds = _rt_to_seconds(scan.get("scan start time"))
-                scan_id = _scan_id_from_spectrum(spectrum)
-                ms_level = int(spectrum.get("ms level", 0) or 0)
-                precursor_mz = _precursor_mz_from_spectrum(spectrum) if ms_level > 1 else 0.0
-                mz_array, intensity_array = _normalized_arrays(spectrum)
-                peak_count = int(mz_array.size)
+        for spectrum in reader:
+            scan = ((spectrum.get("scanList") or {}).get("scan") or [{}])[0]
+            rt_seconds = _rt_to_seconds(scan.get("scan start time"))
+            scan_id = _scan_id_from_spectrum(spectrum)
+            ms_level = int(spectrum.get("ms level", 0) or 0)
+            precursor_mz = _precursor_mz_from_spectrum(spectrum) if ms_level > 1 else 0.0
+            mz_array, intensity_array = _normalized_arrays(spectrum)
+            peak_count = int(mz_array.size)
 
-                out_handle.write(
-                    RECORD_HEADER.pack(
-                        scan_id,
-                        float(rt_seconds),
-                        ms_level,
-                        float(precursor_mz),
-                        peak_count,
-                    )
+            out_handle.write(
+                RECORD_HEADER.pack(
+                    scan_id,
+                    float(rt_seconds),
+                    ms_level,
+                    float(precursor_mz),
+                    peak_count,
                 )
-                out_handle.write(mz_array.astype("<f8", copy=False).tobytes(order="C"))
-                out_handle.write(intensity_array.astype("<f4", copy=False).tobytes(order="C"))
+            )
+            out_handle.write(mz_array.astype("<f8", copy=False).tobytes(order="C"))
+            out_handle.write(intensity_array.astype("<f4", copy=False).tobytes(order="C"))
 
-                total_spectra += 1
-                total_peaks += peak_count
-                if ms_level == 1:
-                    ms1_count += 1
-                elif ms_level == 2:
-                    ms2_count += 1
+            total_spectra += 1
+            total_peaks += peak_count
+            if ms_level == 1:
+                ms1_count += 1
+            elif ms_level == 2:
+                ms2_count += 1
 
     output_size = output_path.stat().st_size
     print(f"input: {input_path}")
@@ -118,6 +117,18 @@ def dump_mzml(input_path: Path, output_path: Path) -> None:
     print(f"ms1 count: {ms1_count}")
     print(f"ms2 count: {ms2_count}")
     print(f"output bytes: {output_size}")
+
+
+def dump_mzml(input_path: Path, output_path: Path) -> None:
+    with mzml.read(str(input_path)) as reader:
+        _dump_reader(reader, input_path, output_path)
+
+
+def dump_mzmlb(input_path: Path, output_path: Path) -> None:
+    from pyteomics import mzmlb
+
+    with mzmlb.read(str(input_path)) as reader:
+        _dump_reader(reader, input_path, output_path)
 
 
 def build_parser() -> argparse.ArgumentParser:
