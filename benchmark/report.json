@@ -1,0 +1,1036 @@
+{
+  "sample_name": "15HCD_1",
+  "repeats": 10,
+  "selected_lossy_intensity_quant": 4096,
+  "paths": {
+    "mzml": "data/PXD075509/15HCD_1.mzML",
+    "private_workdir": "data/PXD075509/benchmarks/15HCD_1",
+    "public_dir": "benchmark"
+  },
+  "dataset": {
+    "path": "data/PXD075509/benchmarks/15HCD_1/15HCD_1.bin",
+    "bytes": 32273524,
+    "spectra": 9001,
+    "total_peaks": 2668458,
+    "ms1_spectra": 917,
+    "ms2_spectra": 8084
+  },
+  "sizes": {
+    "mzML": {
+      "path": "data/PXD075509/15HCD_1.mzML",
+      "bytes": 79221306
+    },
+    "dump": {
+      "path": "data/PXD075509/benchmarks/15HCD_1/15HCD_1.bin",
+      "bytes": 32273524
+    },
+    "mzv1 lossless": {
+      "path": "data/PXD075509/benchmarks/15HCD_1/15HCD_1.lossless.mzv1",
+      "bytes": 20467802
+    },
+    "mzv1 lossy": {
+      "path": "data/PXD075509/benchmarks/15HCD_1/15HCD_1.lossy.q4096.mzv1",
+      "bytes": 13778826
+    },
+    "gzip dump": {
+      "path": "data/PXD075509/benchmarks/15HCD_1/15HCD_1.bin.gz",
+      "bytes": 20780851
+    },
+    "zstd dump": {
+      "path": "data/PXD075509/benchmarks/15HCD_1/15HCD_1.bin.zst",
+      "bytes": 18720327
+    }
+  },
+  "timings": [
+    {
+      "name": "mzML -> dump",
+      "command": [
+        "<python-callable>"
+      ],
+      "runs_seconds": [
+        4.680024171000696,
+        4.6035903910014895,
+        4.611736564998864,
+        4.623322805004136,
+        4.599609795004653,
+        4.553306960995542,
+        4.55480614699627,
+        4.556690386001719,
+        4.715988452000602,
+        4.700094706000527
+      ],
+      "median_seconds": 4.607663478000177,
+      "mean_seconds": 4.61991703790045,
+      "min_seconds": 4.553306960995542,
+      "max_seconds": 4.715988452000602,
+      "throughput_mib_s": 16.353394276252008,
+      "input_bytes": 79221306,
+      "output_bytes": null,
+      "repeats": 10,
+      "stdev_seconds": 0.06027939152911866,
+      "ci95_low_seconds": 4.5767987547223665,
+      "ci95_high_seconds": 4.663035321078533,
+      "ci95_half_width_seconds": 0.04311828317808316
+    },
+    {
+      "name": "dump -> gzip dump",
+      "command": [
+        "gzip",
+        "-n",
+        "-c",
+        "data/PXD075509/benchmarks/15HCD_1/15HCD_1.bin"
+      ],
+      "runs_seconds": [
+        1.6625425689999247,
+        1.670179411994468,
+        1.6652749819986639,
+        1.6472754060014267,
+        1.661779687005037,
+        1.6603951799988863,
+        1.6896466329999384,
+        1.658292962005362,
+        1.6455055080004968,
+        1.6491719739933615
+      ],
+      "median_seconds": 1.6610874335019616,
+      "mean_seconds": 1.6610064312997566,
+      "min_seconds": 1.6455055080004968,
+      "max_seconds": 1.6896466329999384,
+      "throughput_mib_s": 18.529989022761477,
+      "input_bytes": 32273524,
+      "output_bytes": null,
+      "repeats": 10,
+      "stdev_seconds": 0.012919380356295269,
+      "ci95_low_seconds": 1.6517651054244114,
+      "ci95_high_seconds": 1.6702477571751018,
+      "ci95_half_width_seconds": 0.00924132587534513
+    },
+    {
+      "name": "gzip dump -> dump",
+      "command": [
+        "gzip",
+        "-d",
+        "-c",
+        "data/PXD075509/benchmarks/15HCD_1/15HCD_1.bin.gz"
+      ],
+      "runs_seconds": [
+        0.20319779000419658,
+        0.20275882900023134,
+        0.20336993200180586,
+        0.20366535299399402,
+        0.20475227700080723,
+        0.2033821720033302,
+        0.20368149299611105,
+        0.20398858399858,
+        0.20334886099590221,
+        0.2034168820027844
+      ],
+      "median_seconds": 0.2033995270030573,
+      "mean_seconds": 0.2035562172997743,
+      "min_seconds": 0.20275882900023134,
+      "max_seconds": 0.20475227700080723,
+      "throughput_mib_s": 97.35965884343004,
+      "input_bytes": 20780851,
+      "output_bytes": 32273524,
+      "repeats": 10,
+      "stdev_seconds": 0.0005309119550542792,
+      "ci95_low_seconds": 0.20317645215218483,
+      "ci95_high_seconds": 0.20393598244736377,
+      "ci95_half_width_seconds": 0.00037976514758948616
+    },
+    {
+      "name": "dump -> zstd dump",
+      "command": [
+        "zstd",
+        "-q",
+        "-c",
+        "data/PXD075509/benchmarks/15HCD_1/15HCD_1.bin"
+      ],
+      "runs_seconds": [
+        0.18330588700337103,
+        0.18583638800191693,
+        0.18857473899697652,
+        0.18677366199699463,
+        0.1848079539995524,
+        0.18620134999946458,
+        0.19055061700055376,
+        0.18429403199843364,
+        0.1834361479996005,
+        0.18338262700126506
+      ],
+      "median_seconds": 0.18532217100073467,
+      "mean_seconds": 0.1857163403998129,
+      "min_seconds": 0.18330588700337103,
+      "max_seconds": 0.19055061700055376,
+      "throughput_mib_s": 165.7281791815434,
+      "input_bytes": 32273524,
+      "output_bytes": null,
+      "repeats": 10,
+      "stdev_seconds": 0.0024085993098089216,
+      "ci95_low_seconds": 0.18399345195538147,
+      "ci95_high_seconds": 0.18743922884424435,
+      "ci95_half_width_seconds": 0.001722888444431436
+    },
+    {
+      "name": "zstd dump -> dump",
+      "command": [
+        "zstd",
+        "-q",
+        "-d",
+        "-c",
+        "data/PXD075509/benchmarks/15HCD_1/15HCD_1.bin.zst"
+      ],
+      "runs_seconds": [
+        0.05309452200162923,
+        0.052789909997954965,
+        0.053334583004470915,
+        0.05389379500411451,
+        0.053208022996841464,
+        0.05328157300391467,
+        0.05311411299771862,
+        0.05336555399844656,
+        0.053276753998943605,
+        0.05270651000319049
+      ],
+      "median_seconds": 0.053242388497892534,
+      "mean_seconds": 0.0532065337007225,
+      "min_seconds": 0.05270651000319049,
+      "max_seconds": 0.05389379500411451,
+      "throughput_mib_s": 335.5432841208379,
+      "input_bytes": 18720327,
+      "output_bytes": 32273524,
+      "repeats": 10,
+      "stdev_seconds": 0.00032817058548639534,
+      "ci95_low_seconds": 0.05297179091588725,
+      "ci95_high_seconds": 0.05344127648555775,
+      "ci95_half_width_seconds": 0.0002347427848352508
+    },
+    {
+      "name": "dump -> mzv1 lossless",
+      "command": [
+        "zig-out/bin/mzarc",
+        "encode-v1",
+        "data/PXD075509/benchmarks/15HCD_1/15HCD_1.bin",
+        "-o",
+        "data/PXD075509/benchmarks/15HCD_1/15HCD_1.lossless.mzv1"
+      ],
+      "runs_seconds": [
+        0.7555277430001297,
+        0.7617262189960456,
+        0.7685409979967517,
+        0.7496381879973342,
+        0.7513274250013637,
+        0.7474954690042068,
+        0.7480249619984534,
+        0.7474155780000729,
+        0.7493209660024149,
+        0.742074005996983
+      ],
+      "median_seconds": 0.7494795769998746,
+      "mean_seconds": 0.7521091553993756,
+      "min_seconds": 0.742074005996983,
+      "max_seconds": 0.7685409979967517,
+      "throughput_mib_s": 40.92282445674674,
+      "input_bytes": 32273524,
+      "output_bytes": null,
+      "repeats": 10,
+      "stdev_seconds": 0.00781289189027773,
+      "ci95_low_seconds": 0.7465205375248569,
+      "ci95_high_seconds": 0.7576977732738943,
+      "ci95_half_width_seconds": 0.005588617874518716
+    },
+    {
+      "name": "mzv1 lossless -> dump",
+      "command": [
+        "zig-out/bin/mzarc",
+        "decode-v1",
+        "data/PXD075509/benchmarks/15HCD_1/15HCD_1.lossless.mzv1",
+        "-o",
+        "data/PXD075509/benchmarks/15HCD_1/15HCD_1.lossless.roundtrip.bin"
+      ],
+      "runs_seconds": [
+        0.7846464450049098,
+        0.7802202759994543,
+        0.7825031460015452,
+        0.7875689770007739,
+        0.780232386001444,
+        0.7896210350008914,
+        0.7839545320020989,
+        0.7828273069972056,
+        0.781156960001681,
+        0.7794631729993853
+      ],
+      "median_seconds": 0.7826652264993754,
+      "mean_seconds": 0.7832194237009389,
+      "min_seconds": 0.7794631729993853,
+      "max_seconds": 0.7896210350008914,
+      "throughput_mib_s": 24.922284215644993,
+      "input_bytes": 20467802,
+      "output_bytes": 32273524,
+      "repeats": 10,
+      "stdev_seconds": 0.0033237074582026043,
+      "ci95_low_seconds": 0.7808419518030241,
+      "ci95_high_seconds": 0.7855968955988537,
+      "ci95_half_width_seconds": 0.0023774718979148635
+    },
+    {
+      "name": "dump -> mzv1 lossy q=4096",
+      "command": [
+        "zig-out/bin/mzarc",
+        "encode-v1",
+        "data/PXD075509/benchmarks/15HCD_1/15HCD_1.bin",
+        "-o",
+        "data/PXD075509/benchmarks/15HCD_1/15HCD_1.lossy.q4096.mzv1",
+        "--lossy",
+        "--intensity-quant",
+        "4096"
+      ],
+      "runs_seconds": [
+        1.1934279460037942,
+        1.1627173779997975,
+        1.1603285070013953,
+        1.160106937000819,
+        1.1526259149977705,
+        1.1605496789998142,
+        1.166535632997693,
+        1.169980687998759,
+        1.166614813002525,
+        1.1645208349946188
+      ],
+      "median_seconds": 1.1636191064972081,
+      "mean_seconds": 1.1657408330996986,
+      "min_seconds": 1.1526259149977705,
+      "max_seconds": 1.1934279460037942,
+      "throughput_mib_s": 26.402464479931634,
+      "input_bytes": 32273524,
+      "output_bytes": null,
+      "repeats": 10,
+      "stdev_seconds": 0.01083492824747565,
+      "ci95_low_seconds": 1.157990530839876,
+      "ci95_high_seconds": 1.1734911353595212,
+      "ci95_half_width_seconds": 0.007750302259822728
+    },
+    {
+      "name": "mzv1 lossy q=4096 -> dump",
+      "command": [
+        "zig-out/bin/mzarc",
+        "decode-v1",
+        "data/PXD075509/benchmarks/15HCD_1/15HCD_1.lossy.q4096.mzv1",
+        "-o",
+        "data/PXD075509/benchmarks/15HCD_1/15HCD_1.lossy.q4096.roundtrip.bin"
+      ],
+      "runs_seconds": [
+        0.8643442879983922,
+        0.881084517997806,
+        0.8581463020018418,
+        0.8694207000007736,
+        0.8628223319974495,
+        0.8544952570009627,
+        0.8558368029989651,
+        0.8612340350009617,
+        0.8737668079993455,
+        0.8570690880005714
+      ],
+      "median_seconds": 0.8620281834992056,
+      "mean_seconds": 0.863822013099707,
+      "min_seconds": 0.8544952570009627,
+      "max_seconds": 0.881084517997806,
+      "throughput_mib_s": 15.212060201241846,
+      "input_bytes": 13778826,
+      "output_bytes": 32273524,
+      "repeats": 10,
+      "stdev_seconds": 0.008594415069773528,
+      "ci95_low_seconds": 0.8576743660626683,
+      "ci95_high_seconds": 0.8699696601367456,
+      "ci95_half_width_seconds": 0.006147647037038672
+    }
+  ],
+  "fidelity": {
+    "mzv1_lossless": {
+      "name": "mzv1_lossless",
+      "matched_spectra": 9001,
+      "matched_peaks": 2668458,
+      "global_order_preserved": false,
+      "ms1_relative_order_preserved": true,
+      "ms2_relative_order_preserved": true,
+      "max_abs_rt_error": 0.0,
+      "max_abs_precursor_mz_error": 0.0,
+      "exact_mz_count": 8112,
+      "exact_intensity_count": 2668458,
+      "mz_abs": {
+        "count": 2668458,
+        "mean": 5.000682040703224e-07,
+        "median": 4.999999418942025e-07,
+        "p95": 9.511718985777406e-07,
+        "p99": 9.92187551673851e-07,
+        "p999": 1.0000001111620804e-06,
+        "max": 1.0000001111620804e-06,
+        "rmse": 5.774215236729776e-07,
+        "quantiles": {
+          "p50": 4.999999418942025e-07,
+          "p90": 8.984375199361239e-07,
+          "p95": 9.511718985777406e-07,
+          "p99": 9.92187551673851e-07,
+          "p99.9": 1.0000001111620804e-06,
+          "p100": 1.0000001111620804e-06
+        }
+      },
+      "intensity_abs": {
+        "count": 2668458,
+        "mean": 0.0,
+        "median": 0.0,
+        "p95": 0.0,
+        "p99": 0.0,
+        "p999": 0.0,
+        "max": 0.0,
+        "rmse": 0.0,
+        "quantiles": {
+          "p50": 0.0,
+          "p90": 0.0,
+          "p95": 0.0,
+          "p99": 0.0,
+          "p99.9": 0.0,
+          "p100": 0.0
+        }
+      },
+      "intensity_rel": {
+        "count": 2668458,
+        "mean": 0.0,
+        "median": 0.0,
+        "p95": 0.0,
+        "p99": 0.0,
+        "p999": 0.0,
+        "max": 0.0,
+        "rmse": 0.0,
+        "quantiles": {
+          "p50": 0.0,
+          "p90": 0.0,
+          "p95": 0.0,
+          "p99": 0.0,
+          "p99.9": 0.0,
+          "p100": 0.0
+        }
+      },
+      "intensity_log1p_abs": {
+        "count": 2668458,
+        "mean": 0.0,
+        "median": 0.0,
+        "p95": 0.0,
+        "p99": 0.0,
+        "p999": 0.0,
+        "max": 0.0,
+        "rmse": 0.0,
+        "quantiles": {
+          "p50": 0.0,
+          "p90": 0.0,
+          "p95": 0.0,
+          "p99": 0.0,
+          "p99.9": 0.0,
+          "p100": 0.0
+        }
+      }
+    },
+    "mzv1_lossy": {
+      "name": "mzv1_lossy",
+      "matched_spectra": 9001,
+      "matched_peaks": 2668458,
+      "global_order_preserved": false,
+      "ms1_relative_order_preserved": true,
+      "ms2_relative_order_preserved": true,
+      "max_abs_rt_error": 0.0,
+      "max_abs_precursor_mz_error": 0.0,
+      "exact_mz_count": 8112,
+      "exact_intensity_count": 64,
+      "mz_abs": {
+        "count": 2668458,
+        "mean": 5.000682040703224e-07,
+        "median": 4.999999418942025e-07,
+        "p95": 9.511718985777406e-07,
+        "p99": 9.92187551673851e-07,
+        "p999": 1.0000001111620804e-06,
+        "max": 1.0000001111620804e-06,
+        "rmse": 5.774215236729776e-07,
+        "quantiles": {
+          "p50": 4.999999418942025e-07,
+          "p90": 8.984375199361239e-07,
+          "p95": 9.511718985777406e-07,
+          "p99": 9.92187551673851e-07,
+          "p99.9": 1.0000001111620804e-06,
+          "p100": 1.0000001111620804e-06
+        }
+      },
+      "intensity_abs": {
+        "count": 2668458,
+        "mean": 695.2526127160803,
+        "median": 13.3828125,
+        "p95": 1507.125,
+        "p99": 8751.215000000084,
+        "p999": 90634.06400000304,
+        "max": 3177472.0,
+        "rmse": 10758.66153670315,
+        "quantiles": {
+          "p50": 13.3828125,
+          "p90": 646.8125,
+          "p95": 1507.125,
+          "p99": 8751.215000000084,
+          "p99.9": 90634.06400000304,
+          "p100": 3177472.0
+        }
+      },
+      "intensity_rel": {
+        "count": 2668458,
+        "mean": 0.0011369413477794776,
+        "median": 0.0011308839243392857,
+        "p95": 0.0021848615674390642,
+        "p99": 0.00237622778235206,
+        "p999": 0.002510417826817534,
+        "max": 0.0025818098014523208,
+        "rmse": 0.0013160929277434166,
+        "quantiles": {
+          "p50": 0.0011308839243392857,
+          "p90": 0.002039223270327787,
+          "p95": 0.0021848615674390642,
+          "p99": 0.00237622778235206,
+          "p99.9": 0.002510417826817534,
+          "p100": 0.0025818098014523208
+        }
+      },
+      "intensity_log1p_abs": {
+        "count": 2668458,
+        "mean": 0.0011366941317627588,
+        "median": 0.0011306246692077693,
+        "p95": 0.0021845090814523794,
+        "p99": 0.0023759255120829794,
+        "p999": 0.0025104605433748785,
+        "max": 0.0025784207720338514,
+        "rmse": 0.0013158136337361901,
+        "quantiles": {
+          "p50": 0.0011306246692077693,
+          "p90": 0.0020388270349180893,
+          "p95": 0.0021845090814523794,
+          "p99": 0.0023759255120829794,
+          "p99.9": 0.0025104605433748785,
+          "p100": 0.0025784207720338514
+        }
+      }
+    }
+  },
+  "lossy_sweep": [
+    {
+      "intensity_quant": 256,
+      "path": "data/PXD075509/benchmarks/15HCD_1/15HCD_1.lossy.q256.mzv1",
+      "bytes": 12444574,
+      "size_mib": 11.868070602416992,
+      "fidelity": {
+        "name": "mzv1_lossy_q256",
+        "matched_spectra": 9001,
+        "matched_peaks": 2668458,
+        "global_order_preserved": false,
+        "ms1_relative_order_preserved": true,
+        "ms2_relative_order_preserved": true,
+        "max_abs_rt_error": 0.0,
+        "max_abs_precursor_mz_error": 0.0,
+        "exact_mz_count": 8112,
+        "exact_intensity_count": 8,
+        "mz_abs": {
+          "count": 2668458,
+          "mean": 5.000682040703224e-07,
+          "median": 4.999999418942025e-07,
+          "p95": 9.511718985777406e-07,
+          "p99": 9.92187551673851e-07,
+          "p999": 1.0000001111620804e-06,
+          "max": 1.0000001111620804e-06,
+          "rmse": 5.774215236729776e-07,
+          "quantiles": {
+            "p50": 4.999999418942025e-07,
+            "p90": 8.984375199361239e-07,
+            "p95": 9.511718985777406e-07,
+            "p99": 9.92187551673851e-07,
+            "p99.9": 1.0000001111620804e-06,
+            "p100": 1.0000001111620804e-06
+          }
+        },
+        "intensity_abs": {
+          "count": 2668458,
+          "mean": 11110.748777320618,
+          "median": 214.22265625,
+          "p95": 24200.26874999999,
+          "p99": 138693.5775000007,
+          "p999": 1471111.8440000322,
+          "max": 34969984.0,
+          "rmse": 166419.90872925677,
+          "quantiles": {
+            "p50": 214.22265625,
+            "p90": 10373.03125,
+            "p95": 24200.26874999999,
+            "p99": 138693.5775000007,
+            "p99.9": 1471111.8440000322,
+            "p100": 34969984.0
+          }
+        },
+        "intensity_rel": {
+          "count": 2668458,
+          "mean": 0.018203218141235485,
+          "median": 0.018116985774566323,
+          "p95": 0.03498879255207158,
+          "p99": 0.03813216535232558,
+          "p999": 0.04047828027156072,
+          "max": 0.04212043501517928,
+          "rmse": 0.021071856673382752,
+          "quantiles": {
+            "p50": 0.018116985774566323,
+            "p90": 0.03264164778756473,
+            "p95": 0.03498879255207158,
+            "p99": 0.03813216535232558,
+            "p99.9": 0.04047828027156072,
+            "p100": 0.04212043501517928
+          }
+        },
+        "intensity_log1p_abs": {
+          "count": 2668458,
+          "mean": 0.018196992631384117,
+          "median": 0.018114758483187998,
+          "p95": 0.03495204071069273,
+          "p99": 0.03801502727946657,
+          "p999": 0.04012818545831645,
+          "max": 0.04125466046107107,
+          "rmse": 0.021061973452283726,
+          "quantiles": {
+            "p50": 0.018114758483187998,
+            "p90": 0.032632933065550956,
+            "p95": 0.03495204071069273,
+            "p99": 0.03801502727946657,
+            "p99.9": 0.04012818545831645,
+            "p100": 0.04125466046107107
+          }
+        }
+      },
+      "p95_rel_intensity_error_pct": 3.498879255207158,
+      "p99_rel_intensity_error_pct": 3.813216535232558,
+      "mean_rel_intensity_error_pct": 1.8203218141235484
+    },
+    {
+      "intensity_quant": 1024,
+      "path": "data/PXD075509/benchmarks/15HCD_1/15HCD_1.lossy.q1024.mzv1",
+      "bytes": 13111717,
+      "size_mib": 12.504307746887207,
+      "fidelity": {
+        "name": "mzv1_lossy_q1024",
+        "matched_spectra": 9001,
+        "matched_peaks": 2668458,
+        "global_order_preserved": false,
+        "ms1_relative_order_preserved": true,
+        "ms2_relative_order_preserved": true,
+        "max_abs_rt_error": 0.0,
+        "max_abs_precursor_mz_error": 0.0,
+        "exact_mz_count": 8112,
+        "exact_intensity_count": 16,
+        "mz_abs": {
+          "count": 2668458,
+          "mean": 5.000682040703224e-07,
+          "median": 4.999999418942025e-07,
+          "p95": 9.511718985777406e-07,
+          "p99": 9.92187551673851e-07,
+          "p999": 1.0000001111620804e-06,
+          "max": 1.0000001111620804e-06,
+          "rmse": 5.774215236729776e-07,
+          "quantiles": {
+            "p50": 4.999999418942025e-07,
+            "p90": 8.984375199361239e-07,
+            "p95": 9.511718985777406e-07,
+            "p99": 9.92187551673851e-07,
+            "p99.9": 1.0000001111620804e-06,
+            "p100": 1.0000001111620804e-06
+          }
+        },
+        "intensity_abs": {
+          "count": 2668458,
+          "mean": 2767.706654835864,
+          "median": 53.511962890625,
+          "p95": 6045.196874999994,
+          "p99": 34897.14500000025,
+          "p999": 356451.33200000785,
+          "max": 12165504.0,
+          "rmse": 42047.44185148288,
+          "quantiles": {
+            "p50": 53.511962890625,
+            "p90": 2589.25,
+            "p95": 6045.196874999994,
+            "p99": 34897.14500000025,
+            "p99.9": 356451.33200000785,
+            "p100": 12165504.0
+          }
+        },
+        "intensity_rel": {
+          "count": 2668458,
+          "mean": 0.004547973722694734,
+          "median": 0.00452452296877367,
+          "p95": 0.008739658254293563,
+          "p99": 0.009504081963307933,
+          "p999": 0.010036520848872773,
+          "max": 0.010367835584074397,
+          "rmse": 0.005264674440621894,
+          "quantiles": {
+            "p50": 0.00452452296877367,
+            "p90": 0.008158231160076088,
+            "p95": 0.008739658254293563,
+            "p99": 0.009504081963307933,
+            "p99.9": 0.010036520848872773,
+            "p100": 0.010367835584074397
+          }
+        },
+        "intensity_log1p_abs": {
+          "count": 2668458,
+          "mean": 0.004546957303992982,
+          "median": 0.0045236837540492125,
+          "p95": 0.008737282866937734,
+          "p99": 0.009502080088967788,
+          "p999": 0.010036041049284733,
+          "max": 0.010313728765636299,
+          "rmse": 0.005263484130976814,
+          "quantiles": {
+            "p50": 0.0045236837540492125,
+            "p90": 0.008157069898263281,
+            "p95": 0.008737282866937734,
+            "p99": 0.009502080088967788,
+            "p99.9": 0.010036041049284733,
+            "p100": 0.010313728765636299
+          }
+        }
+      },
+      "p95_rel_intensity_error_pct": 0.8739658254293563,
+      "p99_rel_intensity_error_pct": 0.9504081963307933,
+      "mean_rel_intensity_error_pct": 0.4547973722694734
+    },
+    {
+      "intensity_quant": 4096,
+      "path": "data/PXD075509/benchmarks/15HCD_1/15HCD_1.lossy.q4096.mzv1",
+      "bytes": 13778826,
+      "size_mib": 13.140512466430664,
+      "fidelity": {
+        "name": "mzv1_lossy",
+        "matched_spectra": 9001,
+        "matched_peaks": 2668458,
+        "global_order_preserved": false,
+        "ms1_relative_order_preserved": true,
+        "ms2_relative_order_preserved": true,
+        "max_abs_rt_error": 0.0,
+        "max_abs_precursor_mz_error": 0.0,
+        "exact_mz_count": 8112,
+        "exact_intensity_count": 64,
+        "mz_abs": {
+          "count": 2668458,
+          "mean": 5.000682040703224e-07,
+          "median": 4.999999418942025e-07,
+          "p95": 9.511718985777406e-07,
+          "p99": 9.92187551673851e-07,
+          "p999": 1.0000001111620804e-06,
+          "max": 1.0000001111620804e-06,
+          "rmse": 5.774215236729776e-07,
+          "quantiles": {
+            "p50": 4.999999418942025e-07,
+            "p90": 8.984375199361239e-07,
+            "p95": 9.511718985777406e-07,
+            "p99": 9.92187551673851e-07,
+            "p99.9": 1.0000001111620804e-06,
+            "p100": 1.0000001111620804e-06
+          }
+        },
+        "intensity_abs": {
+          "count": 2668458,
+          "mean": 695.2526127160803,
+          "median": 13.3828125,
+          "p95": 1507.125,
+          "p99": 8751.215000000084,
+          "p999": 90634.06400000304,
+          "max": 3177472.0,
+          "rmse": 10758.66153670315,
+          "quantiles": {
+            "p50": 13.3828125,
+            "p90": 646.8125,
+            "p95": 1507.125,
+            "p99": 8751.215000000084,
+            "p99.9": 90634.06400000304,
+            "p100": 3177472.0
+          }
+        },
+        "intensity_rel": {
+          "count": 2668458,
+          "mean": 0.0011369413477794776,
+          "median": 0.0011308839243392857,
+          "p95": 0.0021848615674390642,
+          "p99": 0.00237622778235206,
+          "p999": 0.002510417826817534,
+          "max": 0.0025818098014523208,
+          "rmse": 0.0013160929277434166,
+          "quantiles": {
+            "p50": 0.0011308839243392857,
+            "p90": 0.002039223270327787,
+            "p95": 0.0021848615674390642,
+            "p99": 0.00237622778235206,
+            "p99.9": 0.002510417826817534,
+            "p100": 0.0025818098014523208
+          }
+        },
+        "intensity_log1p_abs": {
+          "count": 2668458,
+          "mean": 0.0011366941317627588,
+          "median": 0.0011306246692077693,
+          "p95": 0.0021845090814523794,
+          "p99": 0.0023759255120829794,
+          "p999": 0.0025104605433748785,
+          "max": 0.0025784207720338514,
+          "rmse": 0.0013158136337361901,
+          "quantiles": {
+            "p50": 0.0011306246692077693,
+            "p90": 0.0020388270349180893,
+            "p95": 0.0021845090814523794,
+            "p99": 0.0023759255120829794,
+            "p99.9": 0.0025104605433748785,
+            "p100": 0.0025784207720338514
+          }
+        }
+      },
+      "p95_rel_intensity_error_pct": 0.21848615674390642,
+      "p99_rel_intensity_error_pct": 0.23762277823520603,
+      "mean_rel_intensity_error_pct": 0.11369413477794775
+    },
+    {
+      "intensity_quant": 16384,
+      "path": "data/PXD075509/benchmarks/15HCD_1/15HCD_1.lossy.q16384.mzv1",
+      "bytes": 14445949,
+      "size_mib": 13.77673053741455,
+      "fidelity": {
+        "name": "mzv1_lossy_q16384",
+        "matched_spectra": 9001,
+        "matched_peaks": 2668458,
+        "global_order_preserved": false,
+        "ms1_relative_order_preserved": true,
+        "ms2_relative_order_preserved": true,
+        "max_abs_rt_error": 0.0,
+        "max_abs_precursor_mz_error": 0.0,
+        "exact_mz_count": 8112,
+        "exact_intensity_count": 211,
+        "mz_abs": {
+          "count": 2668458,
+          "mean": 5.000682040703224e-07,
+          "median": 4.999999418942025e-07,
+          "p95": 9.511718985777406e-07,
+          "p99": 9.92187551673851e-07,
+          "p999": 1.0000001111620804e-06,
+          "max": 1.0000001111620804e-06,
+          "rmse": 5.774215236729776e-07,
+          "quantiles": {
+            "p50": 4.999999418942025e-07,
+            "p90": 8.984375199361239e-07,
+            "p95": 9.511718985777406e-07,
+            "p99": 9.92187551673851e-07,
+            "p99.9": 1.0000001111620804e-06,
+            "p100": 1.0000001111620804e-06
+          }
+        },
+        "intensity_abs": {
+          "count": 2668458,
+          "mean": 173.7009067916333,
+          "median": 3.3505859375,
+          "p95": 376.625,
+          "p99": 2201.5,
+          "p999": 22490.51600000076,
+          "max": 537856.0,
+          "rmse": 2607.534839019861,
+          "quantiles": {
+            "p50": 3.3505859375,
+            "p90": 161.625,
+            "p95": 376.625,
+            "p99": 2201.5,
+            "p99.9": 22490.51600000076,
+            "p100": 537856.0
+          }
+        },
+        "intensity_rel": {
+          "count": 2668458,
+          "mean": 0.00028420631116412963,
+          "median": 0.0002829259300740252,
+          "p95": 0.0005460953217593955,
+          "p99": 0.0005940453269578537,
+          "p999": 0.0006273785549791054,
+          "max": 0.0006448639836509027,
+          "rmse": 0.0003289912841214132,
+          "quantiles": {
+            "p50": 0.0002829259300740252,
+            "p90": 0.0005097546064660591,
+            "p95": 0.0005460953217593955,
+            "p99": 0.0005940453269578537,
+            "p99.9": 0.0006273785549791054,
+            "p100": 0.0006448639836509027
+          }
+        },
+        "intensity_log1p_abs": {
+          "count": 2668458,
+          "mean": 0.0002841444872908945,
+          "median": 0.0002828530337808388,
+          "p95": 0.0005460019629553336,
+          "p99": 0.0005939838864351903,
+          "p999": 0.0006272840088375563,
+          "max": 0.0006446247450959675,
+          "rmse": 0.0003289214993346572,
+          "quantiles": {
+            "p50": 0.0002828530337808388,
+            "p90": 0.0005096487336079038,
+            "p95": 0.0005460019629553336,
+            "p99": 0.0005939838864351903,
+            "p99.9": 0.0006272840088375563,
+            "p100": 0.0006446247450959675
+          }
+        }
+      },
+      "p95_rel_intensity_error_pct": 0.05460953217593955,
+      "p99_rel_intensity_error_pct": 0.05940453269578537,
+      "mean_rel_intensity_error_pct": 0.028420631116412964
+    }
+  ],
+  "plot_rows": {
+    "sizes": [
+      {
+        "artifact": "mzML",
+        "size_mib": 75.55132484436035
+      },
+      {
+        "artifact": "dump",
+        "size_mib": 30.778430938720703
+      },
+      {
+        "artifact": "mzv1 lossless",
+        "size_mib": 19.519617080688477
+      },
+      {
+        "artifact": "mzv1 lossy",
+        "size_mib": 13.140512466430664
+      },
+      {
+        "artifact": "gzip dump",
+        "size_mib": 19.818163871765137
+      },
+      {
+        "artifact": "zstd dump",
+        "size_mib": 17.853095054626465
+      }
+    ],
+    "lossy_sweep": [
+      {
+        "intensity_quant": 256,
+        "size_mib": 11.868070602416992,
+        "p95_rel_intensity_error_pct": 3.498879255207158
+      },
+      {
+        "intensity_quant": 1024,
+        "size_mib": 12.504307746887207,
+        "p95_rel_intensity_error_pct": 0.8739658254293563
+      },
+      {
+        "intensity_quant": 4096,
+        "size_mib": 13.140512466430664,
+        "p95_rel_intensity_error_pct": 0.21848615674390642
+      },
+      {
+        "intensity_quant": 16384,
+        "size_mib": 13.77673053741455,
+        "p95_rel_intensity_error_pct": 0.05460953217593955
+      }
+    ],
+    "intensity_quantiles": [
+      {
+        "artifact": "lossless",
+        "quantile_label": "p50",
+        "value_pct": 0.0
+      },
+      {
+        "artifact": "lossless",
+        "quantile_label": "p90",
+        "value_pct": 0.0
+      },
+      {
+        "artifact": "lossless",
+        "quantile_label": "p95",
+        "value_pct": 0.0
+      },
+      {
+        "artifact": "lossless",
+        "quantile_label": "p99",
+        "value_pct": 0.0
+      },
+      {
+        "artifact": "lossless",
+        "quantile_label": "p99.9",
+        "value_pct": 0.0
+      },
+      {
+        "artifact": "lossless",
+        "quantile_label": "p100",
+        "value_pct": 0.0
+      },
+      {
+        "artifact": "selected lossy",
+        "quantile_label": "p50",
+        "value_pct": 0.11308839243392857
+      },
+      {
+        "artifact": "selected lossy",
+        "quantile_label": "p90",
+        "value_pct": 0.20392232703277868
+      },
+      {
+        "artifact": "selected lossy",
+        "quantile_label": "p95",
+        "value_pct": 0.21848615674390642
+      },
+      {
+        "artifact": "selected lossy",
+        "quantile_label": "p99",
+        "value_pct": 0.23762277823520603
+      },
+      {
+        "artifact": "selected lossy",
+        "quantile_label": "p99.9",
+        "value_pct": 0.2510417826817534
+      },
+      {
+        "artifact": "selected lossy",
+        "quantile_label": "p100",
+        "value_pct": 0.25818098014523205
+      }
+    ]
+  },
+  "comparison_candidates": [
+    {
+      "name": "MS-Numpress in mzML",
+      "core_idea": "Array-level compression inside the mzML ecosystem: linear prediction for smooth m/z arrays and logged or integer schemes for intensities.",
+      "why_it_matters": "It is the closest standard-adjacent baseline for testing whether mzarc beats established PSI-compatible spectrum array compression.",
+      "source": "ms-numpress project"
+    },
+    {
+      "name": "mz5",
+      "core_idea": "Re-encodes the mzML ontology on top of HDF5, uses binary datasets, compression-friendly layout, and delta mass storage.",
+      "why_it_matters": "The published paper reports roughly 54% of mzML size and materially faster linear read and write, so it is a useful open-format systems baseline.",
+      "source": "PMCID: PMC3270111"
+    },
+    {
+      "name": "mzMLb",
+      "core_idea": "Keeps standards-compliant mzML metadata while moving bulk numeric arrays into HDF5 for better speed and storage efficiency.",
+      "why_it_matters": "It is a direct standard-preserving answer to the same problem mzarc is addressing: less storage and faster access without giving up open-format interoperability.",
+      "source": "PMID: 32864978"
+    },
+    {
+      "name": "Aird",
+      "core_idea": "A computation-oriented format designed around higher compression ratio and lower decoding time, with related StackZDPD work on fast spectral encoding.",
+      "why_it_matters": "It is a strong modern comparison point because its stated goals overlap almost exactly with mzarc: practical compression and decode speed for analysis workflows.",
+      "source": "PMID: 35021987; PMID: 35354909"
+    }
+  ],
+  "plots": {
+    "size_comparison": "size_comparison.png",
+    "timing_intervals": "timing_intervals.png",
+    "lossy_tradeoff": "lossy_tradeoff.png",
+    "intensity_relative_quantiles": "intensity_relative_quantiles.png"
+  }
+}

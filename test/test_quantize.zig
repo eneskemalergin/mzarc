@@ -57,3 +57,19 @@ test "intensity quantization rejects invalid configuration and NaN" {
     try std.testing.expectError(error.InvalidQuantFactor, quantize.dequantizeIntensityValue(1, 0));
     try std.testing.expectError(error.InvalidIntensity, quantize.quantizeIntensityValue(std.math.nan(f32), 1024));
 }
+
+test "scaled intensity quantization uses block-local range without saturating large values" {
+    const quant_levels: u16 = 4096;
+    const values = [_]f32{ 1.0, 1000.0, 1_000_000.0, 1_400_000_000.0 };
+    const log_max = quantize.intensityLogMax(&values);
+
+    var last_encoded: u16 = 0;
+    for (values) |value| {
+        const encoded = try quantize.quantizeIntensityValueScaled(value, quant_levels, log_max);
+        const decoded = try quantize.dequantizeIntensityValueScaled(encoded, quant_levels, log_max);
+
+        try std.testing.expect(encoded >= last_encoded);
+        try std.testing.expectApproxEqRel(value, decoded, 0.01);
+        last_encoded = encoded;
+    }
+}

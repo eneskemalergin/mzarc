@@ -4,6 +4,8 @@ version = "0.1.0"
 requires-python = ">=3.12"
 dependencies = [
     "lxml>=6.0.2",
+    "matplotlib>=3.10.8",
     "pandas>=3.0.1",
     "pyteomics>=4.7.5",
+    "seaborn>=0.13.2",
 ]

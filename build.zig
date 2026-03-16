@@ -34,6 +34,15 @@ pub fn build(b: *std.Build) void {
             .{ .name = "bitpack", .module = bitpack_module },
         },
     });
+    const codec_v1_module = b.createModule(.{
+        .root_source_file = b.path("src/codec_v1.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "binary_reader", .module = binary_reader_module },
+            .{ .name = "block_v1", .module = block_v1_module },
+        },
+    });
 
     const exe = b.addExecutable(.{
         .name = "mzarc",
@@ -43,6 +52,7 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
             .imports = &.{
                 .{ .name = "binary_reader", .module = binary_reader_module },
+                .{ .name = "codec_v1", .module = codec_v1_module },
             },
         }),
     });
@@ -62,6 +72,7 @@ pub fn build(b: *std.Build) void {
         "test/test_delta.zig",
         "test/test_bitpack.zig",
         "test/test_block_v1.zig",
+        "test/test_codec_v1.zig",
     };
 
     const test_step = b.step("test", "Run unit tests");
@@ -77,6 +88,7 @@ pub fn build(b: *std.Build) void {
                     .{ .name = "delta", .module = delta_module },
                     .{ .name = "bitpack", .module = bitpack_module },
                     .{ .name = "block_v1", .module = block_v1_module },
+                    .{ .name = "codec_v1", .module = codec_v1_module },
                 },
             }),
         });

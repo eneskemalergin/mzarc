@@ -36,7 +36,23 @@ pub const BlockHeader = struct {
 };
 
 pub const flag_lossless_intensity_raw: u8 = 0b0000_0001;
-const header_len = 40;
+pub const header_len = 40;
+
+fn combineU32(low: u16, high: u16) u32 {
+    return @as(u32, low) | (@as(u32, high) << 16);
+}
+
+fn encodeIntensityLogScale(value: f32) struct { low: u16, high: u16 } {
+    const bits = @as(u32, @bitCast(value));
+    return .{
+        .low = @intCast(bits & 0xffff),
+        .high = @intCast((bits >> 16) & 0xffff),
+    };
+}
+
+fn decodeIntensityLogScale(header: BlockHeader) f32 {
+    return @as(f32, @bitCast(combineU32(header.reserved0, header.reserved1)));
+}
 
 fn appendIntLe(list: *std.ArrayList(u8), allocator: Allocator, comptime T: type, value: T) !void {
     var buffer: [@sizeOf(T)]u8 = undefined;
@@ -138,9 +154,15 @@ fn flattenIntensityLossy(allocator: Allocator, spectra: []const binary_reader.Ra
     const flat = try allocator.alloc(u16, total_peaks);
     errdefer allocator.free(flat);
 
+    var log_max = @as(f32, 0.0);
+    for (spectra) |spectrum| {
+        const candidate = quantize.intensityLogMax(spectrum.intensity);
+        if (candidate > log_max) log_max = candidate;
+    }
+
     var offset: usize = 0;
     for (spectra) |spectrum| {
-        const quantized = try quantize.quantizeIntensityArray(allocator, spectrum.intensity, quant_factor);
+        const quantized = try quantize.quantizeIntensityArrayScaled(allocator, spectrum.intensity, quant_factor, log_max);
         defer allocator.free(quantized);
 
         @memcpy(flat[offset .. offset + quantized.len], quantized);
@@ -168,6 +190,14 @@ pub fn encodeBlock(allocator: Allocator, spectra: []const binary_reader.RawSpect
 
     var payload: std.ArrayList(u8) = .empty;
     errdefer payload.deinit(allocator);
+
+    var intensity_log_scale = @as(f32, 0.0);
+    if (options.mode == .lossy) {
+        for (spectra) |spectrum| {
+            const candidate = quantize.intensityLogMax(spectrum.intensity);
+            if (candidate > intensity_log_scale) intensity_log_scale = candidate;
+        }
+    }
 
     for (spectra) |spectrum| try appendIntLe(&payload, allocator, u32, spectrum.scan_id);
     for (spectra) |spectrum| try appendF32Le(&payload, allocator, spectrum.rt_seconds);
@@ -215,6 +245,8 @@ pub fn encodeBlock(allocator: Allocator, spectra: []const binary_reader.RawSpect
         (total_peaks * (@sizeOf(f64) + @sizeOf(f32)));
     if (payload.items.len > std.math.maxInt(u32) or decompressed_bytes > std.math.maxInt(u32)) return error.BlockTooLarge;
 
+    const intensity_scale_bits = encodeIntensityLogScale(intensity_log_scale);
+
     const header: BlockHeader = .{
         .spectrum_count = @intCast(spectra.len),
         .ms_level = ms_level,
@@ -222,10 +254,10 @@ pub fn encodeBlock(allocator: Allocator, spectra: []const binary_reader.RawSpect
         .total_peaks = @intCast(total_peaks),
         .mz_scale_factor = options.mz_scale_factor,
         .intensity_quant = options.intensity_quant,
-        .reserved0 = 0,
+        .reserved0 = intensity_scale_bits.low,
         .mz_bit_width = packed_mz.bit_width,
         .intensity_bit_width = intensity_bit_width,
-        .reserved1 = 0,
+        .reserved1 = intensity_scale_bits.high,
         .rt_min = rt_min,
         .rt_max = rt_max,
         .payload_bytes = @intCast(payload.items.len),
@@ -346,9 +378,11 @@ pub fn decodeBlock(allocator: Allocator, block_bytes: []const u8) ![]binary_read
         defer allocator.free(unpacked);
         offset += intensity_payload_len;
 
+        const intensity_log_scale = decodeIntensityLogScale(header);
+
         for (unpacked, 0..) |value, idx| {
             if (value > std.math.maxInt(u16)) return error.IntensityOverflow;
-            flat_intensity[idx] = try quantize.dequantizeIntensityValue(@intCast(value), header.intensity_quant);
+            flat_intensity[idx] = try quantize.dequantizeIntensityValueScaled(@intCast(value), header.intensity_quant, intensity_log_scale);
         }
     }
 
