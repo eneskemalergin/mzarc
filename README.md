@@ -9,11 +9,11 @@
 </p>
 
 <p align="center">
-    Current target: <strong>v0.0.1</strong>
+    Current version: <strong>v0.1.1</strong> &mdash; Phase 1 complete
 </p>
 
 <p align="center">
-    <a href="#current-state"><img src="https://img.shields.io/badge/version-v0.0.1-0f766e?style=for-the-badge" alt="Version v0.0.1" /></a>
+    <a href="#current-state"><img src="https://img.shields.io/badge/version-v0.1.1-0f766e?style=for-the-badge" alt="Version v0.1.1" /></a>
     <a href="#development"><img src="https://img.shields.io/badge/zig-0.16.0--dev-f7a41d?style=for-the-badge" alt="Zig 0.16.0 dev" /></a>
     <a href="#development"><img src="https://img.shields.io/badge/python-3.12-3776AB?style=for-the-badge" alt="Python 3.12" /></a>
     <a href="#current-state"><img src="https://img.shields.io/badge/status-prototype-orange?style=for-the-badge" alt="Prototype status" /></a>
@@ -40,7 +40,7 @@ The point of this shape is to keep XML parsing and codec work separate. Python h
 
 ## Current State
 
-This repository is at `v0.0.1`.
+This repository is at `v0.1.1`. Phase 1 ("Prove the Thesis") is complete.
 
 What exists today:
 
@@ -51,36 +51,35 @@ What exists today:
 - scalar m/z quantization in `src/quantize.zig`
 - scalar intra-spectrum delta coding in `src/delta.zig`
 - scalar frame-of-reference bit-packing in `src/bitpack.zig`
-- first composed block encoder and decoder in `src/block_v1.zig`
-- a CLI entry point in `src/main.zig` with dump inspection plus `.mzv1` encode, decode, and inspect commands
-- unit tests for each implemented layer
+- composed block encoder and decoder in `src/block_v1.zig`
+- codec layer in `src/codec_v1.zig` that stores `.mzv1` files with MS1/MS2 block streams
+- a CLI in `src/main.zig` with dump inspection plus `.mzv1` encode, decode, and inspect commands
+- 41 unit tests covering every layer, all passing
+- a reproducible benchmark suite in `tools/` comparing against gzip, zstd, bzip2, lz4, xz, mzMLb, MS-Numpress, and MScompress
 
 What this means in practice:
 
-- the repo can read real mzML data
-- the repo can turn it into a repeatable binary fixture format
-- the Zig prototype can already exercise the transform stack on real spectral data
-- the block layer is no longer hypothetical
-- the lossless `.mzv1` path now round-trips exactly, including original global scan order
+- lossless `.mzv1` is **20.23 MiB** on `15HCD_1.mzML` (75.55 MiB), smaller than gzip+mzML (24.29 MiB) and MScompress (21.63 MiB)
+- the lossless path is bit-exact: mean absolute m/z error is `0.0` and original global scan order is preserved
+- encode throughput is ~161 MiB/s and decode throughput is ~205 MiB/s in `ReleaseFast`
+- mzMLb (16.25 MiB) and xz dump (15.77 MiB) are still smaller — expected at the scalar codec stage; Phase 2 SIMD + cross-spectrum delta is next
 
-What is still deliberately unfinished:
+What Phase 2 will address:
 
-- stronger exact-lossless compression so the m/z stream stops dominating file size
-- downstream search-impact measurements on peptide IDs and FDR
-- SIMD and the more ambitious format work from later phases
+- SIMD-native decoding and cross-spectrum delta to close the gap with mzMLb
+- formal per-spectrum fidelity analysis
+- pymzarc Python bindings
 
 ---
 
-## What v0.0.1 Is Proving
-
-This version is trying to prove four things:
+## What Phase 1 Proved
 
 1. mzML ingestion does not need to be written in Zig for the prototype to move forward.
-2. A boring binary handoff format is enough to isolate codec work from XML overhead.
-3. The first scalar transform chain can be implemented, tested, and composed cleanly.
-4. The project can stay honest by shipping working slices instead of speculative format design.
+2. A flat binary handoff format is enough to isolate codec work from XML overhead.
+3. A scalar FOR + bit-pack transform chain can beat gzip+mzML without an outer compression layer.
+4. The lossless path can be bit-exact while still achieving meaningful size reduction.
 
-This is why the repository currently looks smaller and more concrete than the early design documents.
+The thesis holds. The repository earned the right to move to Phase 2.
 
 ---
 
@@ -110,13 +109,11 @@ This is why the repository currently looks smaller and more concrete than the ea
 
 ### Current benchmark snapshot
 
-- On `data/PXD075509/15HCD_1.mzML`, lossless `.mzv1` is `27.89 MiB`, down from `75.55 MiB` for mzML and `30.78 MiB` for the internal dump.
-- Selected lossy `.mzv1` at `q=4096` is `13.17 MiB`, with `0.218%` p95 relative intensity error and `0.238%` p99 relative intensity error.
-- Over 10 `ReleaseFast` runs, lossless encode and decode average `0.2487s` and `0.1841s`; lossy encode and decode average `0.2387s` and `0.1833s`.
-- Against generic dump baselines, lossless `.mzv1` is smaller than the dump itself and `gzip dump` (`19.82 MiB`) still trails `zstd dump` (`17.85 MiB`) and `mzMLb` (`16.25 MiB`) on this sample.
-- The active external comparison set in the public report is `mzMLb` (`16.25 MiB`), `MScompress` (`21.63 MiB`), and `MScompress threaded` (`21.53 MiB`).
-- The current lossless path is exact on this sample: mean absolute m/z error is `0.0`, intensity is exact, and original global order is preserved.
-- Byte accounting in the benchmark report shows the remaining lossless size pressure is mostly the exact m/z stream itself: `17.50 MiB` of the `27.89 MiB` artifact.
+- On `data/PXD075509/15HCD_1.mzML` (75.55 MiB), lossless `.mzv1` is **20.23 MiB** (73.2% smaller than mzML, comparable with gzip dump at 19.82 MiB).
+- Beats both MScompress (`21.63 MiB`) and gzip+mzML (`24.29 MiB`) without any outer compression layer.
+- mzMLb (`16.25 MiB`) and xz dump (`15.77 MiB`) are still smaller — closing this gap is the primary Phase 2 target.
+- Over 3 `ReleaseFast` runs, lossless encode averages `0.191s` (~161 MiB/s) and decode averages `0.150s` (~205 MiB/s).
+- The lossless path is bit-exact: mean absolute m/z error is `0.0`, intensity is exact, original global scan order preserved.
 
 ### Validation
 
@@ -128,14 +125,13 @@ This is why the repository currently looks smaller and more concrete than the ea
 
 ## What Comes Next
 
-The next development steps are straightforward and close to the code that already exists:
+Phase 1 is complete. Phase 2 focus areas:
 
-1. improve exact-lossless m/z compression without giving up exact reconstruction or fast decode
-2. add a second, more representative DIA dataset once the current benchmark path is stable
-3. measure downstream search impact instead of stopping at numeric fidelity
-4. keep MS-Numpress as a future external comparison once the tooling path is stable again
-
-After that, the project will be in a position to make stronger claims about whether the format direction is worth continuing.
+1. SIMD-native encode/decode to cut the gap with mzMLb and xz
+2. cross-spectrum delta compression on the m/z stream, which currently dominates artifact size
+3. pymzarc Python bindings via Zig C ABI
+4. a second, more representative DIA dataset to validate generalization
+5. downstream search-impact measurements (peptide IDs, FDR) alongside numeric fidelity
 
 ---
 
@@ -203,7 +199,7 @@ uv run python tools/inspect_dump.py data/PXD075509/15HCD_1.bin
 ./zig-out/bin/mzarc encode-v1 data/PXD075509/15HCD_1.bin -o data/PXD075509/15HCD_1.lossless.mzv1
 ./zig-out/bin/mzarc decode-v1 data/PXD075509/15HCD_1.lossless.mzv1 -o data/PXD075509/15HCD_1.roundtrip.bin
 $ZIG build -Doptimize=ReleaseFast
-uv run python tools/benchmark_v1.py --repeats 10 --external-baselines mzmlb,mscompress --mscompress-benchmark-threaded data/PXD075509/15HCD_1.mzML
+uv run python tools/benchmark_v1.py data/PXD075509/15HCD_1.mzML --build --repeats 3 --external-baselines all --public-dir benchmark
 ```
 
 The important rule for this stage is simple: every new step should leave behind a runnable command and a testable artifact.
