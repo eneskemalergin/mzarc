@@ -2,10 +2,25 @@ const std = @import("std");
 const binary_reader = @import("binary_reader");
 const block_v1 = @import("block_v1");
 
+/// Check that every decoded m/z value is within `max_ppm` of the original.
+/// The lossless fixed-point path guarantees < 0.001 ppm, so we use 0.001
+/// as the assertion threshold here.
+fn checkMzPpm(expected_mz: []const f64, actual_mz: []const f64) !void {
+    try std.testing.expectEqual(expected_mz.len, actual_mz.len);
+    for (expected_mz, actual_mz) |exp, act| {
+        const ppm_error = if (exp == 0.0) @abs(act) else @abs(act - exp) / @abs(exp) * 1e6;
+        if (ppm_error > 0.001) {
+            std.debug.print("m/z PPM error {d:.6} > 0.001 ppm at expected={d}, actual={d}\n", .{ ppm_error, exp, act });
+            return error.TestExpectedEqual;
+        }
+    }
+}
+
 test "lossless block round-trip preserves aligned spectra exactly" {
-    var mz_1 = [_]f64{ 100.0, 100.00000125, 101.500000375 };
+    // All m/z values are f32-exact so the f32 bit-cast path is taken.
+    var mz_1 = [_]f64{ 100.0, 100.125, 101.5 };
     var intensity_1 = [_]f32{ 10.0, 20.0, 30.0 };
-    var mz_2 = [_]f64{ 200.0, 200.0000035 };
+    var mz_2 = [_]f64{ 200.0, 200.25 };
     var intensity_2 = [_]f32{ 5.0, 1.5 };
 
     const spectra = [_]binary_reader.RawSpectrum{
@@ -19,8 +34,10 @@ test "lossless block round-trip preserves aligned spectra exactly" {
     const header = try block_v1.parseHeader(encoded);
     try std.testing.expectEqual(@as(u16, 2), header.spectrum_count);
     try std.testing.expect((header.flags & block_v1.flag_lossless_intensity_raw) != 0);
-    try std.testing.expect((header.flags & block_v1.flag_lossless_mz_raw) != 0);
-    try std.testing.expect((header.flags & block_v1.flag_lossless_mz_xor) != 0);
+    // f32-exact data uses the f32 bit-cast path — this flag must be set.
+    try std.testing.expect((header.flags & block_v1.flag_lossless_mz_f32) != 0);
+    // XOR and raw flags must not be set.
+    try std.testing.expectEqual(@as(u8, 0), header.flags & (block_v1.flag_lossless_mz_raw | block_v1.flag_lossless_mz_xor));
 
     const decoded = try block_v1.decodeBlock(std.testing.allocator, encoded);
     defer binary_reader.freeSpectra(std.testing.allocator, decoded);
@@ -38,13 +55,14 @@ test "lossless block round-trip preserves aligned spectra exactly" {
 }
 
 test "lossless block round-trip preserves empty and adversarial spectra exactly" {
+    // All m/z values are f32-exact so the f32 bit-cast path is taken.
     const empty_mz = [_]f64{};
     const empty_intensity = [_]f32{};
-    var mz_single = [_]f64{123.00000125};
+    var mz_single = [_]f64{123.0};
     var intensity_single = [_]f32{42.0};
-    var mz_dense = [_]f64{ 500.00000125, 500.0000015, 500.00000375, 501.000000125 };
+    var mz_dense = [_]f64{ 500.0, 500.125, 500.25, 501.0 };
     var intensity_dense = [_]f32{ 0.0, 1.0, 10.0, 1000.0 };
-    var mz_tail = [_]f64{ 900.125000125, 900.1250005 };
+    var mz_tail = [_]f64{ 900.125, 900.25 };
     var intensity_tail = [_]f32{ 7.5, 8.5 };
 
     const spectra = [_]binary_reader.RawSpectrum{

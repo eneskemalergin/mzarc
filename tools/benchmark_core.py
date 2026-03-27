@@ -20,7 +20,7 @@ from mzml_dump import dump_mzml
 
 RECORD_HEADER = struct.Struct("<IfB3xdI4x")
 REPORT_QUANTILES = (0.5, 0.9, 0.95, 0.99, 0.999, 1.0)
-DEFAULT_LOSSY_LEVEL = 4096
+DEFAULT_LOSSY_LEVEL = 16384
 DEFAULT_LOSSY_SWEEP_LEVELS = (256, 1024, 4096, 16384)
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -121,6 +121,7 @@ class FidelityResult:
     exact_mz_count: int
     exact_intensity_count: int
     mz_abs: ErrorSummary
+    mz_ppm: ErrorSummary
     intensity_abs: ErrorSummary
     intensity_rel: ErrorSummary
     intensity_log1p_abs: ErrorSummary
@@ -393,6 +394,7 @@ def compare_dumps(name: str, reference: list[Spectrum], candidate: list[Spectrum
         by_key[key] = spectrum
 
     mz_abs_chunks: list[np.ndarray] = []
+    mz_ppm_chunks: list[np.ndarray] = []
     intensity_abs_chunks: list[np.ndarray] = []
     intensity_rel_chunks: list[np.ndarray] = []
     intensity_log_chunks: list[np.ndarray] = []
@@ -414,6 +416,10 @@ def compare_dumps(name: str, reference: list[Spectrum], candidate: list[Spectrum
         ref_intensity = spectrum.intensity.astype(np.float64)
         cand_intensity = other.intensity.astype(np.float64)
         intensity_diff = np.abs(ref_intensity - cand_intensity)
+
+        positive_mz_mask = spectrum.mz > 0.0
+        if np.any(positive_mz_mask):
+            mz_ppm_chunks.append(mz_diff[positive_mz_mask] / spectrum.mz[positive_mz_mask] * 1e6)
 
         positive_mask = ref_intensity > 0.0
         if np.any(positive_mask):
@@ -442,6 +448,7 @@ def compare_dumps(name: str, reference: list[Spectrum], candidate: list[Spectrum
         exact_mz_count=exact_mz_count,
         exact_intensity_count=exact_intensity_count,
         mz_abs=summarize_errors(np.concatenate(mz_abs_chunks) if mz_abs_chunks else np.array([], dtype=np.float64)),
+        mz_ppm=summarize_errors(np.concatenate(mz_ppm_chunks) if mz_ppm_chunks else np.array([], dtype=np.float64)),
         intensity_abs=summarize_errors(
             np.concatenate(intensity_abs_chunks) if intensity_abs_chunks else np.array([], dtype=np.float64)
         ),

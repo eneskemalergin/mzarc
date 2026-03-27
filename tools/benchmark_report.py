@@ -253,13 +253,14 @@ def render_markdown(report: dict) -> str:
     section("Data Fidelity")
     image("Data Fidelity Overview", f"plots/{report['plots']['fidelity_overview']}")
     table(
-        ["artifact", "status", "global order", "max abs m/z", "mean abs intensity", "max abs intensity", "p95 rel intensity", "notes"],
+        ["artifact", "status", "global order", "max abs m/z", "max ppm m/z", "mean abs intensity", "max abs intensity", "p95 rel intensity", "notes"],
         [
             [
                 item["artifact"],
                 item["status"],
                 str(item["global_order_preserved"]).lower() if item["global_order_preserved"] is not None else "n/a",
                 _format_optional_number(item["max_abs_mz_error"], precision=9),
+                _format_optional_number(item.get("max_ppm_mz_error"), precision=6),
                 _format_optional_number(item["mean_abs_intensity_error"], precision=9),
                 _format_optional_number(item["max_abs_intensity_error"], precision=9),
                 _format_optional_percent(item["p95_rel_intensity_error_pct"]),
@@ -267,12 +268,12 @@ def render_markdown(report: dict) -> str:
             ]
             for item in fidelity_metrics
         ],
-        ["left", "left", "right", "right", "right", "right", "right", "left"],
+        ["left", "left", "right", "right", "right", "right", "right", "right", "left"],
     )
 
     section("Fidelity Summary")
     table(
-        ["artifact", "global order", "ms1 order", "ms2 order", "mean abs mz", "max abs mz", "mean abs intensity", "rmse intensity", "p95 rel intensity", "p99 rel intensity", "mean abs log1p intensity"],
+        ["artifact", "global order", "ms1 order", "ms2 order", "mean abs mz", "max abs mz", "max ppm mz", "mean abs intensity", "rmse intensity", "p95 rel intensity", "p99 rel intensity", "mean abs log1p intensity"],
         [
             [
                 row["artifact"],
@@ -281,6 +282,7 @@ def render_markdown(report: dict) -> str:
                 str(row["data"]["ms2_relative_order_preserved"]).lower(),
                 f"{row['data']['mz_abs']['mean']:.9g}",
                 f"{row['data']['mz_abs']['max']:.9g}",
+                f"{row['data'].get('mz_ppm', {}).get('max', 0.0):.6g}",
                 f"{row['data']['intensity_abs']['mean']:.9g}",
                 f"{row['data']['intensity_abs']['rmse']:.9g}",
                 format_percent(row["data"]["intensity_rel"]["p95"]),
@@ -289,7 +291,7 @@ def render_markdown(report: dict) -> str:
             ]
             for row in fidelity_rows
         ],
-        ["left", "right", "right", "right", "right", "right", "right", "right", "right", "right", "right"],
+        ["left", "right", "right", "right", "right", "right", "right", "right", "right", "right", "right", "right"],
     )
     exact_artifacts = [f"`{item['artifact']}`" for item in fidelity_metrics if item["status"] == "measured" and float(item.get("max_abs_mz_error") or 0.0) == 0.0 and float(item.get("max_abs_intensity_error") or 0.0) == 0.0]
     lossless_row = next((row["data"] for row in fidelity_rows if row["artifact"] == "mzv1 lossless"), None)

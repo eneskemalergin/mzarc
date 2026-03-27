@@ -322,6 +322,10 @@ def main() -> None:
         "gzip_dump_roundtrip": private_workdir / f"{sample_name}.gzip.roundtrip.bin",
         "zstd_dump": private_workdir / f"{sample_name}.bin.zst",
         "zstd_dump_roundtrip": private_workdir / f"{sample_name}.zstd.roundtrip.bin",
+        "gzip_mzml": private_workdir / f"{sample_name}.mzML.gz",
+        "gzip_mzml_roundtrip": private_workdir / f"{sample_name}.gzip_mzml.roundtrip.mzML",
+        "zstd_mzml": private_workdir / f"{sample_name}.mzML.zst",
+        "zstd_mzml_roundtrip": private_workdir / f"{sample_name}.zstd_mzml.roundtrip.mzML",
         "mzv1_lossless": private_workdir / f"{sample_name}.lossless.mzv1",
         "roundtrip_lossless": private_workdir / f"{sample_name}.lossless.roundtrip.bin",
         "mzv1_lossy": private_workdir / f"{sample_name}.lossy.q{selected_quant}.mzv1",
@@ -338,7 +342,7 @@ def main() -> None:
         mscompress_to_dump_command_template=args.mscompress_to_dump_command_template,
         mscompress_benchmark_threaded=args.mscompress_benchmark_threaded,
     )
-    total_steps = (args.repeats * 9) + (2 * len(extra_sweep_levels)) + external_steps + 8
+    total_steps = (args.repeats * 13) + (2 * len(extra_sweep_levels)) + external_steps + 10
     progress = ProgressBar(total_steps, enabled=not args.no_progress)
 
     try:
@@ -368,6 +372,9 @@ def main() -> None:
         gzip_dump_roundtrip_rel = repo_relative_path(paths["gzip_dump_roundtrip"])
         zstd_dump_rel = repo_relative_path(paths["zstd_dump"])
         zstd_dump_roundtrip_rel = repo_relative_path(paths["zstd_dump_roundtrip"])
+        mzml_rel = repo_relative_path(input_path)
+        gzip_mzml_rel = repo_relative_path(paths["gzip_mzml"])
+        zstd_mzml_rel = repo_relative_path(paths["zstd_mzml"])
 
         gzip_result = benchmark_roundtrip(
             artifact="gzip dump",
@@ -403,6 +410,50 @@ def main() -> None:
             encode_input_bytes=dump_bytes,
             decode_output_bytes=dump_bytes,
         )
+
+        # gzip and zstd applied directly to the mzML file (not the dump).
+        # Decompression timing gives raw decompression speed; mzML parsing
+        # (another ~4.5s) is still required before data is usable.
+        gzip_mzml_encode_timing = timed_command(
+            "mzML -> gzip mzML",
+            ["gzip", "-n", "-c", mzml_rel],
+            repeats=args.repeats,
+            progress=progress,
+            progress_label="mzML -> gzip mzML",
+            input_bytes=mzml_bytes,
+            stdout_path=paths["gzip_mzml"],
+        )
+        gzip_mzml_decode_timing = timed_command(
+            "gzip mzML -> mzML",
+            ["gzip", "-d", "-c", gzip_mzml_rel],
+            repeats=args.repeats,
+            progress=progress,
+            progress_label="gzip mzML -> mzML",
+            input_bytes=paths["gzip_mzml"].stat().st_size,
+            output_bytes=mzml_bytes,
+            stdout_path=paths["gzip_mzml_roundtrip"],
+        )
+        zstd_mzml_encode_timing = timed_command(
+            "mzML -> zstd mzML",
+            ["zstd", "-q", "-c", mzml_rel],
+            repeats=args.repeats,
+            progress=progress,
+            progress_label="mzML -> zstd mzML",
+            input_bytes=mzml_bytes,
+            stdout_path=paths["zstd_mzml"],
+        )
+        zstd_mzml_decode_timing = timed_command(
+            "zstd mzML -> mzML",
+            ["zstd", "-q", "-d", "-c", zstd_mzml_rel],
+            repeats=args.repeats,
+            progress=progress,
+            progress_label="zstd mzML -> mzML",
+            input_bytes=paths["zstd_mzml"].stat().st_size,
+            output_bytes=mzml_bytes,
+            stdout_path=paths["zstd_mzml_roundtrip"],
+        )
+        progress.step("record gzip/zstd mzML sizes")
+
         lossless_result = benchmark_roundtrip(
             artifact="mzv1 lossless",
             fidelity_name="mzv1_lossless",
@@ -459,6 +510,8 @@ def main() -> None:
             "mzv1 lossy": {"path": lossy_path_rel, "bytes": paths["mzv1_lossy"].stat().st_size},
             "gzip dump": {"path": gzip_dump_rel, "bytes": paths["gzip_dump"].stat().st_size},
             "zstd dump": {"path": zstd_dump_rel, "bytes": paths["zstd_dump"].stat().st_size},
+            "gzip mzML": {"path": gzip_mzml_rel, "bytes": paths["gzip_mzml"].stat().st_size},
+            "zstd mzML": {"path": zstd_mzml_rel, "bytes": paths["zstd_mzml"].stat().st_size},
         }
 
         external_results = run_external_baselines(
@@ -542,6 +595,10 @@ def main() -> None:
             serialize_timing_result(gzip_result["decode_timing"]),
             serialize_timing_result(zstd_result["encode_timing"]),
             serialize_timing_result(zstd_result["decode_timing"]),
+            serialize_timing_result(gzip_mzml_encode_timing),
+            serialize_timing_result(gzip_mzml_decode_timing),
+            serialize_timing_result(zstd_mzml_encode_timing),
+            serialize_timing_result(zstd_mzml_decode_timing),
             serialize_timing_result(lossless_result["encode_timing"]),
             serialize_timing_result(lossless_result["decode_timing"]),
             serialize_timing_result(lossy_result["encode_timing"]),

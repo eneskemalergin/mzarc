@@ -8,7 +8,7 @@ fn printUsage() void {
             "  mzarc dump-inspect <input.bin>\n" ++
             "  mzarc encode-v1 <input.bin> -o <output.mzv1> [--lossy] [--intensity-quant <levels>]\n" ++
             "  mzarc decode-v1 <input.mzv1> -o <output.bin>\n" ++
-            "  mzarc inspect-v1 <input.mzv1> [--json]\n",
+            "  mzarc inspect-v1 <input.mzv1> [--json] [--blocks]\n",
         .{},
     );
 }
@@ -77,7 +77,7 @@ fn commandEncodeV1(allocator: std.mem.Allocator, args: []const [:0]const u8) !vo
     try codec_v1.encodeDumpFile(allocator, input_path, output_path, .{
         .block_options = .{
             .mode = if (hasFlag(args[3..], "--lossy")) .lossy else .lossless,
-            .intensity_quant = intensity_quant orelse 4096,
+            .intensity_quant = intensity_quant orelse 16384,
         },
     });
 
@@ -152,14 +152,37 @@ fn printInspectionJson(path: []const u8, inspection: codec_v1.Inspection) void {
     );
 }
 
+fn printBlockTable(inspection: codec_v1.Inspection) void {
+    std.debug.print("{s:>6}  {s:>5}  {s:>6}  {s:>8}  {s:>6}  {s:>9}  {s:>9}  {s:>9}\n", .{
+        "idx", "level", "nspec", "npeaks", "mz_bw", "int_bw", "mz_bytes", "int_bytes",
+    });
+    for (inspection.blocks, 0..) |block_info, idx| {
+        const h = block_info.header;
+        const b = block_info.byte_breakdown;
+        std.debug.print("{:>6}  {:>5}  {:>6}  {:>8}  {:>6}  {:>9}  {:>9}  {:>9}\n", .{
+            idx,
+            h.ms_level,
+            h.spectrum_count,
+            h.total_peaks,
+            h.mz_bit_width,
+            h.intensity_bit_width,
+            b.mz_payload_bytes,
+            b.intensity_payload_bytes,
+        });
+    }
+}
+
 fn commandInspectV1(allocator: std.mem.Allocator, args: []const [:0]const u8) !void {
-    if (args.len < 3 or args.len > 4) return error.InvalidArguments;
+    if (args.len < 3) return error.InvalidArguments;
 
     var path: ?[]const u8 = null;
     var json_output = false;
+    var show_blocks = false;
     for (args[2..]) |arg| {
         if (std.mem.eql(u8, arg, "--json")) {
             json_output = true;
+        } else if (std.mem.eql(u8, arg, "--blocks")) {
+            show_blocks = true;
         } else if (path == null) {
             path = arg;
         } else {
@@ -199,6 +222,11 @@ fn commandInspectV1(allocator: std.mem.Allocator, args: []const [:0]const u8) !v
     std.debug.print("intensity metadata bytes: {}\n", .{inspection.byte_breakdown.intensity_metadata_bytes});
     std.debug.print("intensity payload bytes: {}\n", .{inspection.byte_breakdown.intensity_payload_bytes});
     std.debug.print("total bytes: {}\n", .{inspection.byte_breakdown.total_bytes});
+
+    if (show_blocks) {
+        std.debug.print("\n", .{});
+        printBlockTable(inspection);
+    }
 }
 
 pub fn main(init: std.process.Init) !void {

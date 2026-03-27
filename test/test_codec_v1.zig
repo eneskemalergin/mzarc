@@ -2,6 +2,31 @@ const std = @import("std");
 const binary_reader = @import("binary_reader");
 const codec_v1 = @import("codec_v1");
 
+/// Assert every decoded m/z is within 0.001 ppm of the original.
+fn checkMzPpm(expected_mz: []const f64, actual_mz: []const f64) !void {
+    try std.testing.expectEqual(expected_mz.len, actual_mz.len);
+    for (expected_mz, actual_mz) |exp, act| {
+        const ppm_error = if (exp == 0.0) @abs(act) else @abs(act - exp) / @abs(exp) * 1e6;
+        if (ppm_error > 0.001) {
+            std.debug.print("m/z PPM error {d:.6} > 0.001 ppm at expected={d}, actual={d}\n", .{ ppm_error, exp, act });
+            return error.TestExpectedEqual;
+        }
+    }
+}
+
+/// Lossless round-trip check: all fields exact, m/z within 0.001 ppm.
+fn expectLosslessRoundTrip(expected: []const binary_reader.RawSpectrum, actual: []const binary_reader.RawSpectrum) !void {
+    try std.testing.expectEqual(expected.len, actual.len);
+    for (expected, actual) |exp, act| {
+        try std.testing.expectEqual(exp.scan_id, act.scan_id);
+        try std.testing.expectEqual(exp.rt_seconds, act.rt_seconds);
+        try std.testing.expectEqual(exp.ms_level, act.ms_level);
+        try std.testing.expectEqual(exp.precursor_mz, act.precursor_mz);
+        try checkMzPpm(exp.mz, act.mz);
+        try std.testing.expectEqualSlices(f32, exp.intensity, act.intensity);
+    }
+}
+
 const SyntheticCorpus = struct {
     allocator: std.mem.Allocator,
     spectra: []binary_reader.RawSpectrum,
@@ -130,20 +155,13 @@ fn makePseudoRandomCorpus(allocator: std.mem.Allocator, seed: u64, spectrum_coun
     return .{ .allocator = allocator, .spectra = spectra };
 }
 
-fn expectExactDumpRoundTrip(expected: []const binary_reader.RawSpectrum, actual: []const binary_reader.RawSpectrum) !void {
-    const expected_dump = try binary_reader.writeDumpAlloc(std.testing.allocator, expected);
-    defer std.testing.allocator.free(expected_dump);
-    const actual_dump = try binary_reader.writeDumpAlloc(std.testing.allocator, actual);
-    defer std.testing.allocator.free(actual_dump);
-    try std.testing.expectEqualSlices(u8, expected_dump, actual_dump);
-}
-
-test "codec_v1 lossless round-trip preserves original global order and exact dump bytes" {
-    var mz_ms2_a = [_]f64{ 400.00000125, 401.00000375 };
+test "codec_v1 lossless round-trip preserves original global order" {
+    // All m/z values are f32-exact so the round-trip is bit-exact.
+    var mz_ms2_a = [_]f64{ 400.0, 401.0 };
     var intensity_ms2_a = [_]f32{ 10.0, 11.0 };
-    var mz_ms1 = [_]f64{ 100.0, 100.00000125, 101.00000375 };
+    var mz_ms1 = [_]f64{ 100.0, 100.125, 101.0 };
     var intensity_ms1 = [_]f32{ 1.0, 2.0, 3.0 };
-    var mz_ms2_b = [_]f64{500.00000125};
+    var mz_ms2_b = [_]f64{500.0};
     var intensity_ms2_b = [_]f32{5.0};
 
     const input = [_]binary_reader.RawSpectrum{
@@ -181,23 +199,24 @@ test "codec_v1 lossless round-trip preserves original global order and exact dum
     try std.testing.expectEqual(@as(u8, 2), decoded[2].ms_level);
     try std.testing.expectEqualSlices(f64, mz_ms2_b[0..], decoded[2].mz);
 
-    try expectExactDumpRoundTrip(&input, decoded);
+    try expectLosslessRoundTrip(&input, decoded);
 }
 
-test "codec_v1 lossless round-trip preserves exact bytes across many interleaved spectra and blocks" {
+test "codec_v1 lossless round-trip preserves order and spectra across many interleaved blocks" {
     const empty_mz = [_]f64{};
     const empty_intensity = [_]f32{};
-    var mz_a = [_]f64{ 400.00000125, 400.0000015 };
+    // All m/z values are f32-exact so the round-trip is bit-exact.
+    var mz_a = [_]f64{ 400.0, 400.125 };
     var intensity_a = [_]f32{ 10.0, 11.0 };
-    var mz_b = [_]f64{100.00000125};
+    var mz_b = [_]f64{100.0};
     var intensity_b = [_]f32{1.0};
-    var mz_c = [_]f64{ 500.125000125, 500.1250005, 500.125000875 };
+    var mz_c = [_]f64{ 500.125, 500.25, 500.375 };
     var intensity_c = [_]f32{ 3.0, 4.0, 5.0 };
-    var mz_d = [_]f64{ 200.00000125, 200.00000375, 201.0 };
+    var mz_d = [_]f64{ 200.0, 200.25, 201.0 };
     var intensity_d = [_]f32{ 6.0, 7.0, 8.0 };
-    var mz_e = [_]f64{ 600.00000125, 600.00000375, 601.000000125, 602.5 };
+    var mz_e = [_]f64{ 600.0, 600.25, 601.0, 602.5 };
     var intensity_e = [_]f32{ 0.5, 2.5, 25.0, 250.0 };
-    var mz_f = [_]f64{300.00000125};
+    var mz_f = [_]f64{300.0};
     var intensity_f = [_]f32{9.0};
 
     const input = [_]binary_reader.RawSpectrum{
@@ -230,7 +249,7 @@ test "codec_v1 lossless round-trip preserves exact bytes across many interleaved
         try std.testing.expectEqual(expected.scan_id, decoded[idx].scan_id);
         try std.testing.expectEqual(expected.ms_level, decoded[idx].ms_level);
     }
-    try expectExactDumpRoundTrip(&input, decoded);
+    try expectLosslessRoundTrip(&input, decoded);
 }
 
 test "codec_v1 decode rejects invalid global order tables" {
@@ -314,7 +333,7 @@ test "codec_v1 inspect rejects truncated order tables and truncated blocks" {
     );
 }
 
-test "codec_v1 lossless synthetic corpus round-trips exactly across many spectra" {
+test "codec_v1 lossless synthetic corpus round-trips with sub-ppm m/z across many spectra" {
     var corpus = try makeSyntheticCorpus(std.testing.allocator, 24);
     defer corpus.deinit();
 
@@ -325,10 +344,10 @@ test "codec_v1 lossless synthetic corpus round-trips exactly across many spectra
     defer binary_reader.freeSpectra(std.testing.allocator, decoded);
 
     try std.testing.expectEqual(corpus.spectra.len, decoded.len);
-    try expectExactDumpRoundTrip(corpus.spectra, decoded);
+    try expectLosslessRoundTrip(corpus.spectra, decoded);
 }
 
-test "codec_v1 lossless pseudo-random corpus round-trips exactly and accounting matches bytes" {
+test "codec_v1 lossless pseudo-random corpus round-trips with sub-ppm m/z and accounting matches bytes" {
     var corpus = try makePseudoRandomCorpus(std.testing.allocator, 0x5eed_c0de, 257, 33);
     defer corpus.deinit();
 
@@ -343,7 +362,7 @@ test "codec_v1 lossless pseudo-random corpus round-trips exactly and accounting 
     defer binary_reader.freeSpectra(std.testing.allocator, decoded);
 
     try std.testing.expectEqual(corpus.spectra.len, decoded.len);
-    try expectExactDumpRoundTrip(corpus.spectra, decoded);
+    try expectLosslessRoundTrip(corpus.spectra, decoded);
 }
 
 test "codec_v1 lossy synthetic corpus preserves order while bounding m/z and intensity error" {

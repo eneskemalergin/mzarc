@@ -12,7 +12,9 @@ SEARCH_IMPACT_NOT_MEASURED = (
 def comparison_artifact_order(selected_quant: int, external_baselines: list[dict[str, object]]) -> list[str]:
     names = [
         "gzip dump",
+        "gzip mzML",
         "zstd dump",
+        "zstd mzML",
         "mzv1 lossless",
         f"mzv1 lossy q={selected_quant}",
     ]
@@ -88,6 +90,10 @@ def build_performance_rows(
         ("gzip dump", "decompression", "gzip dump -> dump", "gzip dump"),
         ("zstd dump", "compression", "dump -> zstd dump", "dump"),
         ("zstd dump", "decompression", "zstd dump -> dump", "zstd dump"),
+        ("gzip mzML", "compression", "mzML -> gzip mzML", "mzML"),
+        ("gzip mzML", "decompression", "gzip mzML -> mzML", "gzip mzML"),
+        ("zstd mzML", "compression", "mzML -> zstd mzML", "mzML"),
+        ("zstd mzML", "decompression", "zstd mzML -> mzML", "zstd mzML"),
         ("mzv1 lossless", "compression", "dump -> mzv1 lossless", "dump"),
         ("mzv1 lossless", "decompression", "mzv1 lossless -> dump", "mzv1 lossless"),
         (f"mzv1 lossy q={selected_quant}", "compression", f"dump -> mzv1 lossy q={selected_quant}", "dump"),
@@ -138,6 +144,8 @@ def build_fidelity_metric_rows(
                 "ms2_relative_order_preserved": item["ms2_relative_order_preserved"],
                 "max_abs_mz_error": item["mz_abs"]["max"],
                 "mean_abs_mz_error": item["mz_abs"]["mean"],
+                "max_ppm_mz_error": item["mz_ppm"]["max"],
+                "mean_ppm_mz_error": item["mz_ppm"]["mean"],
                 "mean_abs_intensity_error": item["intensity_abs"]["mean"],
                 "max_abs_intensity_error": item["intensity_abs"]["max"],
                 "rmse_intensity_error": item["intensity_abs"]["rmse"],
@@ -162,6 +170,8 @@ def build_fidelity_metric_rows(
                 "ms2_relative_order_preserved": None,
                 "max_abs_mz_error": None,
                 "mean_abs_mz_error": None,
+                "max_ppm_mz_error": None,
+                "mean_ppm_mz_error": None,
                 "mean_abs_intensity_error": None,
                 "max_abs_intensity_error": None,
                 "rmse_intensity_error": None,

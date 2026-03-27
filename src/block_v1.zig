@@ -14,8 +14,12 @@ pub const Mode = enum {
 
 pub const EncodeOptions = struct {
     mode: Mode = .lossless,
+    /// Fixed-point scale used in lossy mode for m/z quantization.
     mz_scale_factor: u32 = 500_000,
-    intensity_quant: u16 = 4096,
+    /// Fixed-point scale used in lossless mode.  High enough that round-trip
+    /// error is < 0.001 ppm across the full MS mass range.
+    lossless_mz_scale_factor: u32 = 1_000_000_000,
+    intensity_quant: u16 = 16384,
 };
 
 pub const BlockHeader = struct {
@@ -52,6 +56,10 @@ pub const BlockByteBreakdown = struct {
 pub const flag_lossless_intensity_raw: u8 = 0b0000_0001;
 pub const flag_lossless_mz_raw: u8 = 0b0000_0010;
 pub const flag_lossless_mz_xor: u8 = 0b0000_0100;
+/// m/z stored as f32 bit patterns, delta-encoded as u32.  Guarantees bit-exact
+/// round-trips for values that are already f32-precision (every real instrument
+/// produces f32 natively; mzML just widens to f64).
+pub const flag_lossless_mz_f32: u8 = 0b0000_1000;
 pub const header_len = 40;
 
 fn combineU32(low: u16, high: u16) u32 {
@@ -159,6 +167,44 @@ fn nonEmptyPeakCount(peak_counts: []const u32) usize {
         if (peak_count != 0) total += 1;
     }
     return total;
+}
+
+/// Returns true when every m/z value in `spectra` is exactly representable as
+/// an IEEE-754 single-precision float.  Instruments produce f32 natively;
+/// mzML widens to f64 with trailing zero mantissa bits, so this is true for
+/// the vast majority of real data.
+fn allMzExactlyF32(spectra: []const binary_reader.RawSpectrum) bool {
+    for (spectra) |spectrum| {
+        for (spectrum.mz) |value| {
+            if (@as(f64, @as(f32, @floatCast(value))) != value) return false;
+        }
+    }
+    return true;
+}
+
+/// Flatten m/z arrays from all spectra into a single packed delta array using
+/// f32 bit-cast encoding.  Each value is cast to f32, reinterpreted as u32,
+/// then delta-encoded within its spectrum (previous resets to 0 at each new
+/// spectrum).  Caller must verify `allMzExactlyF32` first.
+fn flattenMzAsF32Bits(allocator: Allocator, spectra: []const binary_reader.RawSpectrum) ![]u64 {
+    const total_peaks = try totalPeakCount(spectra);
+    const flat = try allocator.alloc(u64, total_peaks);
+    errdefer allocator.free(flat);
+
+    var offset: usize = 0;
+    for (spectra) |spectrum| {
+        var previous: u32 = 0;
+        for (spectrum.mz, 0..) |value, idx| {
+            const as_f32: f32 = @floatCast(value);
+            const bits: u32 = @bitCast(as_f32);
+            if (idx != 0 and bits < previous) return error.NonMonotonicInput;
+            flat[offset] = if (idx == 0) bits else bits - previous;
+            previous = bits;
+            offset += 1;
+        }
+    }
+
+    return flat;
 }
 
 fn flattenMzDeltas(allocator: Allocator, spectra: []const binary_reader.RawSpectrum, scale_factor: u32) ![]u64 {
@@ -303,28 +349,23 @@ pub fn encodeBlock(allocator: Allocator, spectra: []const binary_reader.RawSpect
 
     var flags: u8 = 0;
     var mz_bit_width: u8 = 0;
-    if (options.mode == .lossless) {
-        flags |= flag_lossless_mz_raw | flag_lossless_mz_xor;
-
-        const mz_exact = try flattenMzRawBitsXor(allocator, spectra);
-        defer mz_exact.deinit(allocator);
-
-        if (builtin.cpu.arch.endian() == .little) {
-            try payload.appendSlice(allocator, std.mem.sliceAsBytes(mz_exact.first_values));
-        } else {
-            for (mz_exact.first_values) |value| {
-                try appendIntLe(&payload, allocator, u64, value);
+    var mz_scale_for_header: u32 = options.mz_scale_factor;
+    {
+        // Choose the m/z encoding strategy:
+        //   lossless + all values are f32-exact → f32 bit-cast delta (bit-exact round-trip)
+        //   lossless + non-f32 data             → high-scale fixed-point delta (< 0.001 ppm)
+        //   lossy                               → lower fixed-point scale set by caller
+        const mz_deltas = blk: {
+            if (options.mode == .lossless and allMzExactlyF32(spectra)) {
+                flags |= flag_lossless_mz_f32;
+                mz_scale_for_header = 0; // not used; signal that f32 path was taken
+                break :blk try flattenMzAsF32Bits(allocator, spectra);
+            } else {
+                const scale = if (options.mode == .lossless) options.lossless_mz_scale_factor else options.mz_scale_factor;
+                mz_scale_for_header = scale;
+                break :blk try flattenMzDeltas(allocator, spectra, scale);
             }
-        }
-
-        const packed_mz = try bitpack.packForU64(allocator, mz_exact.xor_values);
-        defer packed_mz.deinit(allocator);
-        mz_bit_width = packed_mz.bit_width;
-        try appendIntLe(&payload, allocator, u64, packed_mz.base);
-        try appendIntLe(&payload, allocator, u32, @intCast(packed_mz.payload.len));
-        try payload.appendSlice(allocator, packed_mz.payload);
-    } else {
-        const mz_deltas = try flattenMzDeltas(allocator, spectra, options.mz_scale_factor);
+        };
         defer allocator.free(mz_deltas);
         const packed_mz = try bitpack.packForU64(allocator, mz_deltas);
         defer packed_mz.deinit(allocator);
@@ -377,7 +418,7 @@ pub fn encodeBlock(allocator: Allocator, spectra: []const binary_reader.RawSpect
         .ms_level = ms_level,
         .flags = flags,
         .total_peaks = @intCast(total_peaks),
-        .mz_scale_factor = if ((flags & flag_lossless_mz_raw) != 0) 0 else options.mz_scale_factor,
+        .mz_scale_factor = mz_scale_for_header,
         .intensity_quant = options.intensity_quant,
         .reserved0 = intensity_scale_bits.low,
         .mz_bit_width = mz_bit_width,
@@ -450,6 +491,7 @@ pub fn decodeBlock(allocator: Allocator, block_bytes: []const u8) ![]binary_read
 
     const mz_uses_xor = (header.flags & flag_lossless_mz_xor) != 0;
     const mz_is_raw = (header.flags & flag_lossless_mz_raw) != 0;
+    const mz_uses_f32 = (header.flags & flag_lossless_mz_f32) != 0;
     if (mz_uses_xor) {
         const first_value_count = nonEmptyPeakCount(peak_counts);
         const first_values = try allocator.alloc(u64, first_value_count);
@@ -526,7 +568,9 @@ pub fn decodeBlock(allocator: Allocator, block_bytes: []const u8) ![]binary_read
                     if (sum[1] != 0) return error.Overflow;
                     break :blk sum[0];
                 };
-                flat_mz[mz_cursor + local_idx] = if (mz_is_raw)
+                flat_mz[mz_cursor + local_idx] = if (mz_uses_f32)
+                    @as(f64, @as(f32, @bitCast(@as(u32, @truncate(absolute)))))
+                else if (mz_is_raw)
                     @as(f64, @bitCast(absolute))
                 else
                     try quantize.dequantizeMzValue(absolute, header.mz_scale_factor);
