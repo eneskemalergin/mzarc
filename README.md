@@ -51,15 +51,15 @@ What exists today:
 - scalar m/z quantization in `src/quantize.zig`
 - scalar intra-spectrum delta coding in `src/delta.zig`
 - scalar frame-of-reference bit-packing in `src/bitpack.zig`
-- composed block encoder and decoder in `src/block_v1.zig`
-- codec layer in `src/codec_v1.zig` that stores `.mzv1` files with MS1/MS2 block streams
-- a CLI in `src/main.zig` with dump inspection plus `.mzv1` encode, decode, and inspect commands
+- composed block encoder and decoder in `src/block.zig`
+- codec layer in `src/codec.zig` that stores `.mzarc` files with MS1/MS2 block streams
+- a CLI in `src/main.zig` with dump inspection plus `.mzarc` encode, decode, and inspect commands
 - 41 unit tests covering every layer, all passing
 - a reproducible benchmark suite in `tools/` comparing against gzip, zstd, bzip2, lz4, xz, mzMLb, MS-Numpress, and MScompress
 
 What this means in practice:
 
-- lossless `.mzv1` is **20.23 MiB** on `15HCD_1.mzML` (75.55 MiB), smaller than gzip+mzML (24.29 MiB) and MScompress (21.63 MiB)
+- lossless `.mzarc` is **20.23 MiB** on `15HCD_1.mzML` (75.55 MiB), smaller than gzip+mzML (24.29 MiB) and MScompress (21.63 MiB)
 - the lossless path is bit-exact: mean absolute m/z error is `0.0` and original global scan order is preserved
 - encode throughput is ~161 MiB/s and decode throughput is ~205 MiB/s in `ReleaseFast`
 - mzMLb (16.25 MiB) and xz dump (15.77 MiB) are still smaller — expected at the scalar codec stage; Phase 2 SIMD + cross-spectrum delta is next
@@ -96,12 +96,12 @@ The thesis holds. The repository earned the right to move to Phase 2.
 - `src/quantize.zig` handles m/z fixed-point conversion and lossy log-intensity quantization.
 - `src/delta.zig` handles intra-spectrum delta encode and decode.
 - `src/bitpack.zig` handles scalar frame-of-reference packing and unpacking.
-- `src/block_v1.zig` composes the above into a real block encoder and decoder with CRC32 validation.
-- `src/codec_v1.zig` stores `.mzv1` files with block streams for MS1 and MS2 and supports encode, decode, and inspect operations.
+- `src/block.zig` composes the above into a real block encoder and decoder with CRC32 validation.
+- `src/codec.zig` stores `.mzarc` files with block streams for MS1 and MS2 and supports encode, decode, and inspect operations.
 
 ### Benchmarking
 
-- `tools/benchmark_v1.py` benchmarks mzML ingest, `.mzv1` encode and decode, size, round-trip fidelity, and repeated timing intervals with confidence bounds.
+- `tools/benchmark_v1.py` benchmarks mzML ingest, `.mzarc` encode and decode, size, round-trip fidelity, and repeated timing intervals with confidence bounds.
 - [benchmark/report.md](benchmark/report.md) contains the current public benchmark summary and plot references.
 - [benchmark/report.json](benchmark/report.json) contains the machine-readable benchmark output.
 - repo-root `benchmark/` contains the pushable report and plots.
@@ -109,7 +109,7 @@ The thesis holds. The repository earned the right to move to Phase 2.
 
 ### Current benchmark snapshot
 
-- On `data/PXD075509/15HCD_1.mzML` (75.55 MiB), lossless `.mzv1` is **20.23 MiB** (73.2% smaller than mzML, comparable with gzip dump at 19.82 MiB).
+- On `data/PXD075509/15HCD_1.mzML` (75.55 MiB), lossless `.mzarc` is **20.23 MiB** (73.2% smaller than mzML, comparable with gzip dump at 19.82 MiB).
 - Beats both MScompress (`21.63 MiB`) and gzip+mzML (`24.29 MiB`) without any outer compression layer.
 - mzMLb (`16.25 MiB`) and xz dump (`15.77 MiB`) are still smaller — closing this gap is the primary Phase 2 target.
 - Over 3 `ReleaseFast` runs, lossless encode averages `0.191s` (~161 MiB/s) and decode averages `0.150s` (~205 MiB/s).
@@ -118,7 +118,7 @@ The thesis holds. The repository earned the right to move to Phase 2.
 ### Validation
 
 - unit tests cover dump IO, quantization, delta coding, bit-packing, and block round-trips
-- the current CLI can encode, decode, and inspect a real `.mzv1` file end-to-end, including byte-breakdown inspection
+- the current CLI can encode, decode, and inspect a real `.mzarc` file end-to-end, including byte-breakdown inspection
 - the checked-in benchmark report currently uses `10` timing repeats per operation and records means, standard deviations, and two-sided 95% confidence intervals on real mzML input
 
 ---
@@ -149,16 +149,16 @@ mzarc/
 ├── src/
 │   ├── binary_reader.zig
 │   ├── bitpack.zig
-│   ├── block_v1.zig
-│   ├── codec_v1.zig
+│   ├── block.zig
+│   ├── codec.zig
 │   ├── delta.zig
 │   ├── main.zig
 │   └── quantize.zig
 ├── test/
 │   ├── test_binary_reader.zig
 │   ├── test_bitpack.zig
-│   ├── test_block_v1.zig
-│   ├── test_codec_v1.zig
+│   ├── test_block.zig
+│   ├── test_codec.zig
 │   ├── test_delta.zig
 │   └── test_quantize.zig
 └── tools/
@@ -196,8 +196,8 @@ Current working commands:
 uv run python tools/mzml_dump.py data/PXD075509/15HCD_1.mzML -o data/PXD075509/15HCD_1.bin
 uv run python tools/inspect_dump.py data/PXD075509/15HCD_1.bin
 ./zig-out/bin/mzarc dump-inspect data/PXD075509/15HCD_1.bin
-./zig-out/bin/mzarc encode-v1 data/PXD075509/15HCD_1.bin -o data/PXD075509/15HCD_1.lossless.mzv1
-./zig-out/bin/mzarc decode-v1 data/PXD075509/15HCD_1.lossless.mzv1 -o data/PXD075509/15HCD_1.roundtrip.bin
+./zig-out/bin/mzarc encode data/PXD075509/15HCD_1.bin -o data/PXD075509/15HCD_1.lossless.mzarc
+./zig-out/bin/mzarc decode data/PXD075509/15HCD_1.lossless.mzarc -o data/PXD075509/15HCD_1.roundtrip.bin
 $ZIG build -Doptimize=ReleaseFast
 uv run python tools/benchmark_v1.py data/PXD075509/15HCD_1.mzML --build --repeats 3 --external-baselines all --public-dir benchmark
 ```

@@ -23,8 +23,8 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
-    const block_v1_module = b.createModule(.{
-        .root_source_file = b.path("src/block_v1.zig"),
+    const block_module = b.createModule(.{
+        .root_source_file = b.path("src/block.zig"),
         .target = target,
         .optimize = optimize,
         .imports = &.{
@@ -34,13 +34,13 @@ pub fn build(b: *std.Build) void {
             .{ .name = "bitpack", .module = bitpack_module },
         },
     });
-    const codec_v1_module = b.createModule(.{
-        .root_source_file = b.path("src/codec_v1.zig"),
+    const codec_module = b.createModule(.{
+        .root_source_file = b.path("src/codec.zig"),
         .target = target,
         .optimize = optimize,
         .imports = &.{
             .{ .name = "binary_reader", .module = binary_reader_module },
-            .{ .name = "block_v1", .module = block_v1_module },
+            .{ .name = "block", .module = block_module },
         },
     });
 
@@ -52,7 +52,7 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
             .imports = &.{
                 .{ .name = "binary_reader", .module = binary_reader_module },
-                .{ .name = "codec_v1", .module = codec_v1_module },
+                .{ .name = "codec", .module = codec_module },
             },
         }),
     });
@@ -71,8 +71,8 @@ pub fn build(b: *std.Build) void {
         "test/test_quantize.zig",
         "test/test_delta.zig",
         "test/test_bitpack.zig",
-        "test/test_block_v1.zig",
-        "test/test_codec_v1.zig",
+        "test/test_block.zig",
+        "test/test_codec.zig",
     };
 
     const test_step = b.step("test", "Run unit tests");
@@ -87,8 +87,8 @@ pub fn build(b: *std.Build) void {
                     .{ .name = "quantize", .module = quantize_module },
                     .{ .name = "delta", .module = delta_module },
                     .{ .name = "bitpack", .module = bitpack_module },
-                    .{ .name = "block_v1", .module = block_v1_module },
-                    .{ .name = "codec_v1", .module = codec_v1_module },
+                    .{ .name = "block", .module = block_module },
+                    .{ .name = "codec", .module = codec_module },
                 },
             }),
         });

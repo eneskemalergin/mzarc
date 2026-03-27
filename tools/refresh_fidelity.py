@@ -46,8 +46,8 @@ def main() -> None:
     roundtrip_map: dict[str, Path] = {
         "gzip dump": private_workdir / f"{sample_name}.gzip.roundtrip.bin",
         "zstd dump": private_workdir / f"{sample_name}.zstd.roundtrip.bin",
-        "mzv1 lossless": private_workdir / f"{sample_name}.lossless.roundtrip.bin",
-        f"mzv1 lossy q={selected_quant}": private_workdir / f"{sample_name}.lossy.q{selected_quant}.roundtrip.bin",
+        "mzarc lossless": private_workdir / f"{sample_name}.lossless.roundtrip.bin",
+        f"mzarc lossy q={selected_quant}": private_workdir / f"{sample_name}.lossy.q{selected_quant}.roundtrip.bin",
     }
 
     # Also pick up any external baseline roundtrip files recorded in fidelity_rows.

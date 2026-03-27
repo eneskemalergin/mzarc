@@ -1,6 +1,6 @@
 const std = @import("std");
 const binary_reader = @import("binary_reader");
-const codec_v1 = @import("codec_v1");
+const codec = @import("codec");
 
 /// Write `bytes` to stdout (fd 1) using the raw Linux syscall.
 /// Errors are silently ignored — if stdout is closed, there is nothing useful
@@ -30,9 +30,9 @@ fn printUsage() void {
     std.debug.print(
         "Usage:\n" ++
             "  mzarc dump-inspect <input.bin>\n" ++
-            "  mzarc encode-v1 <input.bin> -o <output.mzv1> [--lossy] [--intensity-quant <levels>]\n" ++
-            "  mzarc decode-v1 <input.mzv1> -o <output.bin>\n" ++
-            "  mzarc inspect-v1 <input.mzv1> [--json] [--blocks]\n",
+            "  mzarc encode <input.bin> -o <output.mzarc> [--lossy] [--intensity-quant <levels>]\n" ++
+            "  mzarc decode <input.mzarc> -o <output.bin>\n" ++
+            "  mzarc inspect <input.mzarc> [--json] [--blocks]\n",
         .{},
     );
 }
@@ -91,14 +91,14 @@ fn parseOptionalU16(args: []const [:0]const u8, flag: []const u8) !?u16 {
     return null;
 }
 
-fn commandEncodeV1(allocator: std.mem.Allocator, args: []const [:0]const u8) !void {
+fn commandEncode(allocator: std.mem.Allocator, args: []const [:0]const u8) !void {
     if (args.len < 4) return error.InvalidArguments;
 
     const input_path = args[2];
     const output_path = try parseOutputPath(args[3..]);
     const intensity_quant = try parseOptionalU16(args[3..], "--intensity-quant");
 
-    try codec_v1.encodeDumpFile(allocator, input_path, output_path, .{
+    try codec.encodeDumpFile(allocator, input_path, output_path, .{
         .block_options = .{
             .mode = if (hasFlag(args[3..], "--lossy")) .lossy else .lossless,
             .intensity_quant = intensity_quant orelse 16384,
@@ -108,17 +108,17 @@ fn commandEncodeV1(allocator: std.mem.Allocator, args: []const [:0]const u8) !vo
     std.debug.print("encoded: {s} -> {s}\n", .{ input_path, output_path });
 }
 
-fn commandDecodeV1(allocator: std.mem.Allocator, args: []const [:0]const u8) !void {
+fn commandDecode(allocator: std.mem.Allocator, args: []const [:0]const u8) !void {
     if (args.len < 4) return error.InvalidArguments;
 
     const input_path = args[2];
     const output_path = try parseOutputPath(args[3..]);
 
-    try codec_v1.decodeToDumpFile(allocator, input_path, output_path);
+    try codec.decodeToDumpFile(allocator, input_path, output_path);
     std.debug.print("decoded: {s} -> {s}\n", .{ input_path, output_path });
 }
 
-fn printInspectionJson(allocator: std.mem.Allocator, path: []const u8, inspection: codec_v1.Inspection) !void {
+fn printInspectionJson(allocator: std.mem.Allocator, path: []const u8, inspection: codec.Inspection) !void {
     const bytes = inspection.byte_breakdown;
     const json_str = try std.fmt.allocPrint(
         allocator,
@@ -179,7 +179,7 @@ fn printInspectionJson(allocator: std.mem.Allocator, path: []const u8, inspectio
     writeStdout(json_str);
 }
 
-fn printBlockTable(inspection: codec_v1.Inspection) void {
+fn printBlockTable(inspection: codec.Inspection) void {
     std.debug.print("{s:>6}  {s:>5}  {s:>6}  {s:>8}  {s:>6}  {s:>9}  {s:>9}  {s:>9}\n", .{
         "idx", "level", "nspec", "npeaks", "mz_bw", "int_bw", "mz_bytes", "int_bytes",
     });
@@ -199,7 +199,7 @@ fn printBlockTable(inspection: codec_v1.Inspection) void {
     }
 }
 
-fn commandInspectV1(allocator: std.mem.Allocator, args: []const [:0]const u8) !void {
+fn commandInspect(allocator: std.mem.Allocator, args: []const [:0]const u8) !void {
     if (args.len < 3) return error.InvalidArguments;
 
     var path: ?[]const u8 = null;
@@ -219,8 +219,8 @@ fn commandInspectV1(allocator: std.mem.Allocator, args: []const [:0]const u8) !v
     if (path == null) return error.InvalidArguments;
     const input_path = path.?;
 
-    const inspection = try codec_v1.inspectFileAlloc(allocator, input_path);
-    defer codec_v1.freeInspection(allocator, inspection);
+    const inspection = try codec.inspectFileAlloc(allocator, input_path);
+    defer codec.freeInspection(allocator, inspection);
 
     if (json_output) {
         try printInspectionJson(allocator, input_path, inspection);
@@ -274,18 +274,18 @@ pub fn main(init: std.process.Init) !void {
         return;
     }
 
-    if (std.mem.eql(u8, args[1], "encode-v1")) {
-        try commandEncodeV1(allocator, args);
+    if (std.mem.eql(u8, args[1], "encode")) {
+        try commandEncode(allocator, args);
         return;
     }
 
-    if (std.mem.eql(u8, args[1], "decode-v1")) {
-        try commandDecodeV1(allocator, args);
+    if (std.mem.eql(u8, args[1], "decode")) {
+        try commandDecode(allocator, args);
         return;
     }
 
-    if (std.mem.eql(u8, args[1], "inspect-v1")) {
-        try commandInspectV1(allocator, args);
+    if (std.mem.eql(u8, args[1], "inspect")) {
+        try commandInspect(allocator, args);
         return;
     }
 

@@ -51,8 +51,8 @@ def _artifact_palette(artifact_names: list[str]) -> list[str]:
         "bzip2 mzML": "#1e3a8a",
         "lz4 mzML": "#075985",
         "xz mzML": "#312e81",
-        "mzv1 lossless": "#0f766e",
-        "mzv1 lossy": "#d97706",
+        "mzarc lossless": "#0f766e",
+        "mzarc lossy": "#d97706",
         "mzMLb": "#0ea5e9",
         "MS-Numpress in mzML": "#7c3aed",
         "MScompress": "#be185d",
@@ -60,8 +60,8 @@ def _artifact_palette(artifact_names: list[str]) -> list[str]:
     }
     colors: list[str] = []
     for name in artifact_names:
-        if name.startswith("mzv1 lossy q="):
-            colors.append(palette_map["mzv1 lossy"])
+        if name.startswith("mzarc lossy q="):
+            colors.append(palette_map["mzarc lossy"])
         else:
             colors.append(palette_map.get(name, "#475569"))
     return colors

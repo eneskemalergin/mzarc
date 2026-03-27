@@ -1,11 +1,11 @@
 const std = @import("std");
 const binary_reader = @import("binary_reader");
-const block_v1 = @import("block_v1");
+const block = @import("block");
 
 pub const Allocator = std.mem.Allocator;
 const io = std.Io.Threaded.global_single_threaded.io();
 
-pub const magic = "MZV1".*;
+pub const magic = "MZAR".*;
 pub const header_len = 32;
 pub const version_major: u16 = 1;
 pub const version_minor: u16 = 0;
@@ -28,15 +28,15 @@ pub const FileHeader = struct {
 };
 
 pub const EncodeOptions = struct {
-    block_options: block_v1.EncodeOptions = .{},
+    block_options: block.EncodeOptions = .{},
     block_size: u16 = 128,
 };
 
 pub const BlockInfo = struct {
     offset: usize,
     total_bytes: usize,
-    header: block_v1.BlockHeader,
-    byte_breakdown: block_v1.BlockByteBreakdown,
+    header: block.BlockHeader,
+    byte_breakdown: block.BlockByteBreakdown,
 };
 
 pub const FileByteBreakdown = struct {
@@ -81,7 +81,7 @@ fn emptyFileByteBreakdown(order_bytes: usize) FileByteBreakdown {
     };
 }
 
-fn addBlockBytes(total: *FileByteBreakdown, block_bytes: block_v1.BlockByteBreakdown) void {
+fn addBlockBytes(total: *FileByteBreakdown, block_bytes: block.BlockByteBreakdown) void {
     total.block_header_bytes += block_bytes.header_bytes;
     total.scan_id_bytes += block_bytes.scan_id_bytes;
     total.rt_bytes += block_bytes.rt_bytes;
@@ -218,7 +218,7 @@ fn appendFilteredStreamBlocks(
             order_cursor.* += 1;
 
             if (used == block_capacity) {
-                const encoded = try block_v1.encodeBlock(allocator, block_spectra[0..used], options.block_options);
+                const encoded = try block.encodeBlock(allocator, block_spectra[0..used], options.block_options);
                 defer allocator.free(encoded);
                 try file_bytes.appendSlice(allocator, encoded);
                 block_count.* += 1;
@@ -228,7 +228,7 @@ fn appendFilteredStreamBlocks(
     }
 
     if (used != 0) {
-        const encoded = try block_v1.encodeBlock(allocator, block_spectra[0..used], options.block_options);
+        const encoded = try block.encodeBlock(allocator, block_spectra[0..used], options.block_options);
         defer allocator.free(encoded);
         try file_bytes.appendSlice(allocator, encoded);
         block_count.* += 1;
@@ -304,11 +304,11 @@ pub fn inspectAlloc(allocator: Allocator, bytes: []const u8) !Inspection {
 
     for (blocks, 0..) |*block_info, idx| {
         _ = idx;
-        if (bytes.len - offset < block_v1.header_len) return error.UnexpectedEndOfStream;
-        const block_header = try block_v1.parseHeader(bytes[offset .. offset + block_v1.header_len]);
-        const total_bytes = block_v1.header_len + @as(usize, block_header.payload_bytes);
+        if (bytes.len - offset < block.header_len) return error.UnexpectedEndOfStream;
+        const block_header = try block.parseHeader(bytes[offset .. offset + block.header_len]);
+        const total_bytes = block.header_len + @as(usize, block_header.payload_bytes);
         if (bytes.len - offset < total_bytes) return error.UnexpectedEndOfStream;
-        const block_breakdown = try block_v1.inspectBlockByteBreakdown(bytes[offset .. offset + total_bytes]);
+        const block_breakdown = try block.inspectBlockByteBreakdown(bytes[offset .. offset + total_bytes]);
 
         block_info.* = .{
             .offset = offset,
@@ -372,7 +372,7 @@ pub fn decodeFileAlloc(allocator: Allocator, bytes: []const u8) ![]binary_reader
 
     var spectrum_offset: usize = 0;
     for (inspection.blocks) |block_info| {
-        const decoded = try block_v1.decodeBlock(allocator, bytes[block_info.offset .. block_info.offset + block_info.total_bytes]);
+        const decoded = try block.decodeBlock(allocator, bytes[block_info.offset .. block_info.offset + block_info.total_bytes]);
 
         @memcpy(spectra[spectrum_offset .. spectrum_offset + decoded.len], decoded);
         spectrum_offset += decoded.len;

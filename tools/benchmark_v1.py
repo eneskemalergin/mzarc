@@ -239,7 +239,7 @@ def resolve_private_workdir(input_path: Path, override: Path | None) -> Path:
 
 
 def inspect_codec_artifact(zig_bin: Path, artifact_path: Path) -> dict[str, object]:
-    command = [repo_relative_path(zig_bin), "inspect-v1", repo_relative_path(artifact_path), "--json"]
+    command = [repo_relative_path(zig_bin), "inspect", repo_relative_path(artifact_path), "--json"]
     try:
         completed = subprocess.run(
             command,
@@ -347,9 +347,9 @@ def main() -> None:
         "xz_dump_roundtrip": private_workdir / f"{sample_name}.xz.roundtrip.bin",
         "xz_mzml": private_workdir / f"{sample_name}.mzML.xz",
         "xz_mzml_roundtrip": private_workdir / f"{sample_name}.xz_mzml.roundtrip.mzML",
-        "mzv1_lossless": private_workdir / f"{sample_name}.lossless.mzv1",
+        "mzarc_lossless": private_workdir / f"{sample_name}.lossless.mzarc",
         "roundtrip_lossless": private_workdir / f"{sample_name}.lossless.roundtrip.bin",
-        "mzv1_lossy": private_workdir / f"{sample_name}.lossy.q{selected_quant}.mzv1",
+        "mzarc_lossy": private_workdir / f"{sample_name}.lossy.q{selected_quant}.mzarc",
         "roundtrip_lossy": private_workdir / f"{sample_name}.lossy.q{selected_quant}.roundtrip.bin",
     }
 
@@ -387,9 +387,9 @@ def main() -> None:
         zig_bin_rel = repo_relative_path(zig_bin)
         dump_rel = rp("dump")
         mzml_rel = repo_relative_path(input_path)
-        lossless_path_rel = rp("mzv1_lossless")
+        lossless_path_rel = rp("mzarc_lossless")
         lossless_roundtrip_rel = rp("roundtrip_lossless")
-        lossy_path_rel = rp("mzv1_lossy")
+        lossy_path_rel = rp("mzarc_lossy")
         lossy_roundtrip_rel = rp("roundtrip_lossy")
 
         # --- dump-level compressors (5 tools, encode+decode each) ---
@@ -457,15 +457,15 @@ def main() -> None:
         progress.step("record gzip/zstd/bzip2/lz4/xz mzML sizes")
 
         lossless_result = benchmark_roundtrip(
-            artifact="mzv1 lossless",
-            fidelity_name="mzv1_lossless",
-            encode_name="dump -> mzv1 lossless",
-            encode_command=[zig_bin_rel, "encode-v1", dump_rel, "-o", lossless_path_rel],
-            encode_progress="dump -> mzv1 lossless",
-            encode_path=paths["mzv1_lossless"],
-            decode_name="mzv1 lossless -> dump",
-            decode_command=[zig_bin_rel, "decode-v1", lossless_path_rel, "-o", lossless_roundtrip_rel],
-            decode_progress="mzv1 lossless -> dump",
+            artifact="mzarc lossless",
+            fidelity_name="mzarc_lossless",
+            encode_name="dump -> mzarc lossless",
+            encode_command=[zig_bin_rel, "encode", dump_rel, "-o", lossless_path_rel],
+            encode_progress="dump -> mzarc lossless",
+            encode_path=paths["mzarc_lossless"],
+            decode_name="mzarc lossless -> dump",
+            decode_command=[zig_bin_rel, "decode", lossless_path_rel, "-o", lossless_roundtrip_rel],
+            decode_progress="mzarc lossless -> dump",
             decode_path=paths["roundtrip_lossless"],
             reference_dump=reference_dump,
             repeats=args.repeats,
@@ -476,15 +476,15 @@ def main() -> None:
             decode_writes_file=True,
         )
         lossy_result = benchmark_roundtrip(
-            artifact=f"mzv1 lossy q={selected_quant}",
-            fidelity_name="mzv1_lossy",
-            encode_name=f"dump -> mzv1 lossy q={selected_quant}",
-            encode_command=[zig_bin_rel, "encode-v1", dump_rel, "-o", lossy_path_rel, "--lossy", "--intensity-quant", str(selected_quant)],
-            encode_progress=f"dump -> mzv1 lossy q={selected_quant}",
-            encode_path=paths["mzv1_lossy"],
-            decode_name=f"mzv1 lossy q={selected_quant} -> dump",
-            decode_command=[zig_bin_rel, "decode-v1", lossy_path_rel, "-o", lossy_roundtrip_rel],
-            decode_progress=f"mzv1 lossy q={selected_quant} -> dump",
+            artifact=f"mzarc lossy q={selected_quant}",
+            fidelity_name="mzarc_lossy",
+            encode_name=f"dump -> mzarc lossy q={selected_quant}",
+            encode_command=[zig_bin_rel, "encode", dump_rel, "-o", lossy_path_rel, "--lossy", "--intensity-quant", str(selected_quant)],
+            encode_progress=f"dump -> mzarc lossy q={selected_quant}",
+            encode_path=paths["mzarc_lossy"],
+            decode_name=f"mzarc lossy q={selected_quant} -> dump",
+            decode_command=[zig_bin_rel, "decode", lossy_path_rel, "-o", lossy_roundtrip_rel],
+            decode_progress=f"mzarc lossy q={selected_quant} -> dump",
             decode_path=paths["roundtrip_lossy"],
             reference_dump=reference_dump,
             repeats=args.repeats,
@@ -498,16 +498,16 @@ def main() -> None:
         lossless_fidelity = lossless_result["fidelity"]
         lossy_fidelity = lossy_result["fidelity"]
 
-        lossless_layout = inspect_codec_artifact(zig_bin, paths["mzv1_lossless"])
-        progress.step("inspect mzv1 lossless layout")
-        lossy_layout = inspect_codec_artifact(zig_bin, paths["mzv1_lossy"])
-        progress.step("inspect mzv1 lossy layout")
+        lossless_layout = inspect_codec_artifact(zig_bin, paths["mzarc_lossless"])
+        progress.step("inspect mzarc lossless layout")
+        lossy_layout = inspect_codec_artifact(zig_bin, paths["mzarc_lossy"])
+        progress.step("inspect mzarc lossy layout")
 
         sizes = {
             "mzML": {"path": repo_relative_path(input_path), "bytes": mzml_bytes},
             "dump": {"path": dump_rel, "bytes": dump_bytes},
-            "mzv1 lossless": {"path": lossless_path_rel, "bytes": paths["mzv1_lossless"].stat().st_size},
-            "mzv1 lossy": {"path": lossy_path_rel, "bytes": paths["mzv1_lossy"].stat().st_size},
+            "mzarc lossless": {"path": lossless_path_rel, "bytes": paths["mzarc_lossless"].stat().st_size},
+            "mzarc lossy": {"path": lossy_path_rel, "bytes": paths["mzarc_lossy"].stat().st_size},
             "gzip dump": {"path": rp("gzip_dump"), "bytes": paths["gzip_dump"].stat().st_size},
             "zstd dump": {"path": rp("zstd_dump"), "bytes": paths["zstd_dump"].stat().st_size},
             "gzip mzML": {"path": rp("gzip_mzml"), "bytes": paths["gzip_mzml"].stat().st_size},
@@ -542,19 +542,19 @@ def main() -> None:
         lossy_sweep_rows: list[dict[str, object]] = []
         selected_sweep_row = lossy_sweep_row(
             quant=selected_quant,
-            encoded_path=paths["mzv1_lossy"],
+            encoded_path=paths["mzarc_lossy"],
             encoded_rel=lossy_path_rel,
             fidelity=lossy_fidelity,
         )
         lossy_sweep_rows.append(selected_sweep_row)
 
         for quant in extra_sweep_levels:
-            encoded_path = private_workdir / f"{sample_name}.lossy.q{quant}.mzv1"
+            encoded_path = private_workdir / f"{sample_name}.lossy.q{quant}.mzarc"
             decoded_path = private_workdir / f"{sample_name}.lossy.q{quant}.roundtrip.bin"
             encoded_rel = repo_relative_path(encoded_path)
             decoded_rel = repo_relative_path(decoded_path)
-            encode_cmd = [zig_bin_rel, "encode-v1", dump_rel, "-o", encoded_rel, "--lossy", "--intensity-quant", str(quant)]
-            decode_cmd = [zig_bin_rel, "decode-v1", encoded_rel, "-o", decoded_rel]
+            encode_cmd = [zig_bin_rel, "encode", dump_rel, "-o", encoded_rel, "--lossy", "--intensity-quant", str(quant)]
+            decode_cmd = [zig_bin_rel, "decode", encoded_rel, "-o", decoded_rel]
 
             run_timed_command(
                 f"lossy q={quant} encode artifact",
@@ -572,7 +572,7 @@ def main() -> None:
                 progress_callback=progress.callback(f"lossy q={quant} decode"),
             )
 
-            fidelity = asdict(compare_dumps(f"mzv1_lossy_q{quant}", reference_dump, read_dump(decoded_path)))
+            fidelity = asdict(compare_dumps(f"mzarc_lossy_q{quant}", reference_dump, read_dump(decoded_path)))
             lossy_sweep_rows.append(
                 lossy_sweep_row(
                     quant=quant,
@@ -588,8 +588,8 @@ def main() -> None:
             {"artifact": f"{_c} dump", "data": dump_results[_c]["fidelity"]}
             for _c in ["gzip", "zstd", "bzip2", "lz4", "xz"]
         ] + [
-            {"artifact": "mzv1 lossless", "data": lossless_fidelity},
-            {"artifact": f"mzv1 lossy q={selected_quant}", "data": lossy_fidelity},
+            {"artifact": "mzarc lossless", "data": lossless_fidelity},
+            {"artifact": f"mzarc lossy q={selected_quant}", "data": lossy_fidelity},
         ]
         for item in external_results["records"]:
             if item["fidelity"] is not None:
@@ -660,13 +660,13 @@ def main() -> None:
             "dataset": dataset,
             "sizes": sizes,
             "codec_byte_breakdown": {
-                "mzv1 lossless": lossless_layout["byte_breakdown"],
-                f"mzv1 lossy q={selected_quant}": lossy_layout["byte_breakdown"],
+                "mzarc lossless": lossless_layout["byte_breakdown"],
+                f"mzarc lossy q={selected_quant}": lossy_layout["byte_breakdown"],
             },
             "timings": serialized_timings,
             "fidelity": {
-                "mzv1_lossless": lossless_fidelity,
-                "mzv1_lossy": lossy_fidelity,
+                "mzarc_lossless": lossless_fidelity,
+                "mzarc_lossy": lossy_fidelity,
             },
             "fidelity_rows": fidelity_rows,
             "fidelity_metrics": fidelity_metric_rows,

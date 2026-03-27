@@ -21,8 +21,8 @@ def comparison_artifact_order(selected_quant: int, external_baselines: list[dict
         "bzip2 mzML",
         "xz dump",
         "xz mzML",
-        "mzv1 lossless",
-        f"mzv1 lossy q={selected_quant}",
+        "mzarc lossless",
+        f"mzarc lossy q={selected_quant}",
     ]
     for item in external_baselines:
         name = str(item["name"])
@@ -112,10 +112,10 @@ def build_performance_rows(
         ("lz4 mzML", "decompression", "lz4 mzML -> mzML", "lz4 mzML"),
         ("xz mzML", "compression", "mzML -> xz mzML", "mzML"),
         ("xz mzML", "decompression", "xz mzML -> mzML", "xz mzML"),
-        ("mzv1 lossless", "compression", "dump -> mzv1 lossless", "dump"),
-        ("mzv1 lossless", "decompression", "mzv1 lossless -> dump", "mzv1 lossless"),
-        (f"mzv1 lossy q={selected_quant}", "compression", f"dump -> mzv1 lossy q={selected_quant}", "dump"),
-        (f"mzv1 lossy q={selected_quant}", "decompression", f"mzv1 lossy q={selected_quant} -> dump", f"mzv1 lossy q={selected_quant}"),
+        ("mzarc lossless", "compression", "dump -> mzarc lossless", "dump"),
+        ("mzarc lossless", "decompression", "mzarc lossless -> dump", "mzarc lossless"),
+        (f"mzarc lossy q={selected_quant}", "compression", f"dump -> mzarc lossy q={selected_quant}", "dump"),
+        (f"mzarc lossy q={selected_quant}", "decompression", f"mzarc lossy q={selected_quant} -> dump", f"mzarc lossy q={selected_quant}"),
     ]
     for artifact, direction, operation, source_format in internal_rows:
         add_row(artifact, direction, operation, source_format=source_format, status="measured")
@@ -209,8 +209,8 @@ def build_fidelity_metric_rows(
 def _search_impact_aliases(artifact: str) -> list[str]:
     aliases = [artifact]
     lower = artifact.lower()
-    if lower.startswith("mzv1 lossy q="):
-        aliases.append("mzv1 lossy")
+    if lower.startswith("mzarc lossy q="):
+        aliases.append("mzarc lossy")
     if artifact == "MS-Numpress in mzML":
         aliases.extend(["MS-Numpress", "ms-numpress", "numpress"])
     if artifact == "mzMLb":

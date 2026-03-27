@@ -111,7 +111,7 @@ def render_markdown(report: dict) -> str:
         "The flat dump is smaller than mzML because it strips almost all interchange overhead: XML structure, controlled-vocabulary markup, base64 wrapping, and general-purpose metadata that this prototype does not need for codec bring-up. That makes the dump a useful internal floor, not a format competitor by itself."
     )
     paragraph(
-        "This benchmark focuses on two things that matter right now: whether the current `.mzv1` path buys meaningful size reduction over the interchange format, and whether encode and decode stay fast and stable across repeated runs."
+        "This benchmark focuses on two things that matter right now: whether the current `.mzarc` path buys meaningful size reduction over the interchange format, and whether encode and decode stay fast and stable across repeated runs."
     )
 
     paragraph(
@@ -147,7 +147,7 @@ def render_markdown(report: dict) -> str:
         ["left", "right", "right", "right", "right"],
     )
     paragraph(
-        "Lossless `.mzv1` is already materially smaller than mzML on this sample, and it slightly beats `gzip` on the dump baseline while still trailing `zstd` on the dump. The selected lossy mode gives a controlled next step down in size without the catastrophic saturation behavior that the earlier intensity quantizer had."
+        "Lossless `.mzarc` is already materially smaller than mzML on this sample, and it slightly beats `gzip` on the dump baseline while still trailing `zstd` on the dump. The selected lossy mode gives a controlled next step down in size without the catastrophic saturation behavior that the earlier intensity quantizer had."
     )
 
     if codec_byte_breakdown:
@@ -168,7 +168,7 @@ def render_markdown(report: dict) -> str:
             ["left", "right", "right", "right", "right", "right"],
         )
 
-        lossless_bytes = codec_byte_breakdown.get("mzv1 lossless")
+        lossless_bytes = codec_byte_breakdown.get("mzarc lossless")
         if lossless_bytes is not None:
             structural_bytes = lossless_bytes["file_header_bytes"] + lossless_bytes["global_order_bytes"] + lossless_bytes["block_header_bytes"]
             spectrum_metadata_bytes = lossless_bytes["scan_id_bytes"] + lossless_bytes["rt_bytes"] + lossless_bytes["precursor_bytes"] + lossless_bytes["peak_count_bytes"]
@@ -294,28 +294,28 @@ def render_markdown(report: dict) -> str:
         ["left", "right", "right", "right", "right", "right", "right", "right", "right", "right", "right", "right"],
     )
     exact_artifacts = [f"`{item['artifact']}`" for item in fidelity_metrics if item["status"] == "measured" and float(item.get("max_abs_mz_error") or 0.0) == 0.0 and float(item.get("max_abs_intensity_error") or 0.0) == 0.0]
-    lossless_row = next((row["data"] for row in fidelity_rows if row["artifact"] == "mzv1 lossless"), None)
-    lossy_row = next((row["data"] for row in fidelity_rows if str(row["artifact"]).startswith("mzv1 lossy q=")), None)
+    lossless_row = next((row["data"] for row in fidelity_rows if row["artifact"] == "mzarc lossless"), None)
+    lossy_row = next((row["data"] for row in fidelity_rows if str(row["artifact"]).startswith("mzarc lossy q=")), None)
 
-    lossless_summary = "`mzv1 lossless` was not included in this run."
+    lossless_summary = "`mzarc lossless` was not included in this run."
     if lossless_row is not None:
         lossless_exact = (
             float(lossless_row["mz_abs"]["max"]) == 0.0 and
             float(lossless_row["intensity_abs"]["max"]) == 0.0
         )
         if lossless_exact and bool(lossless_row["global_order_preserved"]):
-            lossless_summary = "`mzv1 lossless` round-trips exactly, including m/z values and original scan order."
+            lossless_summary = "`mzarc lossless` round-trips exactly, including m/z values and original scan order."
         elif lossless_exact:
-            lossless_summary = "`mzv1 lossless` is numerically exact but still does not preserve original global scan order."
+            lossless_summary = "`mzarc lossless` is numerically exact but still does not preserve original global scan order."
         else:
-            lossless_summary = "`mzv1 lossless` still carries measurable round-trip error and needs more work before it can be treated as exact."
+            lossless_summary = "`mzarc lossless` still carries measurable round-trip error and needs more work before it can be treated as exact."
 
-    lossy_summary = "`mzv1 lossy` was not included in this run."
+    lossy_summary = "`mzarc lossy` was not included in this run."
     if lossy_row is not None:
         lossy_summary = (
-            "`mzv1 lossy` preserves original scan order while keeping m/z and intensity error within the current quantization bounds."
+            "`mzarc lossy` preserves original scan order while keeping m/z and intensity error within the current quantization bounds."
             if bool(lossy_row["global_order_preserved"])
-            else "`mzv1 lossy` keeps m/z and intensity error within the current quantization bounds, but it still does not preserve original global scan order."
+            else "`mzarc lossy` keeps m/z and intensity error within the current quantization bounds, but it still does not preserve original global scan order."
         )
 
     exact_sentence = (

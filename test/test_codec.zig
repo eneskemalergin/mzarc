@@ -1,6 +1,6 @@
 const std = @import("std");
 const binary_reader = @import("binary_reader");
-const codec_v1 = @import("codec_v1");
+const codec = @import("codec");
 
 /// Assert every decoded m/z is within 0.001 ppm of the original.
 fn checkMzPpm(expected_mz: []const f64, actual_mz: []const f64) !void {
@@ -36,7 +36,7 @@ const SyntheticCorpus = struct {
     }
 };
 
-fn expectByteBreakdownSums(inspection: codec_v1.Inspection, encoded_len: usize) !void {
+fn expectByteBreakdownSums(inspection: codec.Inspection, encoded_len: usize) !void {
     const bytes = inspection.byte_breakdown;
     const computed_total = bytes.file_header_bytes + bytes.global_order_bytes + bytes.block_header_bytes + bytes.scan_id_bytes + bytes.rt_bytes + bytes.precursor_bytes + bytes.peak_count_bytes + bytes.mz_metadata_bytes + bytes.mz_payload_bytes + bytes.intensity_metadata_bytes + bytes.intensity_payload_bytes;
 
@@ -155,7 +155,7 @@ fn makePseudoRandomCorpus(allocator: std.mem.Allocator, seed: u64, spectrum_coun
     return .{ .allocator = allocator, .spectra = spectra };
 }
 
-test "codec_v1 lossless round-trip preserves original global order" {
+test "codec lossless round-trip preserves original global order" {
     // All m/z values are f32-exact so the round-trip is bit-exact.
     var mz_ms2_a = [_]f64{ 400.0, 401.0 };
     var intensity_ms2_a = [_]f32{ 10.0, 11.0 };
@@ -170,19 +170,19 @@ test "codec_v1 lossless round-trip preserves original global order" {
         .{ .scan_id = 21, .rt_seconds = 2.2, .ms_level = 2, .precursor_mz = 600.2, .mz = mz_ms2_b[0..], .intensity = intensity_ms2_b[0..] },
     };
 
-    const encoded = try codec_v1.encodeFileAlloc(std.testing.allocator, &input, .{ .block_options = .{ .mode = .lossless }, .block_size = 2 });
+    const encoded = try codec.encodeFileAlloc(std.testing.allocator, &input, .{ .block_options = .{ .mode = .lossless }, .block_size = 2 });
     defer std.testing.allocator.free(encoded);
 
-    const inspection = try codec_v1.inspectAlloc(std.testing.allocator, encoded);
-    defer codec_v1.freeInspection(std.testing.allocator, inspection);
+    const inspection = try codec.inspectAlloc(std.testing.allocator, encoded);
+    defer codec.freeInspection(std.testing.allocator, inspection);
 
     try std.testing.expectEqual(@as(u32, 3), inspection.header.spectrum_count);
     try std.testing.expectEqual(@as(u32, 2), inspection.header.block_count);
-    try std.testing.expect((inspection.header.flags & codec_v1.flag_has_global_order) != 0);
+    try std.testing.expect((inspection.header.flags & codec.flag_has_global_order) != 0);
     try std.testing.expectEqual(@as(usize, 1), inspection.ms1_block_count);
     try std.testing.expectEqual(@as(usize, 1), inspection.ms2_block_count);
 
-    const decoded = try codec_v1.decodeFileAlloc(std.testing.allocator, encoded);
+    const decoded = try codec.decodeFileAlloc(std.testing.allocator, encoded);
     defer binary_reader.freeSpectra(std.testing.allocator, decoded);
 
     try std.testing.expectEqual(@as(usize, 3), decoded.len);
@@ -202,7 +202,7 @@ test "codec_v1 lossless round-trip preserves original global order" {
     try expectLosslessRoundTrip(&input, decoded);
 }
 
-test "codec_v1 lossless round-trip preserves order and spectra across many interleaved blocks" {
+test "codec lossless round-trip preserves order and spectra across many interleaved blocks" {
     const empty_mz = [_]f64{};
     const empty_intensity = [_]f32{};
     // All m/z values are f32-exact so the round-trip is bit-exact.
@@ -230,18 +230,18 @@ test "codec_v1 lossless round-trip preserves order and spectra across many inter
         .{ .scan_id = 13, .rt_seconds = 1.3, .ms_level = 1, .precursor_mz = 0.0, .mz = mz_f[0..], .intensity = intensity_f[0..] },
     };
 
-    const encoded = try codec_v1.encodeFileAlloc(std.testing.allocator, &input, .{ .block_options = .{ .mode = .lossless }, .block_size = 2 });
+    const encoded = try codec.encodeFileAlloc(std.testing.allocator, &input, .{ .block_options = .{ .mode = .lossless }, .block_size = 2 });
     defer std.testing.allocator.free(encoded);
 
-    const inspection = try codec_v1.inspectAlloc(std.testing.allocator, encoded);
-    defer codec_v1.freeInspection(std.testing.allocator, inspection);
+    const inspection = try codec.inspectAlloc(std.testing.allocator, encoded);
+    defer codec.freeInspection(std.testing.allocator, inspection);
 
     try std.testing.expectEqual(@as(u32, 8), inspection.header.spectrum_count);
     try std.testing.expectEqual(@as(u32, 4), inspection.header.block_count);
     try std.testing.expectEqual(@as(usize, 2), inspection.ms1_block_count);
     try std.testing.expectEqual(@as(usize, 2), inspection.ms2_block_count);
 
-    const decoded = try codec_v1.decodeFileAlloc(std.testing.allocator, encoded);
+    const decoded = try codec.decodeFileAlloc(std.testing.allocator, encoded);
     defer binary_reader.freeSpectra(std.testing.allocator, decoded);
 
     try std.testing.expectEqual(@as(usize, input.len), decoded.len);
@@ -252,7 +252,7 @@ test "codec_v1 lossless round-trip preserves order and spectra across many inter
     try expectLosslessRoundTrip(&input, decoded);
 }
 
-test "codec_v1 decode rejects invalid global order tables" {
+test "codec decode rejects invalid global order tables" {
     var mz_ms2 = [_]f64{400.00000125};
     var intensity_ms2 = [_]f32{10.0};
     var mz_ms1 = [_]f64{100.00000125};
@@ -263,53 +263,53 @@ test "codec_v1 decode rejects invalid global order tables" {
         .{ .scan_id = 10, .rt_seconds = 1.0, .ms_level = 1, .precursor_mz = 0.0, .mz = mz_ms1[0..], .intensity = intensity_ms1[0..] },
     };
 
-    const encoded = try codec_v1.encodeFileAlloc(std.testing.allocator, &input, .{ .block_options = .{ .mode = .lossless }, .block_size = 1 });
+    const encoded = try codec.encodeFileAlloc(std.testing.allocator, &input, .{ .block_options = .{ .mode = .lossless }, .block_size = 1 });
     defer std.testing.allocator.free(encoded);
 
     const tampered = try std.testing.allocator.dupe(u8, encoded);
     defer std.testing.allocator.free(tampered);
 
-    const order_offset = codec_v1.header_len;
+    const order_offset = codec.header_len;
     std.mem.writeInt(u32, tampered[order_offset..][0..@sizeOf(u32)], 0, .little);
     std.mem.writeInt(u32, tampered[order_offset + @sizeOf(u32) ..][0..@sizeOf(u32)], 0, .little);
 
-    try std.testing.expectError(error.InvalidOrderTable, codec_v1.decodeFileAlloc(std.testing.allocator, tampered));
+    try std.testing.expectError(error.InvalidOrderTable, codec.decodeFileAlloc(std.testing.allocator, tampered));
 }
 
-test "codec_v1 inspect rejects invalid magic, unsupported version, trailing data, and unsupported ms level" {
+test "codec inspect rejects invalid magic, unsupported version, trailing data, and unsupported ms level" {
     var mz = [_]f64{ 400.00000125, 401.00000375 };
     var intensity = [_]f32{ 10.0, 11.0 };
     const input = [_]binary_reader.RawSpectrum{
         .{ .scan_id = 20, .rt_seconds = 2.0, .ms_level = 2, .precursor_mz = 600.1, .mz = mz[0..], .intensity = intensity[0..] },
     };
 
-    const encoded = try codec_v1.encodeFileAlloc(std.testing.allocator, &input, .{ .block_options = .{ .mode = .lossless }, .block_size = 1 });
+    const encoded = try codec.encodeFileAlloc(std.testing.allocator, &input, .{ .block_options = .{ .mode = .lossless }, .block_size = 1 });
     defer std.testing.allocator.free(encoded);
 
     const bad_magic = try std.testing.allocator.dupe(u8, encoded);
     defer std.testing.allocator.free(bad_magic);
     bad_magic[0] = 'B';
-    try std.testing.expectError(error.InvalidMagic, codec_v1.inspectAlloc(std.testing.allocator, bad_magic));
+    try std.testing.expectError(error.InvalidMagic, codec.inspectAlloc(std.testing.allocator, bad_magic));
 
     const bad_version = try std.testing.allocator.dupe(u8, encoded);
     defer std.testing.allocator.free(bad_version);
-    std.mem.writeInt(u16, bad_version[4..6], codec_v1.version_major + 1, .little);
-    try std.testing.expectError(error.UnsupportedVersion, codec_v1.inspectAlloc(std.testing.allocator, bad_version));
+    std.mem.writeInt(u16, bad_version[4..6], codec.version_major + 1, .little);
+    try std.testing.expectError(error.UnsupportedVersion, codec.inspectAlloc(std.testing.allocator, bad_version));
 
     const with_trailing = try std.testing.allocator.alloc(u8, encoded.len + 1);
     defer std.testing.allocator.free(with_trailing);
     @memcpy(with_trailing[0..encoded.len], encoded);
     with_trailing[encoded.len] = 0;
-    try std.testing.expectError(error.TrailingFileData, codec_v1.inspectAlloc(std.testing.allocator, with_trailing));
+    try std.testing.expectError(error.TrailingFileData, codec.inspectAlloc(std.testing.allocator, with_trailing));
 
     const bad_ms_level = try std.testing.allocator.dupe(u8, encoded);
     defer std.testing.allocator.free(bad_ms_level);
-    const block_offset = codec_v1.header_len + @sizeOf(u32) * input.len;
+    const block_offset = codec.header_len + @sizeOf(u32) * input.len;
     bad_ms_level[block_offset + 2] = 3;
-    try std.testing.expectError(error.UnsupportedMsLevel, codec_v1.inspectAlloc(std.testing.allocator, bad_ms_level));
+    try std.testing.expectError(error.UnsupportedMsLevel, codec.inspectAlloc(std.testing.allocator, bad_ms_level));
 }
 
-test "codec_v1 inspect rejects truncated order tables and truncated blocks" {
+test "codec inspect rejects truncated order tables and truncated blocks" {
     var mz_ms2 = [_]f64{ 400.00000125, 401.00000375 };
     var intensity_ms2 = [_]f32{ 10.0, 11.0 };
     var mz_ms1 = [_]f64{100.00000125};
@@ -319,60 +319,60 @@ test "codec_v1 inspect rejects truncated order tables and truncated blocks" {
         .{ .scan_id = 10, .rt_seconds = 1.0, .ms_level = 1, .precursor_mz = 0.0, .mz = mz_ms1[0..], .intensity = intensity_ms1[0..] },
     };
 
-    const encoded = try codec_v1.encodeFileAlloc(std.testing.allocator, &input, .{ .block_options = .{ .mode = .lossless }, .block_size = 1 });
+    const encoded = try codec.encodeFileAlloc(std.testing.allocator, &input, .{ .block_options = .{ .mode = .lossless }, .block_size = 1 });
     defer std.testing.allocator.free(encoded);
 
     try std.testing.expectError(
         error.UnexpectedEndOfStream,
-        codec_v1.inspectAlloc(std.testing.allocator, encoded[0 .. codec_v1.header_len + @sizeOf(u32) * input.len - 1]),
+        codec.inspectAlloc(std.testing.allocator, encoded[0 .. codec.header_len + @sizeOf(u32) * input.len - 1]),
     );
 
     try std.testing.expectError(
         error.UnexpectedEndOfStream,
-        codec_v1.inspectAlloc(std.testing.allocator, encoded[0 .. encoded.len - 1]),
+        codec.inspectAlloc(std.testing.allocator, encoded[0 .. encoded.len - 1]),
     );
 }
 
-test "codec_v1 lossless synthetic corpus round-trips with sub-ppm m/z across many spectra" {
+test "codec lossless synthetic corpus round-trips with sub-ppm m/z across many spectra" {
     var corpus = try makeSyntheticCorpus(std.testing.allocator, 24);
     defer corpus.deinit();
 
-    const encoded = try codec_v1.encodeFileAlloc(std.testing.allocator, corpus.spectra, .{ .block_options = .{ .mode = .lossless }, .block_size = 3 });
+    const encoded = try codec.encodeFileAlloc(std.testing.allocator, corpus.spectra, .{ .block_options = .{ .mode = .lossless }, .block_size = 3 });
     defer std.testing.allocator.free(encoded);
 
-    const decoded = try codec_v1.decodeFileAlloc(std.testing.allocator, encoded);
+    const decoded = try codec.decodeFileAlloc(std.testing.allocator, encoded);
     defer binary_reader.freeSpectra(std.testing.allocator, decoded);
 
     try std.testing.expectEqual(corpus.spectra.len, decoded.len);
     try expectLosslessRoundTrip(corpus.spectra, decoded);
 }
 
-test "codec_v1 lossless pseudo-random corpus round-trips with sub-ppm m/z and accounting matches bytes" {
+test "codec lossless pseudo-random corpus round-trips with sub-ppm m/z and accounting matches bytes" {
     var corpus = try makePseudoRandomCorpus(std.testing.allocator, 0x5eed_c0de, 257, 33);
     defer corpus.deinit();
 
-    const encoded = try codec_v1.encodeFileAlloc(std.testing.allocator, corpus.spectra, .{ .block_options = .{ .mode = .lossless }, .block_size = 7 });
+    const encoded = try codec.encodeFileAlloc(std.testing.allocator, corpus.spectra, .{ .block_options = .{ .mode = .lossless }, .block_size = 7 });
     defer std.testing.allocator.free(encoded);
 
-    const inspection = try codec_v1.inspectAlloc(std.testing.allocator, encoded);
-    defer codec_v1.freeInspection(std.testing.allocator, inspection);
+    const inspection = try codec.inspectAlloc(std.testing.allocator, encoded);
+    defer codec.freeInspection(std.testing.allocator, inspection);
     try expectByteBreakdownSums(inspection, encoded.len);
 
-    const decoded = try codec_v1.decodeFileAlloc(std.testing.allocator, encoded);
+    const decoded = try codec.decodeFileAlloc(std.testing.allocator, encoded);
     defer binary_reader.freeSpectra(std.testing.allocator, decoded);
 
     try std.testing.expectEqual(corpus.spectra.len, decoded.len);
     try expectLosslessRoundTrip(corpus.spectra, decoded);
 }
 
-test "codec_v1 lossy synthetic corpus preserves order while bounding m/z and intensity error" {
+test "codec lossy synthetic corpus preserves order while bounding m/z and intensity error" {
     var corpus = try makeSyntheticCorpus(std.testing.allocator, 18);
     defer corpus.deinit();
 
-    const encoded = try codec_v1.encodeFileAlloc(std.testing.allocator, corpus.spectra, .{ .block_options = .{ .mode = .lossy, .intensity_quant = 4096 }, .block_size = 4 });
+    const encoded = try codec.encodeFileAlloc(std.testing.allocator, corpus.spectra, .{ .block_options = .{ .mode = .lossy, .intensity_quant = 4096 }, .block_size = 4 });
     defer std.testing.allocator.free(encoded);
 
-    const decoded = try codec_v1.decodeFileAlloc(std.testing.allocator, encoded);
+    const decoded = try codec.decodeFileAlloc(std.testing.allocator, encoded);
     defer binary_reader.freeSpectra(std.testing.allocator, decoded);
 
     try std.testing.expectEqual(corpus.spectra.len, decoded.len);
@@ -397,20 +397,20 @@ test "codec_v1 lossy synthetic corpus preserves order while bounding m/z and int
     }
 }
 
-test "codec_v1 lossy pseudo-random corpus keeps order, bounds error, and reports packed intensity bytes" {
+test "codec lossy pseudo-random corpus keeps order, bounds error, and reports packed intensity bytes" {
     var corpus = try makePseudoRandomCorpus(std.testing.allocator, 0x0dd_cafe, 193, 29);
     defer corpus.deinit();
 
-    const encoded = try codec_v1.encodeFileAlloc(std.testing.allocator, corpus.spectra, .{ .block_options = .{ .mode = .lossy, .intensity_quant = 4096 }, .block_size = 9 });
+    const encoded = try codec.encodeFileAlloc(std.testing.allocator, corpus.spectra, .{ .block_options = .{ .mode = .lossy, .intensity_quant = 4096 }, .block_size = 9 });
     defer std.testing.allocator.free(encoded);
 
-    const inspection = try codec_v1.inspectAlloc(std.testing.allocator, encoded);
-    defer codec_v1.freeInspection(std.testing.allocator, inspection);
+    const inspection = try codec.inspectAlloc(std.testing.allocator, encoded);
+    defer codec.freeInspection(std.testing.allocator, inspection);
     try expectByteBreakdownSums(inspection, encoded.len);
     try std.testing.expect(inspection.byte_breakdown.intensity_metadata_bytes > 0);
     try std.testing.expect(inspection.byte_breakdown.intensity_payload_bytes > 0);
 
-    const decoded = try codec_v1.decodeFileAlloc(std.testing.allocator, encoded);
+    const decoded = try codec.decodeFileAlloc(std.testing.allocator, encoded);
     defer binary_reader.freeSpectra(std.testing.allocator, decoded);
 
     const mz_tolerance = 1.1 / 500_000.0;
@@ -435,7 +435,7 @@ test "codec_v1 lossy pseudo-random corpus keeps order, bounds error, and reports
     }
 }
 
-test "codec_v1 lossy round-trip keeps counts and flags consistent" {
+test "codec lossy round-trip keeps counts and flags consistent" {
     var mz_ms1 = [_]f64{ 100.0, 100.5, 101.25 };
     var intensity_ms1 = [_]f32{ 0.5, 10.0, 100.0 };
     var mz_ms2 = [_]f64{ 400.0, 401.0 };
@@ -446,15 +446,15 @@ test "codec_v1 lossy round-trip keeps counts and flags consistent" {
         .{ .scan_id = 2, .rt_seconds = 2.0, .ms_level = 2, .precursor_mz = 500.0, .mz = mz_ms2[0..], .intensity = intensity_ms2[0..] },
     };
 
-    const encoded = try codec_v1.encodeFileAlloc(std.testing.allocator, &input, .{ .block_options = .{ .mode = .lossy, .intensity_quant = 4096 }, .block_size = 128 });
+    const encoded = try codec.encodeFileAlloc(std.testing.allocator, &input, .{ .block_options = .{ .mode = .lossy, .intensity_quant = 4096 }, .block_size = 128 });
     defer std.testing.allocator.free(encoded);
 
-    const inspection = try codec_v1.inspectAlloc(std.testing.allocator, encoded);
-    defer codec_v1.freeInspection(std.testing.allocator, inspection);
+    const inspection = try codec.inspectAlloc(std.testing.allocator, encoded);
+    defer codec.freeInspection(std.testing.allocator, inspection);
 
     try std.testing.expectEqual(@as(u16, 128), inspection.header.block_size);
-    try std.testing.expect((inspection.header.flags & codec_v1.flag_lossless) == 0);
-    try std.testing.expect((inspection.header.flags & codec_v1.flag_contains_ms1) != 0);
-    try std.testing.expect((inspection.header.flags & codec_v1.flag_contains_ms2) != 0);
+    try std.testing.expect((inspection.header.flags & codec.flag_lossless) == 0);
+    try std.testing.expect((inspection.header.flags & codec.flag_contains_ms1) != 0);
+    try std.testing.expect((inspection.header.flags & codec.flag_contains_ms2) != 0);
     try std.testing.expectEqual(@as(u64, 5), inspection.header.total_peaks);
 }
