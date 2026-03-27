@@ -9,7 +9,7 @@ fn writeStdout(bytes: []const u8) void {
     var remaining = bytes;
     while (remaining.len > 0) {
         const written = std.os.linux.write(1, remaining.ptr, remaining.len);
-        if (written <= 0) break;
+        if (@as(isize, @bitCast(written)) <= 0) break;
         remaining = remaining[@intCast(written)..];
     }
 }

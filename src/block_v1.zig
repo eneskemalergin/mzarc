@@ -696,12 +696,10 @@ pub fn inspectBlockByteBreakdown(block_bytes: []const u8) !BlockByteBreakdown {
     if (payload.len - offset < precursor_bytes + peak_count_bytes) return error.UnexpectedEndOfStream;
 
     var computed_total_peaks: usize = 0;
-    var nonempty_spectra: usize = 0;
     for (0..spectrum_count) |idx| {
         const start = offset + precursor_bytes + (idx * @sizeOf(u32));
         const peak_count = readIntLe(u32, payload[start .. start + @sizeOf(u32)]);
         computed_total_peaks += peak_count;
-        if (peak_count != 0) nonempty_spectra += 1;
     }
     if (computed_total_peaks != total_peaks) return error.InvalidPeakCount;
     offset += precursor_bytes + peak_count_bytes;

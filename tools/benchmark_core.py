@@ -8,6 +8,7 @@ import shutil
 import statistics
 import struct
 import subprocess
+import sys
 import time
 from collections.abc import Callable
 from dataclasses import asdict, dataclass
@@ -23,6 +24,11 @@ REPORT_QUANTILES = (0.5, 0.9, 0.95, 0.99, 0.999, 1.0)
 DEFAULT_LOSSY_LEVEL = 16384
 DEFAULT_LOSSY_SWEEP_LEVELS = (256, 1024, 4096, 16384)
 REPO_ROOT = Path(__file__).resolve().parents[1]
+
+
+def repo_relative_path(path: Path) -> str:
+    return Path(os.path.relpath(path, REPO_ROOT)).as_posix()
+
 
 _T_CRITICAL_95_TWO_SIDED = {
     1: 12.706,
@@ -473,6 +479,37 @@ def format_interval(low: float, high: float, *, unit: str = "s") -> str:
     return f"[{low:.4f}{unit}, {high:.4f}{unit}]"
 
 
+class ProgressBar:
+    def __init__(self, total_steps: int, *, enabled: bool) -> None:
+        self.total_steps = max(total_steps, 1)
+        self.enabled = enabled
+        self.current_step = 0
+
+    def step(self, message: str) -> None:
+        self.current_step = min(self.current_step + 1, self.total_steps)
+        if not self.enabled:
+            return
+        width = 32
+        filled = int(width * self.current_step / self.total_steps)
+        bar = "#" * filled + "." * (width - filled)
+        percent = (self.current_step / self.total_steps) * 100.0
+        sys.stderr.write(
+            f"\r[{bar}] {self.current_step:>3}/{self.total_steps:<3} {percent:6.2f}%  {message:<50}"
+        )
+        sys.stderr.flush()
+
+    def callback(self, label: str):
+        def _cb(_: str, run_index: int, run_total: int) -> None:
+            self.step(f"{label} [{run_index}/{run_total}]")
+
+        return _cb
+
+    def finish(self) -> None:
+        if self.enabled:
+            sys.stderr.write("\n")
+            sys.stderr.flush()
+
+
 def require_tool(path_or_name: str) -> str:
     if os.sep in path_or_name:
         path = Path(path_or_name)
@@ -488,19 +525,6 @@ def require_tool(path_or_name: str) -> str:
 def run_dump_mzml_quietly(input_path: Path, output_path: Path) -> None:
     with contextlib.redirect_stdout(io.StringIO()):
         dump_mzml(input_path, output_path)
-
-
-def encode_lossy_command(zig_bin: Path, dump_path: Path, output_path: Path, intensity_quant: int) -> list[str]:
-    return [
-        str(zig_bin),
-        "encode-v1",
-        str(dump_path),
-        "-o",
-        str(output_path),
-        "--lossy",
-        "--intensity-quant",
-        str(intensity_quant),
-    ]
 
 
 def parse_lossy_sweep(levels: str | None, selected_level: int) -> tuple[int, ...]:

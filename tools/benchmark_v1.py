@@ -13,10 +13,12 @@ from pathlib import Path
 from benchmark_core import (
     DEFAULT_LOSSY_LEVEL,
     REPO_ROOT,
+    ProgressBar,
     collect_file_stats,
     compare_dumps,
     parse_lossy_sweep,
     read_dump,
+    repo_relative_path,
     require_tool,
     run_dump_mzml_quietly,
     run_timed_callable,
@@ -37,40 +39,6 @@ from benchmark_metrics import (
 )
 from benchmark_plotting import generate_plots
 from benchmark_report import FUTURE_BASELINES, render_markdown
-
-
-class ProgressBar:
-    def __init__(self, total_steps: int, *, enabled: bool) -> None:
-        self.total_steps = max(total_steps, 1)
-        self.enabled = enabled
-        self.current_step = 0
-        self.last_message = ""
-
-    def step(self, message: str) -> None:
-        self.current_step = min(self.current_step + 1, self.total_steps)
-        self.last_message = message
-        if not self.enabled:
-            return
-
-        width = 32
-        filled = int(width * self.current_step / self.total_steps)
-        bar = "#" * filled + "." * (width - filled)
-        percent = (self.current_step / self.total_steps) * 100.0
-        sys.stderr.write(
-            f"\r[{bar}] {self.current_step:>3}/{self.total_steps:<3} {percent:6.2f}%  {message:<50}"
-        )
-        sys.stderr.flush()
-
-    def callback(self, label: str):
-        def _callback(_: str, run_index: int, run_total: int) -> None:
-            self.step(f"{label} [{run_index}/{run_total}]")
-
-        return _callback
-
-    def finish(self) -> None:
-        if self.enabled:
-            sys.stderr.write("\n")
-            sys.stderr.flush()
 
 
 def timed_command(
@@ -248,6 +216,19 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Disable the terminal progress bar",
     )
+    parser.add_argument(
+        "--build",
+        action="store_true",
+        help="Build the mzarc binary with 'zig build --release=fast' before benchmarking. "
+             "Requires --zig-compiler to point at the zig executable.",
+    )
+    parser.add_argument(
+        "--zig-compiler",
+        type=Path,
+        default=None,
+        help="Path to the zig compiler executable, used only with --build "
+             "(default: auto-detect inside repo zig-x86_64-* directory)",
+    )
     return parser
 
 
@@ -255,10 +236,6 @@ def resolve_private_workdir(input_path: Path, override: Path | None) -> Path:
     if override is not None:
         return override
     return input_path.parent / "benchmarks" / input_path.stem
-
-
-def repo_relative_path(path: Path) -> str:
-    return Path(os.path.relpath(path, REPO_ROOT)).as_posix()
 
 
 def inspect_codec_artifact(zig_bin: Path, artifact_path: Path) -> dict[str, object]:
@@ -290,8 +267,36 @@ def inspect_codec_artifact(zig_bin: Path, artifact_path: Path) -> dict[str, obje
     return inspection
 
 
+def find_zig_compiler() -> Path | None:
+    """Auto-detect a zig compiler inside the repo's bundled zig-x86_64-* directory."""
+    for candidate in sorted(REPO_ROOT.glob("zig-*/zig")):
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+def build_release(zig_compiler: Path | None) -> None:
+    compiler = zig_compiler
+    if compiler is None:
+        compiler = find_zig_compiler()
+    if compiler is None:
+        raise FileNotFoundError(
+            "Could not find a zig compiler. Pass --zig-compiler pointing at the zig executable."
+        )
+    sys.stderr.write(f"Building mzarc with {compiler} build --release=fast ...\n")
+    subprocess.run(
+        [str(compiler), "build", "--release=fast"],
+        check=True,
+        cwd=REPO_ROOT,
+    )
+    sys.stderr.write("Build complete.\n")
+
+
 def main() -> None:
     args = build_parser().parse_args()
+
+    if args.build:
+        build_release(args.zig_compiler)
 
     input_path = args.input.resolve()
     zig_bin = args.zig_bin.resolve()
@@ -378,213 +383,77 @@ def main() -> None:
         dataset["path"] = repo_relative_path(paths["dump"])
         dump_bytes = paths["dump"].stat().st_size
 
+        rp = lambda k: repo_relative_path(paths[k])  # shorthand for paths dict lookups
         zig_bin_rel = repo_relative_path(zig_bin)
-        dump_rel = repo_relative_path(paths["dump"])
-        lossless_path_rel = repo_relative_path(paths["mzv1_lossless"])
-        lossless_roundtrip_rel = repo_relative_path(paths["roundtrip_lossless"])
-        lossy_path_rel = repo_relative_path(paths["mzv1_lossy"])
-        lossy_roundtrip_rel = repo_relative_path(paths["roundtrip_lossy"])
-        gzip_dump_rel = repo_relative_path(paths["gzip_dump"])
-        gzip_dump_roundtrip_rel = repo_relative_path(paths["gzip_dump_roundtrip"])
-        zstd_dump_rel = repo_relative_path(paths["zstd_dump"])
-        zstd_dump_roundtrip_rel = repo_relative_path(paths["zstd_dump_roundtrip"])
+        dump_rel = rp("dump")
         mzml_rel = repo_relative_path(input_path)
-        gzip_mzml_rel = repo_relative_path(paths["gzip_mzml"])
-        zstd_mzml_rel = repo_relative_path(paths["zstd_mzml"])
-        bzip2_dump_rel = repo_relative_path(paths["bzip2_dump"])
-        bzip2_dump_roundtrip_rel = repo_relative_path(paths["bzip2_dump_roundtrip"])
-        bzip2_mzml_rel = repo_relative_path(paths["bzip2_mzml"])
-        lz4_dump_rel = repo_relative_path(paths["lz4_dump"])
-        lz4_dump_roundtrip_rel = repo_relative_path(paths["lz4_dump_roundtrip"])
-        lz4_mzml_rel = repo_relative_path(paths["lz4_mzml"])
-        xz_dump_rel = repo_relative_path(paths["xz_dump"])
-        xz_dump_roundtrip_rel = repo_relative_path(paths["xz_dump_roundtrip"])
-        xz_mzml_rel = repo_relative_path(paths["xz_mzml"])
+        lossless_path_rel = rp("mzv1_lossless")
+        lossless_roundtrip_rel = rp("roundtrip_lossless")
+        lossy_path_rel = rp("mzv1_lossy")
+        lossy_roundtrip_rel = rp("roundtrip_lossy")
 
-        gzip_result = benchmark_roundtrip(
-            artifact="gzip dump",
-            fidelity_name="gzip_dump",
-            encode_name="dump -> gzip dump",
-            encode_command=["gzip", "-n", "-c", dump_rel],
-            encode_progress="dump -> gzip dump",
-            encode_path=paths["gzip_dump"],
-            decode_name="gzip dump -> dump",
-            decode_command=["gzip", "-d", "-c", gzip_dump_rel],
-            decode_progress="gzip dump -> dump",
-            decode_path=paths["gzip_dump_roundtrip"],
-            reference_dump=reference_dump,
-            repeats=args.repeats,
-            progress=progress,
-            encode_input_bytes=dump_bytes,
-            decode_output_bytes=dump_bytes,
-        )
-        zstd_result = benchmark_roundtrip(
-            artifact="zstd dump",
-            fidelity_name="zstd_dump",
-            encode_name="dump -> zstd dump",
-            encode_command=["zstd", "-q", "-c", dump_rel],
-            encode_progress="dump -> zstd dump",
-            encode_path=paths["zstd_dump"],
-            decode_name="zstd dump -> dump",
-            decode_command=["zstd", "-q", "-d", "-c", zstd_dump_rel],
-            decode_progress="zstd dump -> dump",
-            decode_path=paths["zstd_dump_roundtrip"],
-            reference_dump=reference_dump,
-            repeats=args.repeats,
-            progress=progress,
-            encode_input_bytes=dump_bytes,
-            decode_output_bytes=dump_bytes,
-        )
-        bzip2_result = benchmark_roundtrip(
-            artifact="bzip2 dump",
-            fidelity_name="bzip2_dump",
-            encode_name="dump -> bzip2 dump",
-            encode_command=["bzip2", "-c", dump_rel],
-            encode_progress="dump -> bzip2 dump",
-            encode_path=paths["bzip2_dump"],
-            decode_name="bzip2 dump -> dump",
-            decode_command=["bzip2", "-d", "-c", bzip2_dump_rel],
-            decode_progress="bzip2 dump -> dump",
-            decode_path=paths["bzip2_dump_roundtrip"],
-            reference_dump=reference_dump,
-            repeats=args.repeats,
-            progress=progress,
-            encode_input_bytes=dump_bytes,
-            decode_output_bytes=dump_bytes,
-        )
-        lz4_result = benchmark_roundtrip(
-            artifact="lz4 dump",
-            fidelity_name="lz4_dump",
-            encode_name="dump -> lz4 dump",
-            encode_command=["lz4", "-q", "-c", dump_rel],
-            encode_progress="dump -> lz4 dump",
-            encode_path=paths["lz4_dump"],
-            decode_name="lz4 dump -> dump",
-            decode_command=["lz4", "-q", "-d", "-c", lz4_dump_rel],
-            decode_progress="lz4 dump -> dump",
-            decode_path=paths["lz4_dump_roundtrip"],
-            reference_dump=reference_dump,
-            repeats=args.repeats,
-            progress=progress,
-            encode_input_bytes=dump_bytes,
-            decode_output_bytes=dump_bytes,
-        )
-        xz_result = benchmark_roundtrip(
-            artifact="xz dump",
-            fidelity_name="xz_dump",
-            encode_name="dump -> xz dump",
-            encode_command=["xz", "-c", dump_rel],
-            encode_progress="dump -> xz dump",
-            encode_path=paths["xz_dump"],
-            decode_name="xz dump -> dump",
-            decode_command=["xz", "-d", "-c", xz_dump_rel],
-            decode_progress="xz dump -> dump",
-            decode_path=paths["xz_dump_roundtrip"],
-            reference_dump=reference_dump,
-            repeats=args.repeats,
-            progress=progress,
-            encode_input_bytes=dump_bytes,
-            decode_output_bytes=dump_bytes,
-        )
+        # --- dump-level compressors (5 tools, encode+decode each) ---
+        _DUMP_CODECS = [
+            ("gzip",  "gzip_dump",  ["gzip", "-n", "-c"],  ["gzip", "-d", "-c"]),
+            ("zstd",  "zstd_dump",  ["zstd", "-q", "-c"],  ["zstd", "-q", "-d", "-c"]),
+            ("bzip2", "bzip2_dump", ["bzip2", "-c"],        ["bzip2", "-d", "-c"]),
+            ("lz4",   "lz4_dump",   ["lz4", "-q", "-c"],   ["lz4", "-q", "-d", "-c"]),
+            ("xz",    "xz_dump",    ["xz", "-c"],           ["xz", "-d", "-c"]),
+        ]
+        dump_results: dict[str, dict] = {}
+        for _c, _key, _enc, _dec in _DUMP_CODECS:
+            _label = f"{_c} dump"
+            dump_results[_c] = benchmark_roundtrip(
+                artifact=_label,
+                fidelity_name=f"{_c}_dump",
+                encode_name=f"dump -> {_label}",
+                encode_command=_enc + [dump_rel],
+                encode_progress=f"dump -> {_label}",
+                encode_path=paths[_key],
+                decode_name=f"{_label} -> dump",
+                decode_command=_dec + [rp(_key)],
+                decode_progress=f"{_label} -> dump",
+                decode_path=paths[f"{_key}_roundtrip"],
+                reference_dump=reference_dump,
+                repeats=args.repeats,
+                progress=progress,
+                encode_input_bytes=dump_bytes,
+                decode_output_bytes=dump_bytes,
+            )
 
-        # gzip, zstd, bzip2, lz4, xz applied directly to the mzML file (not
-        # the dump).  Decompression gives raw inflate speed; mzML parsing
-        # (~4.5 s) is still required before data is usable.
-        gzip_mzml_encode_timing = timed_command(
-            "mzML -> gzip mzML",
-            ["gzip", "-n", "-c", mzml_rel],
-            repeats=args.repeats,
-            progress=progress,
-            progress_label="mzML -> gzip mzML",
-            input_bytes=mzml_bytes,
-            stdout_path=paths["gzip_mzml"],
-        )
-        gzip_mzml_decode_timing = timed_command(
-            "gzip mzML -> mzML",
-            ["gzip", "-d", "-c", gzip_mzml_rel],
-            repeats=args.repeats,
-            progress=progress,
-            progress_label="gzip mzML -> mzML",
-            input_bytes=paths["gzip_mzml"].stat().st_size,
-            output_bytes=mzml_bytes,
-            stdout_path=paths["gzip_mzml_roundtrip"],
-        )
-        zstd_mzml_encode_timing = timed_command(
-            "mzML -> zstd mzML",
-            ["zstd", "-q", "-c", mzml_rel],
-            repeats=args.repeats,
-            progress=progress,
-            progress_label="mzML -> zstd mzML",
-            input_bytes=mzml_bytes,
-            stdout_path=paths["zstd_mzml"],
-        )
-        zstd_mzml_decode_timing = timed_command(
-            "zstd mzML -> mzML",
-            ["zstd", "-q", "-d", "-c", zstd_mzml_rel],
-            repeats=args.repeats,
-            progress=progress,
-            progress_label="zstd mzML -> mzML",
-            input_bytes=paths["zstd_mzml"].stat().st_size,
-            output_bytes=mzml_bytes,
-            stdout_path=paths["zstd_mzml_roundtrip"],
-        )
-        bzip2_mzml_encode_timing = timed_command(
-            "mzML -> bzip2 mzML",
-            ["bzip2", "-c", mzml_rel],
-            repeats=args.repeats,
-            progress=progress,
-            progress_label="mzML -> bzip2 mzML",
-            input_bytes=mzml_bytes,
-            stdout_path=paths["bzip2_mzml"],
-        )
-        bzip2_mzml_decode_timing = timed_command(
-            "bzip2 mzML -> mzML",
-            ["bzip2", "-d", "-c", bzip2_mzml_rel],
-            repeats=args.repeats,
-            progress=progress,
-            progress_label="bzip2 mzML -> mzML",
-            input_bytes=paths["bzip2_mzml"].stat().st_size,
-            output_bytes=mzml_bytes,
-            stdout_path=paths["bzip2_mzml_roundtrip"],
-        )
-        lz4_mzml_encode_timing = timed_command(
-            "mzML -> lz4 mzML",
-            ["lz4", "-q", "-c", mzml_rel],
-            repeats=args.repeats,
-            progress=progress,
-            progress_label="mzML -> lz4 mzML",
-            input_bytes=mzml_bytes,
-            stdout_path=paths["lz4_mzml"],
-        )
-        lz4_mzml_decode_timing = timed_command(
-            "lz4 mzML -> mzML",
-            ["lz4", "-q", "-d", "-c", lz4_mzml_rel],
-            repeats=args.repeats,
-            progress=progress,
-            progress_label="lz4 mzML -> mzML",
-            input_bytes=paths["lz4_mzml"].stat().st_size,
-            output_bytes=mzml_bytes,
-            stdout_path=paths["lz4_mzml_roundtrip"],
-        )
-        xz_mzml_encode_timing = timed_command(
-            "mzML -> xz mzML",
-            ["xz", "-c", mzml_rel],
-            repeats=args.repeats,
-            progress=progress,
-            progress_label="mzML -> xz mzML",
-            input_bytes=mzml_bytes,
-            stdout_path=paths["xz_mzml"],
-        )
-        xz_mzml_decode_timing = timed_command(
-            "xz mzML -> mzML",
-            ["xz", "-d", "-c", xz_mzml_rel],
-            repeats=args.repeats,
-            progress=progress,
-            progress_label="xz mzML -> mzML",
-            input_bytes=paths["xz_mzml"].stat().st_size,
-            output_bytes=mzml_bytes,
-            stdout_path=paths["xz_mzml_roundtrip"],
-        )
+        # --- mzML-level compressors: raw inflate/deflate speed on the interchange format ---
+        # Decompression reflects raw bytes speed; mzML parsing is still required
+        # before spectra are accessible.
+        _MZML_CODECS = [
+            ("gzip",  "gzip_mzml",  ["gzip", "-n", "-c"],  ["gzip", "-d", "-c"]),
+            ("zstd",  "zstd_mzml",  ["zstd", "-q", "-c"],  ["zstd", "-q", "-d", "-c"]),
+            ("bzip2", "bzip2_mzml", ["bzip2", "-c"],        ["bzip2", "-d", "-c"]),
+            ("lz4",   "lz4_mzml",   ["lz4", "-q", "-c"],   ["lz4", "-q", "-d", "-c"]),
+            ("xz",    "xz_mzml",    ["xz", "-c"],           ["xz", "-d", "-c"]),
+        ]
+        mzml_encode_timings: dict[str, object] = {}
+        mzml_decode_timings: dict[str, object] = {}
+        for _c, _key, _enc, _dec in _MZML_CODECS:
+            _label = f"{_c} mzML"
+            mzml_encode_timings[_c] = timed_command(
+                f"mzML -> {_label}",
+                _enc + [mzml_rel],
+                repeats=args.repeats,
+                progress=progress,
+                progress_label=f"mzML -> {_label}",
+                input_bytes=mzml_bytes,
+                stdout_path=paths[_key],
+            )
+            mzml_decode_timings[_c] = timed_command(
+                f"{_label} -> mzML",
+                _dec + [rp(_key)],
+                repeats=args.repeats,
+                progress=progress,
+                progress_label=f"{_label} -> mzML",
+                input_bytes=paths[_key].stat().st_size,
+                output_bytes=mzml_bytes,
+                stdout_path=paths[f"{_key}_roundtrip"],
+            )
         progress.step("record gzip/zstd/bzip2/lz4/xz mzML sizes")
 
         lossless_result = benchmark_roundtrip(
@@ -626,11 +495,6 @@ def main() -> None:
             decode_writes_file=True,
         )
 
-        gzip_fidelity = gzip_result["fidelity"]
-        zstd_fidelity = zstd_result["fidelity"]
-        bzip2_fidelity = bzip2_result["fidelity"]
-        lz4_fidelity = lz4_result["fidelity"]
-        xz_fidelity = xz_result["fidelity"]
         lossless_fidelity = lossless_result["fidelity"]
         lossy_fidelity = lossy_result["fidelity"]
 
@@ -644,16 +508,16 @@ def main() -> None:
             "dump": {"path": dump_rel, "bytes": dump_bytes},
             "mzv1 lossless": {"path": lossless_path_rel, "bytes": paths["mzv1_lossless"].stat().st_size},
             "mzv1 lossy": {"path": lossy_path_rel, "bytes": paths["mzv1_lossy"].stat().st_size},
-            "gzip dump": {"path": gzip_dump_rel, "bytes": paths["gzip_dump"].stat().st_size},
-            "zstd dump": {"path": zstd_dump_rel, "bytes": paths["zstd_dump"].stat().st_size},
-            "gzip mzML": {"path": gzip_mzml_rel, "bytes": paths["gzip_mzml"].stat().st_size},
-            "zstd mzML": {"path": zstd_mzml_rel, "bytes": paths["zstd_mzml"].stat().st_size},
-            "bzip2 dump": {"path": bzip2_dump_rel, "bytes": paths["bzip2_dump"].stat().st_size},
-            "lz4 dump": {"path": lz4_dump_rel, "bytes": paths["lz4_dump"].stat().st_size},
-            "xz dump": {"path": xz_dump_rel, "bytes": paths["xz_dump"].stat().st_size},
-            "bzip2 mzML": {"path": bzip2_mzml_rel, "bytes": paths["bzip2_mzml"].stat().st_size},
-            "lz4 mzML": {"path": lz4_mzml_rel, "bytes": paths["lz4_mzml"].stat().st_size},
-            "xz mzML": {"path": xz_mzml_rel, "bytes": paths["xz_mzml"].stat().st_size},
+            "gzip dump": {"path": rp("gzip_dump"), "bytes": paths["gzip_dump"].stat().st_size},
+            "zstd dump": {"path": rp("zstd_dump"), "bytes": paths["zstd_dump"].stat().st_size},
+            "gzip mzML": {"path": rp("gzip_mzml"), "bytes": paths["gzip_mzml"].stat().st_size},
+            "zstd mzML": {"path": rp("zstd_mzml"), "bytes": paths["zstd_mzml"].stat().st_size},
+            "bzip2 dump": {"path": rp("bzip2_dump"), "bytes": paths["bzip2_dump"].stat().st_size},
+            "lz4 dump": {"path": rp("lz4_dump"), "bytes": paths["lz4_dump"].stat().st_size},
+            "xz dump": {"path": rp("xz_dump"), "bytes": paths["xz_dump"].stat().st_size},
+            "bzip2 mzML": {"path": rp("bzip2_mzml"), "bytes": paths["bzip2_mzml"].stat().st_size},
+            "lz4 mzML": {"path": rp("lz4_mzml"), "bytes": paths["lz4_mzml"].stat().st_size},
+            "xz mzML": {"path": rp("xz_mzml"), "bytes": paths["xz_mzml"].stat().st_size},
         }
 
         external_results = run_external_baselines(
@@ -665,7 +529,6 @@ def main() -> None:
             dump_bytes=dump_bytes,
             repeats=args.repeats,
             mzmlb_compression=args.mzmlb_compression,
-            repo_relative_path=repo_relative_path,
             progress=progress,
             numpress_command_template=args.ms_numpress_command_template,
             numpress_to_dump_command_template=args.ms_numpress_to_dump_command_template,
@@ -722,11 +585,9 @@ def main() -> None:
         lossy_sweep_rows.sort(key=lambda row: int(row["intensity_quant"]))
 
         fidelity_rows = [
-            {"artifact": "gzip dump", "data": gzip_fidelity},
-            {"artifact": "zstd dump", "data": zstd_fidelity},
-            {"artifact": "bzip2 dump", "data": bzip2_fidelity},
-            {"artifact": "lz4 dump", "data": lz4_fidelity},
-            {"artifact": "xz dump", "data": xz_fidelity},
+            {"artifact": f"{_c} dump", "data": dump_results[_c]["fidelity"]}
+            for _c in ["gzip", "zstd", "bzip2", "lz4", "xz"]
+        ] + [
             {"artifact": "mzv1 lossless", "data": lossless_fidelity},
             {"artifact": f"mzv1 lossy q={selected_quant}", "data": lossy_fidelity},
         ]
@@ -734,28 +595,14 @@ def main() -> None:
             if item["fidelity"] is not None:
                 fidelity_rows.append({"artifact": item["name"], "data": item["fidelity"]})
 
-        serialized_timings = [
-            serialize_timing_result(timing_dump),
-            serialize_timing_result(gzip_result["encode_timing"]),
-            serialize_timing_result(gzip_result["decode_timing"]),
-            serialize_timing_result(zstd_result["encode_timing"]),
-            serialize_timing_result(zstd_result["decode_timing"]),
-            serialize_timing_result(bzip2_result["encode_timing"]),
-            serialize_timing_result(bzip2_result["decode_timing"]),
-            serialize_timing_result(lz4_result["encode_timing"]),
-            serialize_timing_result(lz4_result["decode_timing"]),
-            serialize_timing_result(xz_result["encode_timing"]),
-            serialize_timing_result(xz_result["decode_timing"]),
-            serialize_timing_result(gzip_mzml_encode_timing),
-            serialize_timing_result(gzip_mzml_decode_timing),
-            serialize_timing_result(zstd_mzml_encode_timing),
-            serialize_timing_result(zstd_mzml_decode_timing),
-            serialize_timing_result(bzip2_mzml_encode_timing),
-            serialize_timing_result(bzip2_mzml_decode_timing),
-            serialize_timing_result(lz4_mzml_encode_timing),
-            serialize_timing_result(lz4_mzml_decode_timing),
-            serialize_timing_result(xz_mzml_encode_timing),
-            serialize_timing_result(xz_mzml_decode_timing),
+        serialized_timings = [serialize_timing_result(timing_dump)]
+        for _c in ["gzip", "zstd", "bzip2", "lz4", "xz"]:
+            serialized_timings.append(serialize_timing_result(dump_results[_c]["encode_timing"]))
+            serialized_timings.append(serialize_timing_result(dump_results[_c]["decode_timing"]))
+        for _c in ["gzip", "zstd", "bzip2", "lz4", "xz"]:
+            serialized_timings.append(serialize_timing_result(mzml_encode_timings[_c]))
+            serialized_timings.append(serialize_timing_result(mzml_decode_timings[_c]))
+        serialized_timings += [
             serialize_timing_result(lossless_result["encode_timing"]),
             serialize_timing_result(lossless_result["decode_timing"]),
             serialize_timing_result(lossy_result["encode_timing"]),

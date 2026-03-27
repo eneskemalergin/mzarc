@@ -34,6 +34,9 @@ def _apply_style() -> None:
     )
 
 
+_apply_style()
+
+
 def _artifact_palette(artifact_names: list[str]) -> list[str]:
     palette_map = {
         "mzML": "#64748b",
@@ -65,7 +68,6 @@ def _artifact_palette(artifact_names: list[str]) -> list[str]:
 
 
 def plot_size_comparison(size_rows: list[dict[str, object]], path: Path) -> None:
-    _apply_style()
     frame = pd.DataFrame(size_rows)
     mzml_size = float(frame.loc[frame["artifact"] == "mzML", "size_mib"].iloc[0])
 
@@ -104,7 +106,6 @@ def plot_size_comparison(size_rows: list[dict[str, object]], path: Path) -> None
 
 
 def plot_performance_overview(performance_rows: list[dict[str, object]], path: Path) -> None:
-    _apply_style()
     frame = pd.DataFrame(performance_rows)
     frame = frame[(frame["status"] == "measured") & frame["throughput_mib_s"].notna()].copy()
     if frame.empty:
@@ -156,7 +157,6 @@ def plot_performance_overview(performance_rows: list[dict[str, object]], path: P
 
 
 def plot_fidelity_overview(fidelity_rows: list[dict[str, object]], path: Path) -> None:
-    _apply_style()
     frame = pd.DataFrame(fidelity_rows)
     frame = frame[frame["status"] == "measured"].copy()
     if frame.empty:
@@ -209,7 +209,6 @@ def plot_fidelity_overview(fidelity_rows: list[dict[str, object]], path: Path) -
 
 
 def plot_timing_intervals(timing_rows: list[dict[str, object]], path: Path) -> None:
-    _apply_style()
     order = [str(row["name"]) for row in timing_rows]
     run_rows: list[dict[str, object]] = []
     summary_rows: list[dict[str, object]] = []
@@ -277,7 +276,6 @@ def plot_timing_intervals(timing_rows: list[dict[str, object]], path: Path) -> N
 
 
 def plot_lossy_tradeoff(lossy_rows: list[dict[str, object]], selected_quant: int, path: Path) -> None:
-    _apply_style()
     frame = pd.DataFrame(lossy_rows)
     frame["selected"] = frame["intensity_quant"].astype(int) == int(selected_quant)
 
@@ -311,7 +309,6 @@ def plot_lossy_tradeoff(lossy_rows: list[dict[str, object]], selected_quant: int
 
 
 def plot_intensity_quantiles(quantile_rows: list[dict[str, object]], path: Path) -> None:
-    _apply_style()
     frame = pd.DataFrame(quantile_rows)
 
     fig, ax = plt.subplots(figsize=(10.0, 5.4))
