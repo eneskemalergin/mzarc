@@ -96,4 +96,18 @@ pub fn build(b: *std.Build) void {
         const run_unit_test = b.addRunArtifact(unit_test);
         test_step.dependOn(&run_unit_test.step);
     }
+
+    // check-fixture: SHA-256 integrity check for fixtures/frozen.bin
+    const check_fixture_step = b.step("check-fixture", "Verify SHA-256 of fixtures/frozen.bin");
+    const check_fixture_cmd = b.addSystemCommand(&.{
+        "sh", "-c",
+        "actual=$(sha256sum fixtures/frozen.bin | cut -d' ' -f1); " ++
+            "expected=9d5a10167356db7afaa4e6c43832a7ea75a53e84dc74e679a881d5d8cf7cb2c6; " ++
+            "if [ \"$actual\" = \"$expected\" ]; then " ++
+            "  echo 'PASS fixtures/frozen.bin sha256 ok'; " ++
+            "else " ++
+            "  echo \"FAIL fixtures/frozen.bin expected=$expected got=$actual\"; exit 1; " ++
+            "fi",
+    });
+    check_fixture_step.dependOn(&check_fixture_cmd.step);
 }

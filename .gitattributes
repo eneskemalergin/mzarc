@@ -1,0 +1,2 @@
+fixtures/*.bin binary
+test/adversarial/*.bin binary
