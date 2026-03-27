@@ -20,7 +20,7 @@ from benchmark_core import (
 )
 from mzml_dump import dump_mzmlb
 
-DEFAULT_EXTERNAL_BASELINES = ("mzmlb", "mscompress")
+DEFAULT_EXTERNAL_BASELINES = ("mzmlb", "ms-numpress", "mscompress")
 
 DISPLAY_NAMES = {
     "mzmlb": "mzMLb",
@@ -70,13 +70,16 @@ def builtin_numpress_available() -> tuple[bool, str | None]:
         return True, None
     return (
         False,
-        "psims and pyteomics can use MS-Numpress, but the required `pynumpress` backend is not available in this environment. The upstream PyMSNumpress package currently fails to build on Python 3.12 here.",
+        "pynumpress is not installed. Install it with: uv add pynumpress",
     )
 
 def builtin_mscompress_available() -> tuple[bool, str | None]:
-    if importlib.util.find_spec("mscompress") is not None:
+    try:
+        import mscompress  # noqa: F401
         return True, None
-    return False, "MScompress Python package is not installed in the active benchmark environment."
+    except (ImportError, ValueError):
+        pass
+    return False, "MScompress Python package is not installed or has a numpy ABI incompatibility. Install mscompress and ensure numpy<2 is pinned (uv add mscompress 'numpy>=1.20,<2')."
 
 def estimate_external_steps(
     requested: tuple[str, ...],

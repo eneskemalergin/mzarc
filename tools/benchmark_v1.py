@@ -303,6 +303,9 @@ def main() -> None:
 
     require_tool("gzip")
     require_tool("zstd")
+    require_tool("bzip2")
+    require_tool("xz")
+    require_tool("lz4")
 
     selected_quant = int(args.lossy_intensity_quant)
     lossy_sweep = parse_lossy_sweep(args.lossy_sweep, selected_quant)
@@ -326,6 +329,18 @@ def main() -> None:
         "gzip_mzml_roundtrip": private_workdir / f"{sample_name}.gzip_mzml.roundtrip.mzML",
         "zstd_mzml": private_workdir / f"{sample_name}.mzML.zst",
         "zstd_mzml_roundtrip": private_workdir / f"{sample_name}.zstd_mzml.roundtrip.mzML",
+        "bzip2_dump": private_workdir / f"{sample_name}.bin.bz2",
+        "bzip2_dump_roundtrip": private_workdir / f"{sample_name}.bzip2.roundtrip.bin",
+        "bzip2_mzml": private_workdir / f"{sample_name}.mzML.bz2",
+        "bzip2_mzml_roundtrip": private_workdir / f"{sample_name}.bzip2_mzml.roundtrip.mzML",
+        "lz4_dump": private_workdir / f"{sample_name}.bin.lz4",
+        "lz4_dump_roundtrip": private_workdir / f"{sample_name}.lz4.roundtrip.bin",
+        "lz4_mzml": private_workdir / f"{sample_name}.mzML.lz4",
+        "lz4_mzml_roundtrip": private_workdir / f"{sample_name}.lz4_mzml.roundtrip.mzML",
+        "xz_dump": private_workdir / f"{sample_name}.bin.xz",
+        "xz_dump_roundtrip": private_workdir / f"{sample_name}.xz.roundtrip.bin",
+        "xz_mzml": private_workdir / f"{sample_name}.mzML.xz",
+        "xz_mzml_roundtrip": private_workdir / f"{sample_name}.xz_mzml.roundtrip.mzML",
         "mzv1_lossless": private_workdir / f"{sample_name}.lossless.mzv1",
         "roundtrip_lossless": private_workdir / f"{sample_name}.lossless.roundtrip.bin",
         "mzv1_lossy": private_workdir / f"{sample_name}.lossy.q{selected_quant}.mzv1",
@@ -342,7 +357,7 @@ def main() -> None:
         mscompress_to_dump_command_template=args.mscompress_to_dump_command_template,
         mscompress_benchmark_threaded=args.mscompress_benchmark_threaded,
     )
-    total_steps = (args.repeats * 13) + (2 * len(extra_sweep_levels)) + external_steps + 10
+    total_steps = (args.repeats * 25) + (2 * len(extra_sweep_levels)) + external_steps + 16
     progress = ProgressBar(total_steps, enabled=not args.no_progress)
 
     try:
@@ -375,6 +390,15 @@ def main() -> None:
         mzml_rel = repo_relative_path(input_path)
         gzip_mzml_rel = repo_relative_path(paths["gzip_mzml"])
         zstd_mzml_rel = repo_relative_path(paths["zstd_mzml"])
+        bzip2_dump_rel = repo_relative_path(paths["bzip2_dump"])
+        bzip2_dump_roundtrip_rel = repo_relative_path(paths["bzip2_dump_roundtrip"])
+        bzip2_mzml_rel = repo_relative_path(paths["bzip2_mzml"])
+        lz4_dump_rel = repo_relative_path(paths["lz4_dump"])
+        lz4_dump_roundtrip_rel = repo_relative_path(paths["lz4_dump_roundtrip"])
+        lz4_mzml_rel = repo_relative_path(paths["lz4_mzml"])
+        xz_dump_rel = repo_relative_path(paths["xz_dump"])
+        xz_dump_roundtrip_rel = repo_relative_path(paths["xz_dump_roundtrip"])
+        xz_mzml_rel = repo_relative_path(paths["xz_mzml"])
 
         gzip_result = benchmark_roundtrip(
             artifact="gzip dump",
@@ -410,10 +434,61 @@ def main() -> None:
             encode_input_bytes=dump_bytes,
             decode_output_bytes=dump_bytes,
         )
+        bzip2_result = benchmark_roundtrip(
+            artifact="bzip2 dump",
+            fidelity_name="bzip2_dump",
+            encode_name="dump -> bzip2 dump",
+            encode_command=["bzip2", "-c", dump_rel],
+            encode_progress="dump -> bzip2 dump",
+            encode_path=paths["bzip2_dump"],
+            decode_name="bzip2 dump -> dump",
+            decode_command=["bzip2", "-d", "-c", bzip2_dump_rel],
+            decode_progress="bzip2 dump -> dump",
+            decode_path=paths["bzip2_dump_roundtrip"],
+            reference_dump=reference_dump,
+            repeats=args.repeats,
+            progress=progress,
+            encode_input_bytes=dump_bytes,
+            decode_output_bytes=dump_bytes,
+        )
+        lz4_result = benchmark_roundtrip(
+            artifact="lz4 dump",
+            fidelity_name="lz4_dump",
+            encode_name="dump -> lz4 dump",
+            encode_command=["lz4", "-q", "-c", dump_rel],
+            encode_progress="dump -> lz4 dump",
+            encode_path=paths["lz4_dump"],
+            decode_name="lz4 dump -> dump",
+            decode_command=["lz4", "-q", "-d", "-c", lz4_dump_rel],
+            decode_progress="lz4 dump -> dump",
+            decode_path=paths["lz4_dump_roundtrip"],
+            reference_dump=reference_dump,
+            repeats=args.repeats,
+            progress=progress,
+            encode_input_bytes=dump_bytes,
+            decode_output_bytes=dump_bytes,
+        )
+        xz_result = benchmark_roundtrip(
+            artifact="xz dump",
+            fidelity_name="xz_dump",
+            encode_name="dump -> xz dump",
+            encode_command=["xz", "-c", dump_rel],
+            encode_progress="dump -> xz dump",
+            encode_path=paths["xz_dump"],
+            decode_name="xz dump -> dump",
+            decode_command=["xz", "-d", "-c", xz_dump_rel],
+            decode_progress="xz dump -> dump",
+            decode_path=paths["xz_dump_roundtrip"],
+            reference_dump=reference_dump,
+            repeats=args.repeats,
+            progress=progress,
+            encode_input_bytes=dump_bytes,
+            decode_output_bytes=dump_bytes,
+        )
 
-        # gzip and zstd applied directly to the mzML file (not the dump).
-        # Decompression timing gives raw decompression speed; mzML parsing
-        # (another ~4.5s) is still required before data is usable.
+        # gzip, zstd, bzip2, lz4, xz applied directly to the mzML file (not
+        # the dump).  Decompression gives raw inflate speed; mzML parsing
+        # (~4.5 s) is still required before data is usable.
         gzip_mzml_encode_timing = timed_command(
             "mzML -> gzip mzML",
             ["gzip", "-n", "-c", mzml_rel],
@@ -452,7 +527,64 @@ def main() -> None:
             output_bytes=mzml_bytes,
             stdout_path=paths["zstd_mzml_roundtrip"],
         )
-        progress.step("record gzip/zstd mzML sizes")
+        bzip2_mzml_encode_timing = timed_command(
+            "mzML -> bzip2 mzML",
+            ["bzip2", "-c", mzml_rel],
+            repeats=args.repeats,
+            progress=progress,
+            progress_label="mzML -> bzip2 mzML",
+            input_bytes=mzml_bytes,
+            stdout_path=paths["bzip2_mzml"],
+        )
+        bzip2_mzml_decode_timing = timed_command(
+            "bzip2 mzML -> mzML",
+            ["bzip2", "-d", "-c", bzip2_mzml_rel],
+            repeats=args.repeats,
+            progress=progress,
+            progress_label="bzip2 mzML -> mzML",
+            input_bytes=paths["bzip2_mzml"].stat().st_size,
+            output_bytes=mzml_bytes,
+            stdout_path=paths["bzip2_mzml_roundtrip"],
+        )
+        lz4_mzml_encode_timing = timed_command(
+            "mzML -> lz4 mzML",
+            ["lz4", "-q", "-c", mzml_rel],
+            repeats=args.repeats,
+            progress=progress,
+            progress_label="mzML -> lz4 mzML",
+            input_bytes=mzml_bytes,
+            stdout_path=paths["lz4_mzml"],
+        )
+        lz4_mzml_decode_timing = timed_command(
+            "lz4 mzML -> mzML",
+            ["lz4", "-q", "-d", "-c", lz4_mzml_rel],
+            repeats=args.repeats,
+            progress=progress,
+            progress_label="lz4 mzML -> mzML",
+            input_bytes=paths["lz4_mzml"].stat().st_size,
+            output_bytes=mzml_bytes,
+            stdout_path=paths["lz4_mzml_roundtrip"],
+        )
+        xz_mzml_encode_timing = timed_command(
+            "mzML -> xz mzML",
+            ["xz", "-c", mzml_rel],
+            repeats=args.repeats,
+            progress=progress,
+            progress_label="mzML -> xz mzML",
+            input_bytes=mzml_bytes,
+            stdout_path=paths["xz_mzml"],
+        )
+        xz_mzml_decode_timing = timed_command(
+            "xz mzML -> mzML",
+            ["xz", "-d", "-c", xz_mzml_rel],
+            repeats=args.repeats,
+            progress=progress,
+            progress_label="xz mzML -> mzML",
+            input_bytes=paths["xz_mzml"].stat().st_size,
+            output_bytes=mzml_bytes,
+            stdout_path=paths["xz_mzml_roundtrip"],
+        )
+        progress.step("record gzip/zstd/bzip2/lz4/xz mzML sizes")
 
         lossless_result = benchmark_roundtrip(
             artifact="mzv1 lossless",
@@ -495,6 +627,9 @@ def main() -> None:
 
         gzip_fidelity = gzip_result["fidelity"]
         zstd_fidelity = zstd_result["fidelity"]
+        bzip2_fidelity = bzip2_result["fidelity"]
+        lz4_fidelity = lz4_result["fidelity"]
+        xz_fidelity = xz_result["fidelity"]
         lossless_fidelity = lossless_result["fidelity"]
         lossy_fidelity = lossy_result["fidelity"]
 
@@ -512,6 +647,12 @@ def main() -> None:
             "zstd dump": {"path": zstd_dump_rel, "bytes": paths["zstd_dump"].stat().st_size},
             "gzip mzML": {"path": gzip_mzml_rel, "bytes": paths["gzip_mzml"].stat().st_size},
             "zstd mzML": {"path": zstd_mzml_rel, "bytes": paths["zstd_mzml"].stat().st_size},
+            "bzip2 dump": {"path": bzip2_dump_rel, "bytes": paths["bzip2_dump"].stat().st_size},
+            "lz4 dump": {"path": lz4_dump_rel, "bytes": paths["lz4_dump"].stat().st_size},
+            "xz dump": {"path": xz_dump_rel, "bytes": paths["xz_dump"].stat().st_size},
+            "bzip2 mzML": {"path": bzip2_mzml_rel, "bytes": paths["bzip2_mzml"].stat().st_size},
+            "lz4 mzML": {"path": lz4_mzml_rel, "bytes": paths["lz4_mzml"].stat().st_size},
+            "xz mzML": {"path": xz_mzml_rel, "bytes": paths["xz_mzml"].stat().st_size},
         }
 
         external_results = run_external_baselines(
@@ -582,6 +723,9 @@ def main() -> None:
         fidelity_rows = [
             {"artifact": "gzip dump", "data": gzip_fidelity},
             {"artifact": "zstd dump", "data": zstd_fidelity},
+            {"artifact": "bzip2 dump", "data": bzip2_fidelity},
+            {"artifact": "lz4 dump", "data": lz4_fidelity},
+            {"artifact": "xz dump", "data": xz_fidelity},
             {"artifact": "mzv1 lossless", "data": lossless_fidelity},
             {"artifact": f"mzv1 lossy q={selected_quant}", "data": lossy_fidelity},
         ]
@@ -595,10 +739,22 @@ def main() -> None:
             serialize_timing_result(gzip_result["decode_timing"]),
             serialize_timing_result(zstd_result["encode_timing"]),
             serialize_timing_result(zstd_result["decode_timing"]),
+            serialize_timing_result(bzip2_result["encode_timing"]),
+            serialize_timing_result(bzip2_result["decode_timing"]),
+            serialize_timing_result(lz4_result["encode_timing"]),
+            serialize_timing_result(lz4_result["decode_timing"]),
+            serialize_timing_result(xz_result["encode_timing"]),
+            serialize_timing_result(xz_result["decode_timing"]),
             serialize_timing_result(gzip_mzml_encode_timing),
             serialize_timing_result(gzip_mzml_decode_timing),
             serialize_timing_result(zstd_mzml_encode_timing),
             serialize_timing_result(zstd_mzml_decode_timing),
+            serialize_timing_result(bzip2_mzml_encode_timing),
+            serialize_timing_result(bzip2_mzml_decode_timing),
+            serialize_timing_result(lz4_mzml_encode_timing),
+            serialize_timing_result(lz4_mzml_decode_timing),
+            serialize_timing_result(xz_mzml_encode_timing),
+            serialize_timing_result(xz_mzml_decode_timing),
             serialize_timing_result(lossless_result["encode_timing"]),
             serialize_timing_result(lossless_result["decode_timing"]),
             serialize_timing_result(lossy_result["encode_timing"]),
