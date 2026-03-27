@@ -36,9 +36,6 @@ test "lossless block round-trip preserves aligned spectra exactly" {
     try std.testing.expect((header.flags & block_v1.flag_lossless_intensity_raw) != 0);
     // f32-exact data uses the f32 bit-cast path — this flag must be set.
     try std.testing.expect((header.flags & block_v1.flag_lossless_mz_f32) != 0);
-    // XOR and raw flags must not be set.
-    try std.testing.expectEqual(@as(u8, 0), header.flags & (block_v1.flag_lossless_mz_raw | block_v1.flag_lossless_mz_xor));
-
     const decoded = try block_v1.decodeBlock(std.testing.allocator, encoded);
     defer binary_reader.freeSpectra(std.testing.allocator, decoded);
 
@@ -202,5 +199,44 @@ test "lossy block round-trip keeps intensity error bounded" {
         for (0..expected.intensity.len) |peak_idx| {
             try std.testing.expectApproxEqRel(expected.intensity[peak_idx], actual.intensity[peak_idx], 0.01);
         }
+    }
+}
+
+test "lossy block worst-case intensity error stays below 0.1%" {
+    // Build a corpus that exercises many quantization buckets: a wide dynamic
+    // range from very low to very high intensity.  With intensity_quant=16384
+    // (the production default) the worst-case relative error must stay below
+    // 0.1% across all peaks (Phase 1 exit criterion).
+    const n = 128;
+    var mz_buf: [n]f64 = undefined;
+    var int_buf: [n]f32 = undefined;
+    for (0..n) |i| {
+        mz_buf[i] = 100.0 + @as(f64, @floatFromInt(i)) * 0.125;
+        // exponential sweep: 1.0 .. ~1.04e7 covering >7 decades
+        int_buf[i] = @floatCast(@exp(@as(f64, @floatFromInt(i)) * (16.0 / @as(f64, n))));
+    }
+
+    const spectra = [_]binary_reader.RawSpectrum{
+        .{ .scan_id = 1, .rt_seconds = 0.0, .ms_level = 1, .precursor_mz = 0.0, .mz = mz_buf[0..], .intensity = int_buf[0..] },
+    };
+
+    const encoded = try block_v1.encodeBlock(std.testing.allocator, &spectra, .{ .mode = .lossy, .intensity_quant = 16384 });
+    defer std.testing.allocator.free(encoded);
+
+    const decoded = try block_v1.decodeBlock(std.testing.allocator, encoded);
+    defer binary_reader.freeSpectra(std.testing.allocator, decoded);
+
+    var max_rel_error: f64 = 0.0;
+    for (0..n) |i| {
+        const orig = @as(f64, int_buf[i]);
+        const got = @as(f64, decoded[0].intensity[i]);
+        const rel = if (orig == 0.0) @abs(got) else @abs(got - orig) / orig;
+        if (rel > max_rel_error) max_rel_error = rel;
+    }
+
+    // Phase 1 exit criterion: worst-case relative intensity error < 0.1% (0.001).
+    if (max_rel_error >= 0.001) {
+        std.debug.print("worst-case intensity rel error {d:.6} >= 0.001 (0.1%)\n", .{max_rel_error});
+        return error.TestExpectedLessThan;
     }
 }

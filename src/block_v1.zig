@@ -2,7 +2,6 @@ const std = @import("std");
 const builtin = @import("builtin");
 const binary_reader = @import("binary_reader");
 const quantize = @import("quantize");
-const delta = @import("delta");
 const bitpack = @import("bitpack");
 
 pub const Allocator = std.mem.Allocator;
@@ -54,12 +53,15 @@ pub const BlockByteBreakdown = struct {
 };
 
 pub const flag_lossless_intensity_raw: u8 = 0b0000_0001;
-pub const flag_lossless_mz_raw: u8 = 0b0000_0010;
-pub const flag_lossless_mz_xor: u8 = 0b0000_0100;
 /// m/z stored as f32 bit patterns, delta-encoded as u32.  Guarantees bit-exact
 /// round-trips for values that are already f32-precision (every real instrument
 /// produces f32 natively; mzML just widens to f64).
 pub const flag_lossless_mz_f32: u8 = 0b0000_1000;
+/// scan_id array is delta-encoded (base + packed deltas) rather than stored raw.
+pub const flag_delta_scan_id: u8 = 0b0001_0000;
+/// rt_seconds array is stored as delta-encoded f32 bit patterns (positive,
+/// monotonically increasing) rather than raw f32 values.
+pub const flag_delta_rt: u8 = 0b0010_0000;
 pub const header_len = 40;
 
 fn combineU32(low: u16, high: u16) u32 {
@@ -153,22 +155,6 @@ fn totalPeakCount(spectra: []const binary_reader.RawSpectrum) !usize {
     return total;
 }
 
-fn nonEmptySpectrumCount(spectra: []const binary_reader.RawSpectrum) usize {
-    var total: usize = 0;
-    for (spectra) |spectrum| {
-        if (spectrum.mz.len != 0) total += 1;
-    }
-    return total;
-}
-
-fn nonEmptyPeakCount(peak_counts: []const u32) usize {
-    var total: usize = 0;
-    for (peak_counts) |peak_count| {
-        if (peak_count != 0) total += 1;
-    }
-    return total;
-}
-
 /// Returns true when every m/z value in `spectra` is exactly representable as
 /// an IEEE-754 single-precision float.  Instruments produce f32 natively;
 /// mzML widens to f64 with trailing zero mantissa bits, so this is true for
@@ -227,71 +213,35 @@ fn flattenMzDeltas(allocator: Allocator, spectra: []const binary_reader.RawSpect
     return flat;
 }
 
-fn flattenMzRawBitsDeltas(allocator: Allocator, spectra: []const binary_reader.RawSpectrum) ![]u64 {
-    const total_peaks = try totalPeakCount(spectra);
-    const flat = try allocator.alloc(u64, total_peaks);
-    errdefer allocator.free(flat);
-
-    var offset: usize = 0;
-    for (spectra) |spectrum| {
-        var previous: u64 = 0;
-        for (spectrum.mz, 0..) |value, idx| {
-            const raw_bits = @as(u64, @bitCast(value));
-            if (idx != 0 and raw_bits < previous) return error.NonMonotonicInput;
-            flat[offset] = if (idx == 0) raw_bits else raw_bits - previous;
-            previous = raw_bits;
-            offset += 1;
-        }
+/// Build a delta array for scan IDs: first element is `spectra[0].scan_id`,
+/// subsequent elements are the positive differences.  Scan IDs from real
+/// instruments always increase by 1-2 per scan, so deltas fit in 1-2 bits.
+fn buildScanIdDeltas(allocator: Allocator, spectra: []const binary_reader.RawSpectrum) ![]u64 {
+    const result = try allocator.alloc(u64, spectra.len);
+    errdefer allocator.free(result);
+    result[0] = spectra[0].scan_id;
+    for (spectra[1..], 1..) |spectrum, idx| {
+        if (spectrum.scan_id < spectra[idx - 1].scan_id) return error.NonMonotonicScanIds;
+        result[idx] = spectrum.scan_id - spectra[idx - 1].scan_id;
     }
-
-    return flat;
+    return result;
 }
 
-const LosslessMzXorData = struct {
-    first_values: []u64,
-    xor_values: []u64,
-
-    fn deinit(self: LosslessMzXorData, allocator: Allocator) void {
-        allocator.free(self.first_values);
-        allocator.free(self.xor_values);
+/// Build a delta array for RT values encoded as f32 bit-patterns.  Positive
+/// IEEE-754 floats have the property that their u32 bit representations are
+/// monotonically ordered, so integer delta-encoding and FOR bit-packing works
+/// directly without any loss of precision.
+fn buildRtDeltas(allocator: Allocator, spectra: []const binary_reader.RawSpectrum) ![]u64 {
+    const result = try allocator.alloc(u64, spectra.len);
+    errdefer allocator.free(result);
+    result[0] = @as(u32, @bitCast(spectra[0].rt_seconds));
+    for (spectra[1..], 1..) |spectrum, idx| {
+        const cur_bits: u32 = @bitCast(spectrum.rt_seconds);
+        const prev_bits: u32 = @bitCast(spectra[idx - 1].rt_seconds);
+        if (cur_bits < prev_bits) return error.NonMonotonicRt;
+        result[idx] = cur_bits - prev_bits;
     }
-};
-
-fn flattenMzRawBitsXor(allocator: Allocator, spectra: []const binary_reader.RawSpectrum) !LosslessMzXorData {
-    const total_peaks = try totalPeakCount(spectra);
-    const first_value_count = nonEmptySpectrumCount(spectra);
-    const xor_value_count = total_peaks - first_value_count;
-
-    const first_values = try allocator.alloc(u64, first_value_count);
-    errdefer allocator.free(first_values);
-    const xor_values = try allocator.alloc(u64, xor_value_count);
-    errdefer allocator.free(xor_values);
-
-    var first_offset: usize = 0;
-    var xor_offset: usize = 0;
-    for (spectra) |spectrum| {
-        if (spectrum.mz.len == 0) continue;
-
-        const first_raw = @as(u64, @bitCast(spectrum.mz[0]));
-        first_values[first_offset] = first_raw;
-        first_offset += 1;
-
-        var previous_value = spectrum.mz[0];
-        var previous_raw = first_raw;
-        for (spectrum.mz[1..]) |value| {
-            if (value < previous_value) return error.NonMonotonicInput;
-            const current_raw = @as(u64, @bitCast(value));
-            xor_values[xor_offset] = current_raw ^ previous_raw;
-            xor_offset += 1;
-            previous_value = value;
-            previous_raw = current_raw;
-        }
-    }
-
-    return .{
-        .first_values = first_values,
-        .xor_values = xor_values,
-    };
+    return result;
 }
 
 fn flattenIntensityLossyToU64(
@@ -342,12 +292,55 @@ pub fn encodeBlock(allocator: Allocator, spectra: []const binary_reader.RawSpect
         }
     }
 
-    for (spectra) |spectrum| try appendIntLe(&payload, allocator, u32, spectrum.scan_id);
-    for (spectra) |spectrum| try appendF32Le(&payload, allocator, spectrum.rt_seconds);
+    var flags: u8 = 0;
+
+    // scan_id: delta-encode with bitpack if monotonically non-decreasing.
+    {
+        const scan_id_deltas = buildScanIdDeltas(allocator, spectra) catch |err| blk: {
+            if (err == error.NonMonotonicScanIds) {
+                // Fall back to raw encoding
+                break :blk null;
+            }
+            return err;
+        };
+        if (scan_id_deltas) |deltas| {
+            defer allocator.free(deltas);
+            flags |= flag_delta_scan_id;
+            const pack_result = try bitpack.packForU64(allocator, deltas);
+            defer pack_result.deinit(allocator);
+            try payload.append(allocator, pack_result.bit_width);
+            try appendIntLe(&payload, allocator, u64, pack_result.base);
+            try appendIntLe(&payload, allocator, u32, @intCast(pack_result.payload.len));
+            try payload.appendSlice(allocator, pack_result.payload);
+        } else {
+            for (spectra) |spectrum| try appendIntLe(&payload, allocator, u32, spectrum.scan_id);
+        }
+    }
+
+    // rt_seconds: delta-encode f32 bit patterns when RT is non-decreasing.
+    {
+        const rt_deltas = buildRtDeltas(allocator, spectra) catch |err| blk: {
+            if (err == error.NonMonotonicRt) {
+                break :blk null;
+            }
+            return err;
+        };
+        if (rt_deltas) |deltas| {
+            defer allocator.free(deltas);
+            flags |= flag_delta_rt;
+            const pack_result = try bitpack.packForU64(allocator, deltas);
+            defer pack_result.deinit(allocator);
+            try payload.append(allocator, pack_result.bit_width);
+            try appendIntLe(&payload, allocator, u64, pack_result.base);
+            try appendIntLe(&payload, allocator, u32, @intCast(pack_result.payload.len));
+            try payload.appendSlice(allocator, pack_result.payload);
+        } else {
+            for (spectra) |spectrum| try appendF32Le(&payload, allocator, spectrum.rt_seconds);
+        }
+    }
+
     for (spectra) |spectrum| try appendF64Le(&payload, allocator, spectrum.precursor_mz);
     for (spectra) |spectrum| try appendIntLe(&payload, allocator, u32, @intCast(spectrum.mz.len));
-
-    var flags: u8 = 0;
     var mz_bit_width: u8 = 0;
     var mz_scale_for_header: u32 = options.mz_scale_factor;
     {
@@ -453,18 +446,66 @@ pub fn decodeBlock(allocator: Allocator, block_bytes: []const u8) ![]binary_read
 
     const scan_ids = try allocator.alloc(u32, spectrum_count);
     defer allocator.free(scan_ids);
-    for (scan_ids) |*value| {
-        if (payload.len - offset < 4) return error.UnexpectedEndOfStream;
-        value.* = readIntLe(u32, payload[offset .. offset + 4]);
+    if ((header.flags & flag_delta_scan_id) != 0) {
+        if (payload.len - offset < 13) return error.UnexpectedEndOfStream;
+        const bit_width = payload[offset];
+        offset += 1;
+        const base = readIntLe(u64, payload[offset .. offset + 8]);
+        offset += 8;
+        const pack_len = readIntLe(u32, payload[offset .. offset + 4]);
         offset += 4;
+        if (payload.len - offset < pack_len) return error.UnexpectedEndOfStream;
+        const unpacked = try bitpack.unpackForU64(allocator, .{
+            .base = base,
+            .bit_width = bit_width,
+            .count = spectrum_count,
+            .payload = payload[offset .. offset + pack_len],
+        });
+        defer allocator.free(unpacked);
+        offset += pack_len;
+        var running: u32 = 0;
+        for (scan_ids, 0..) |*value, idx| {
+            running +%= @truncate(unpacked[idx]);
+            value.* = running;
+        }
+    } else {
+        for (scan_ids) |*value| {
+            if (payload.len - offset < 4) return error.UnexpectedEndOfStream;
+            value.* = readIntLe(u32, payload[offset .. offset + 4]);
+            offset += 4;
+        }
     }
 
     const rt_values = try allocator.alloc(f32, spectrum_count);
     defer allocator.free(rt_values);
-    for (rt_values) |*value| {
-        if (payload.len - offset < 4) return error.UnexpectedEndOfStream;
-        value.* = readF32Le(payload[offset .. offset + 4]);
+    if ((header.flags & flag_delta_rt) != 0) {
+        if (payload.len - offset < 13) return error.UnexpectedEndOfStream;
+        const bit_width = payload[offset];
+        offset += 1;
+        const base = readIntLe(u64, payload[offset .. offset + 8]);
+        offset += 8;
+        const pack_len = readIntLe(u32, payload[offset .. offset + 4]);
         offset += 4;
+        if (payload.len - offset < pack_len) return error.UnexpectedEndOfStream;
+        const unpacked = try bitpack.unpackForU64(allocator, .{
+            .base = base,
+            .bit_width = bit_width,
+            .count = spectrum_count,
+            .payload = payload[offset .. offset + pack_len],
+        });
+        defer allocator.free(unpacked);
+        offset += pack_len;
+        var running_bits: u32 = 0;
+        for (rt_values, 0..) |*value, idx| {
+            running_bits +%= @truncate(unpacked[idx]);
+            value.* = @bitCast(running_bits);
+        }
+    } else {
+        for (rt_values) |*value| {
+            if (payload.len - offset < 4) return error.UnexpectedEndOfStream;
+            value.* = readF32Le(payload[offset .. offset + 4]);
+            offset += 4;
+        }
     }
 
     const precursor_values = try allocator.alloc(f64, spectrum_count);
@@ -489,59 +530,8 @@ pub fn decodeBlock(allocator: Allocator, block_bytes: []const u8) ![]binary_read
     const flat_mz = try allocator.alloc(f64, total_peaks);
     defer allocator.free(flat_mz);
 
-    const mz_uses_xor = (header.flags & flag_lossless_mz_xor) != 0;
-    const mz_is_raw = (header.flags & flag_lossless_mz_raw) != 0;
     const mz_uses_f32 = (header.flags & flag_lossless_mz_f32) != 0;
-    if (mz_uses_xor) {
-        const first_value_count = nonEmptyPeakCount(peak_counts);
-        const first_values = try allocator.alloc(u64, first_value_count);
-        defer allocator.free(first_values);
-
-        const first_values_len = first_value_count * @sizeOf(u64);
-        if (payload.len - offset < first_values_len) return error.UnexpectedEndOfStream;
-        if (builtin.cpu.arch.endian() == .little) {
-            @memcpy(std.mem.sliceAsBytes(first_values), payload[offset .. offset + first_values_len]);
-        } else {
-            for (first_values, 0..) |*value, idx| {
-                const start = offset + (idx * @sizeOf(u64));
-                value.* = readIntLe(u64, payload[start .. start + @sizeOf(u64)]);
-            }
-        }
-        offset += first_values_len;
-
-        if (payload.len - offset < 12) return error.UnexpectedEndOfStream;
-        const mz_xor_base = readIntLe(u64, payload[offset .. offset + 8]);
-        offset += 8;
-        const mz_xor_payload_len = readIntLe(u32, payload[offset .. offset + 4]);
-        offset += 4;
-        if (payload.len - offset < mz_xor_payload_len) return error.UnexpectedEndOfStream;
-
-        const mz_xor_values = try bitpack.unpackForU64(allocator, .{
-            .base = mz_xor_base,
-            .bit_width = header.mz_bit_width,
-            .count = total_peaks - first_value_count,
-            .payload = payload[offset .. offset + mz_xor_payload_len],
-        });
-        defer allocator.free(mz_xor_values);
-        offset += mz_xor_payload_len;
-
-        var mz_cursor: usize = 0;
-        var first_offset: usize = 0;
-        var xor_offset: usize = 0;
-        for (peak_counts) |peak_count| {
-            if (peak_count == 0) continue;
-
-            var previous_raw = first_values[first_offset];
-            first_offset += 1;
-            flat_mz[mz_cursor] = @as(f64, @bitCast(previous_raw));
-            for (1..peak_count) |local_idx| {
-                previous_raw ^= mz_xor_values[xor_offset];
-                xor_offset += 1;
-                flat_mz[mz_cursor + local_idx] = @as(f64, @bitCast(previous_raw));
-            }
-            mz_cursor += peak_count;
-        }
-    } else {
+    {
         if (payload.len - offset < 12) return error.UnexpectedEndOfStream;
         const mz_base = readIntLe(u64, payload[offset .. offset + 8]);
         offset += 8;
@@ -570,8 +560,6 @@ pub fn decodeBlock(allocator: Allocator, block_bytes: []const u8) ![]binary_read
                 };
                 flat_mz[mz_cursor + local_idx] = if (mz_uses_f32)
                     @as(f64, @as(f32, @bitCast(@as(u32, @truncate(absolute)))))
-                else if (mz_is_raw)
-                    @as(f64, @bitCast(absolute))
                 else
                     try quantize.dequantizeMzValue(absolute, header.mz_scale_factor);
                 previous = absolute;
@@ -666,29 +654,57 @@ pub fn inspectBlockByteBreakdown(block_bytes: []const u8) !BlockByteBreakdown {
     const spectrum_count = @as(usize, header.spectrum_count);
     const total_peaks = @as(usize, header.total_peaks);
 
-    const scan_id_bytes = spectrum_count * @sizeOf(u32);
-    const rt_bytes = spectrum_count * @sizeOf(f32);
+    var offset: usize = 0;
+
+    // scan_id section
+    var scan_id_bytes: usize = 0;
+    if ((header.flags & flag_delta_scan_id) != 0) {
+        if (payload.len - offset < 13) return error.UnexpectedEndOfStream;
+        offset += 1; // bit_width byte
+        offset += 8; // base u64
+        const pack_len = readIntLe(u32, payload[offset .. offset + 4]);
+        offset += 4;
+        if (payload.len - offset < pack_len) return error.UnexpectedEndOfStream;
+        offset += pack_len;
+        scan_id_bytes = 1 + 8 + 4 + pack_len;
+    } else {
+        scan_id_bytes = spectrum_count * @sizeOf(u32);
+        if (payload.len - offset < scan_id_bytes) return error.UnexpectedEndOfStream;
+        offset += scan_id_bytes;
+    }
+
+    // rt section
+    var rt_bytes: usize = 0;
+    if ((header.flags & flag_delta_rt) != 0) {
+        if (payload.len - offset < 13) return error.UnexpectedEndOfStream;
+        offset += 1; // bit_width byte
+        offset += 8; // base u64
+        const pack_len = readIntLe(u32, payload[offset .. offset + 4]);
+        offset += 4;
+        if (payload.len - offset < pack_len) return error.UnexpectedEndOfStream;
+        offset += pack_len;
+        rt_bytes = 1 + 8 + 4 + pack_len;
+    } else {
+        rt_bytes = spectrum_count * @sizeOf(f32);
+        if (payload.len - offset < rt_bytes) return error.UnexpectedEndOfStream;
+        offset += rt_bytes;
+    }
+
+    // precursor and peak_count sections (always fixed-width)
     const precursor_bytes = spectrum_count * @sizeOf(f64);
     const peak_count_bytes = spectrum_count * @sizeOf(u32);
-    const fixed_prefix_bytes = scan_id_bytes + rt_bytes + precursor_bytes + peak_count_bytes;
-    if (payload.len < fixed_prefix_bytes) return error.UnexpectedEndOfStream;
+    if (payload.len - offset < precursor_bytes + peak_count_bytes) return error.UnexpectedEndOfStream;
 
-    var offset: usize = scan_id_bytes + rt_bytes + precursor_bytes;
     var computed_total_peaks: usize = 0;
     var nonempty_spectra: usize = 0;
     for (0..spectrum_count) |idx| {
-        const start = offset + (idx * @sizeOf(u32));
+        const start = offset + precursor_bytes + (idx * @sizeOf(u32));
         const peak_count = readIntLe(u32, payload[start .. start + @sizeOf(u32)]);
         computed_total_peaks += peak_count;
         if (peak_count != 0) nonempty_spectra += 1;
     }
     if (computed_total_peaks != total_peaks) return error.InvalidPeakCount;
-    offset += peak_count_bytes;
-
-    const mz_uses_xor = (header.flags & flag_lossless_mz_xor) != 0;
-    const first_value_bytes = if (mz_uses_xor) nonempty_spectra * @sizeOf(u64) else 0;
-    if (payload.len - offset < first_value_bytes) return error.UnexpectedEndOfStream;
-    offset += first_value_bytes;
+    offset += precursor_bytes + peak_count_bytes;
 
     const mz_metadata_bytes = @sizeOf(u64) + @sizeOf(u32);
     if (payload.len - offset < mz_metadata_bytes) return error.UnexpectedEndOfStream;
@@ -698,7 +714,7 @@ pub fn inspectBlockByteBreakdown(block_bytes: []const u8) !BlockByteBreakdown {
     offset += @sizeOf(u32);
     if (payload.len - offset < mz_packed_payload_bytes) return error.UnexpectedEndOfStream;
     offset += mz_packed_payload_bytes;
-    const mz_payload_bytes = first_value_bytes + mz_packed_payload_bytes;
+    const mz_payload_bytes = mz_packed_payload_bytes;
 
     var intensity_metadata_bytes: usize = 0;
     var intensity_payload_bytes: usize = 0;

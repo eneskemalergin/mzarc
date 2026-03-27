@@ -40,10 +40,20 @@ def _artifact_palette(artifact_names: list[str]) -> list[str]:
         "dump": "#2563eb",
         "gzip dump": "#475569",
         "zstd dump": "#0f172a",
+        "bzip2 dump": "#1e40af",
+        "lz4 dump": "#0369a1",
+        "xz dump": "#3730a3",
+        "gzip mzML": "#475569",
+        "zstd mzML": "#334155",
+        "bzip2 mzML": "#1e3a8a",
+        "lz4 mzML": "#075985",
+        "xz mzML": "#312e81",
         "mzv1 lossless": "#0f766e",
         "mzv1 lossy": "#d97706",
         "mzMLb": "#0ea5e9",
         "MS-Numpress in mzML": "#7c3aed",
+        "MScompress": "#be185d",
+        "MScompress (threaded)": "#9d174d",
     }
     colors: list[str] = []
     for name in artifact_names:

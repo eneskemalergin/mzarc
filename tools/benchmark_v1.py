@@ -228,7 +228,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--mscompress-benchmark-threaded",
         action="store_true",
-        help="Also benchmark a second MScompress run using its threaded/default configuration",
+        default=True,
+        help="Also benchmark a second MScompress run using its threaded/default configuration (enabled by default)",
     )
     parser.add_argument(
         "--mscompress-thread-count",
@@ -275,7 +276,7 @@ def inspect_codec_artifact(zig_bin: Path, artifact_path: Path) -> dict[str, obje
         stderr = exc.stderr or ""
         raise RuntimeError(f"Command failed for {' '.join(command)}\n{stderr}") from exc
 
-    payload = (completed.stdout or "").strip() or (completed.stderr or "").strip()
+    payload = (completed.stdout or "").strip()
     if not payload:
         raise RuntimeError(f"No inspection output returned for {artifact_path}")
 

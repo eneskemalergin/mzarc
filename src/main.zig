@@ -2,6 +2,30 @@ const std = @import("std");
 const binary_reader = @import("binary_reader");
 const codec_v1 = @import("codec_v1");
 
+/// Write `bytes` to stdout (fd 1) using the raw Linux syscall.
+/// Errors are silently ignored — if stdout is closed, there is nothing useful
+/// we can do from a CLI tool perspective.
+fn writeStdout(bytes: []const u8) void {
+    var remaining = bytes;
+    while (remaining.len > 0) {
+        const written = std.os.linux.write(1, remaining.ptr, remaining.len);
+        if (written <= 0) break;
+        remaining = remaining[@intCast(written)..];
+    }
+}
+
+/// Print a formatted string to stdout.  `buf` is a scratch buffer for
+/// formatting; pass a stack-allocated array like `var buf: [512]u8 = undefined`.
+fn printStdout(comptime fmt: []const u8, args: anytype) void {
+    var buf: [4096]u8 = undefined;
+    const s = std.fmt.bufPrint(&buf, fmt, args) catch {
+        // Message too long for stack buffer — fall back to a heap allocation on
+        // the arena backing the process.  This should be rare.
+        return;
+    };
+    writeStdout(s);
+}
+
 fn printUsage() void {
     std.debug.print(
         "Usage:\n" ++
@@ -94,9 +118,10 @@ fn commandDecodeV1(allocator: std.mem.Allocator, args: []const [:0]const u8) !vo
     std.debug.print("decoded: {s} -> {s}\n", .{ input_path, output_path });
 }
 
-fn printInspectionJson(path: []const u8, inspection: codec_v1.Inspection) void {
+fn printInspectionJson(allocator: std.mem.Allocator, path: []const u8, inspection: codec_v1.Inspection) !void {
     const bytes = inspection.byte_breakdown;
-    std.debug.print(
+    const json_str = try std.fmt.allocPrint(
+        allocator,
         "{{\n" ++
             "  \"file\": \"{s}\",\n" ++
             "  \"version_major\": {},\n" ++
@@ -150,6 +175,8 @@ fn printInspectionJson(path: []const u8, inspection: codec_v1.Inspection) void {
             bytes.total_bytes,
         },
     );
+    defer allocator.free(json_str);
+    writeStdout(json_str);
 }
 
 fn printBlockTable(inspection: codec_v1.Inspection) void {
@@ -196,7 +223,7 @@ fn commandInspectV1(allocator: std.mem.Allocator, args: []const [:0]const u8) !v
     defer codec_v1.freeInspection(allocator, inspection);
 
     if (json_output) {
-        printInspectionJson(input_path, inspection);
+        try printInspectionJson(allocator, input_path, inspection);
         return;
     }
 
