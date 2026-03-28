@@ -110,4 +110,70 @@ pub fn build(b: *std.Build) void {
             "fi",
     });
     check_fixture_step.dependOn(&check_fixture_cmd.step);
+
+    // ci: full local CI chain
+    //   1. unit tests
+    //   2. check-fixture (SHA-256)
+    //   3. build + install ReleaseFast binary (done by dependOn install step)
+    //   4. encode/decode/validate lossless (frozen.bin)
+    //   5. encode/decode/validate lossy (frozen.bin)
+    //   6. validate-adversarial (test/adversarial/)
+    //   7. check_regression.py
+    const ci_step = b.step("ci", "Full local CI: tests + fixture + codec round-trips + adversarial + regression");
+
+    // Stage 4: lossless round-trip on frozen fixture
+    const ci_enc_ls = b.addSystemCommand(&.{
+        "./zig-out/bin/mzarc", "encode", "fixtures/frozen.bin",
+        "-o", "/tmp/mzarc_ci_frozen.mzarc",
+    });
+    ci_enc_ls.step.dependOn(b.getInstallStep());
+    ci_enc_ls.step.dependOn(test_step);
+    ci_enc_ls.step.dependOn(check_fixture_step);
+
+    const ci_dec_ls = b.addSystemCommand(&.{
+        "./zig-out/bin/mzarc", "decode", "/tmp/mzarc_ci_frozen.mzarc",
+        "-o", "/tmp/mzarc_ci_frozen_rt.bin",
+    });
+    ci_dec_ls.step.dependOn(&ci_enc_ls.step);
+
+    const ci_val_ls = b.addSystemCommand(&.{
+        "./zig-out/bin/mzarc", "validate",
+        "fixtures/frozen.bin", "/tmp/mzarc_ci_frozen_rt.bin",
+        "--mode=lossless",
+    });
+    ci_val_ls.step.dependOn(&ci_dec_ls.step);
+
+    // Stage 5: lossy round-trip on frozen fixture
+    const ci_enc_ly = b.addSystemCommand(&.{
+        "./zig-out/bin/mzarc", "encode", "fixtures/frozen.bin",
+        "-o", "/tmp/mzarc_ci_frozen_lossy.mzarc", "--lossy",
+    });
+    ci_enc_ly.step.dependOn(&ci_val_ls.step);
+
+    const ci_dec_ly = b.addSystemCommand(&.{
+        "./zig-out/bin/mzarc", "decode", "/tmp/mzarc_ci_frozen_lossy.mzarc",
+        "-o", "/tmp/mzarc_ci_frozen_lossy_rt.bin",
+    });
+    ci_dec_ly.step.dependOn(&ci_enc_ly.step);
+
+    const ci_val_ly = b.addSystemCommand(&.{
+        "./zig-out/bin/mzarc", "validate",
+        "fixtures/frozen.bin", "/tmp/mzarc_ci_frozen_lossy_rt.bin",
+        "--mode=lossy",
+    });
+    ci_val_ly.step.dependOn(&ci_dec_ly.step);
+
+    // Stage 6: adversarial corpus round-trip
+    const ci_adversarial = b.addSystemCommand(&.{
+        "./zig-out/bin/mzarc", "validate-adversarial", "test/adversarial/",
+    });
+    ci_adversarial.step.dependOn(&ci_val_ly.step);
+
+    // Stage 7: size/speed regression check
+    const ci_regression = b.addSystemCommand(&.{
+        "uv", "run", "python", "tools/check_regression.py",
+    });
+    ci_regression.step.dependOn(&ci_adversarial.step);
+
+    ci_step.dependOn(&ci_regression.step);
 }

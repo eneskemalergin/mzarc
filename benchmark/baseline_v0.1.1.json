@@ -1,0 +1,4886 @@
+{
+  "sample_name": "15HCD_1",
+  "repeats": 3,
+  "selected_lossy_intensity_quant": 16384,
+  "paths": {
+    "mzml": "data/PXD075509/15HCD_1.mzML",
+    "private_workdir": "data/PXD075509/benchmarks/15HCD_1",
+    "public_dir": "benchmark"
+  },
+  "dataset": {
+    "path": "data/PXD075509/benchmarks/15HCD_1/15HCD_1.bin",
+    "bytes": 32273524,
+    "spectra": 9001,
+    "total_peaks": 2668458,
+    "ms1_spectra": 917,
+    "ms2_spectra": 8084
+  },
+  "sizes": {
+    "mzML": {
+      "path": "data/PXD075509/15HCD_1.mzML",
+      "bytes": 79221306
+    },
+    "dump": {
+      "path": "data/PXD075509/benchmarks/15HCD_1/15HCD_1.bin",
+      "bytes": 32273524
+    },
+    "mzv1 lossless": {
+      "path": "data/PXD075509/benchmarks/15HCD_1/15HCD_1.lossless.mzv1",
+      "bytes": 21213320
+    },
+    "mzv1 lossy": {
+      "path": "data/PXD075509/benchmarks/15HCD_1/15HCD_1.lossy.q16384.mzv1",
+      "bytes": 14461329
+    },
+    "gzip dump": {
+      "path": "data/PXD075509/benchmarks/15HCD_1/15HCD_1.bin.gz",
+      "bytes": 20780851
+    },
+    "zstd dump": {
+      "path": "data/PXD075509/benchmarks/15HCD_1/15HCD_1.bin.zst",
+      "bytes": 18720327
+    },
+    "gzip mzML": {
+      "path": "data/PXD075509/benchmarks/15HCD_1/15HCD_1.mzML.gz",
+      "bytes": 25465391
+    },
+    "zstd mzML": {
+      "path": "data/PXD075509/benchmarks/15HCD_1/15HCD_1.mzML.zst",
+      "bytes": 24770559
+    },
+    "bzip2 dump": {
+      "path": "data/PXD075509/benchmarks/15HCD_1/15HCD_1.bin.bz2",
+      "bytes": 19719837
+    },
+    "lz4 dump": {
+      "path": "data/PXD075509/benchmarks/15HCD_1/15HCD_1.bin.lz4",
+      "bytes": 26038757
+    },
+    "xz dump": {
+      "path": "data/PXD075509/benchmarks/15HCD_1/15HCD_1.bin.xz",
+      "bytes": 16535444
+    },
+    "bzip2 mzML": {
+      "path": "data/PXD075509/benchmarks/15HCD_1/15HCD_1.mzML.bz2",
+      "bytes": 24720971
+    },
+    "lz4 mzML": {
+      "path": "data/PXD075509/benchmarks/15HCD_1/15HCD_1.mzML.lz4",
+      "bytes": 34826833
+    },
+    "xz mzML": {
+      "path": "data/PXD075509/benchmarks/15HCD_1/15HCD_1.mzML.xz",
+      "bytes": 24536980
+    },
+    "mzMLb": {
+      "path": "data/PXD075509/benchmarks/15HCD_1/15HCD_1.mzMLb",
+      "bytes": 17038178
+    },
+    "MS-Numpress in mzML": {
+      "path": "data/PXD075509/benchmarks/15HCD_1/15HCD_1.numpress.mzML",
+      "bytes": 69905308
+    },
+    "MScompress": {
+      "path": "data/PXD075509/benchmarks/15HCD_1/15HCD_1.msz",
+      "bytes": 22679622
+    },
+    "MScompress threaded": {
+      "path": "data/PXD075509/benchmarks/15HCD_1/15HCD_1.threaded.msz",
+      "bytes": 22579410
+    }
+  },
+  "codec_byte_breakdown": {
+    "mzv1 lossless": {
+      "file_header_bytes": 32,
+      "global_order_bytes": 36004,
+      "block_header_bytes": 2880,
+      "scan_id_bytes": 15568,
+      "rt_bytes": 35816,
+      "precursor_bytes": 72008,
+      "peak_count_bytes": 36004,
+      "mz_metadata_bytes": 864,
+      "mz_payload_bytes": 10340312,
+      "intensity_metadata_bytes": 0,
+      "intensity_payload_bytes": 10673832,
+      "total_bytes": 21213320
+    },
+    "mzv1 lossy q=16384": {
+      "file_header_bytes": 32,
+      "global_order_bytes": 36004,
+      "block_header_bytes": 2880,
+      "scan_id_bytes": 15568,
+      "rt_bytes": 35816,
+      "precursor_bytes": 72008,
+      "peak_count_bytes": 36004,
+      "mz_metadata_bytes": 864,
+      "mz_payload_bytes": 9610174,
+      "intensity_metadata_bytes": 432,
+      "intensity_payload_bytes": 4651547,
+      "total_bytes": 14461329
+    }
+  },
+  "timings": [
+    {
+      "name": "mzML -> dump",
+      "command": [
+        "<python-callable>"
+      ],
+      "runs_seconds": [
+        4.598595684001339,
+        4.598255001998041,
+        4.637513287001639
+      ],
+      "median_seconds": 4.598595684001339,
+      "mean_seconds": 4.611454657667006,
+      "min_seconds": 4.598255001998041,
+      "max_seconds": 4.637513287001639,
+      "throughput_mib_s": 16.38340403472225,
+      "throughput_input_mib_s": 16.38340403472225,
+      "throughput_output_mib_s": null,
+      "throughput_basis": "input",
+      "input_bytes": 79221306,
+      "output_bytes": null,
+      "repeats": 3,
+      "stdev_seconds": 0.02256807785693488,
+      "ci95_low_seconds": 4.5553879195586156,
+      "ci95_high_seconds": 4.667521395775397,
+      "ci95_half_width_seconds": 0.056066738108390655
+    },
+    {
+      "name": "dump -> gzip dump",
+      "command": [
+        "gzip",
+        "-n",
+        "-c",
+        "data/PXD075509/benchmarks/15HCD_1/15HCD_1.bin"
+      ],
+      "runs_seconds": [
+        1.637442908999219,
+        1.634573477000231,
+        1.642243818998395
+      ],
+      "median_seconds": 1.637442908999219,
+      "mean_seconds": 1.6380867349992816,
+      "min_seconds": 1.634573477000231,
+      "max_seconds": 1.642243818998395,
+      "throughput_mib_s": 18.789255953979875,
+      "throughput_input_mib_s": 18.789255953979875,
+      "throughput_output_mib_s": null,
+      "throughput_basis": "input",
+      "input_bytes": 32273524,
+      "output_bytes": null,
+      "repeats": 3,
+      "stdev_seconds": 0.003875489714986658,
+      "ci95_low_seconds": 1.6284587078243775,
+      "ci95_high_seconds": 1.6477147621741857,
+      "ci95_half_width_seconds": 0.009628027174904012
+    },
+    {
+      "name": "gzip dump -> dump",
+      "command": [
+        "gzip",
+        "-d",
+        "-c",
+        "data/PXD075509/benchmarks/15HCD_1/15HCD_1.bin.gz"
+      ],
+      "runs_seconds": [
+        0.20512553599837702,
+        0.20579482899483992,
+        0.20421624199661892
+      ],
+      "median_seconds": 0.20512553599837702,
+      "mean_seconds": 0.20504553566327863,
+      "min_seconds": 0.20421624199661892,
+      "max_seconds": 0.20579482899483992,
+      "throughput_mib_s": 150.1053453280952,
+      "throughput_input_mib_s": 96.65250115130573,
+      "throughput_output_mib_s": 150.1053453280952,
+      "throughput_basis": "output",
+      "input_bytes": 20780851,
+      "output_bytes": 32273524,
+      "repeats": 3,
+      "stdev_seconds": 0.0007923283839103507,
+      "ci95_low_seconds": 0.20307712398559136,
+      "ci95_high_seconds": 0.2070139473409659,
+      "ci95_half_width_seconds": 0.0019684116776872668
+    },
+    {
+      "name": "dump -> zstd dump",
+      "command": [
+        "zstd",
+        "-q",
+        "-c",
+        "data/PXD075509/benchmarks/15HCD_1/15HCD_1.bin"
+      ],
+      "runs_seconds": [
+        0.19431302899465663,
+        0.18704713899933267,
+        0.1820058980010799
+      ],
+      "median_seconds": 0.18704713899933267,
+      "mean_seconds": 0.18778868866502307,
+      "min_seconds": 0.1820058980010799,
+      "max_seconds": 0.19431302899465663,
+      "throughput_mib_s": 163.89928039607955,
+      "throughput_input_mib_s": 163.89928039607955,
+      "throughput_output_mib_s": null,
+      "throughput_basis": "input",
+      "input_bytes": 32273524,
+      "output_bytes": null,
+      "repeats": 3,
+      "stdev_seconds": 0.006186985554636307,
+      "ci95_low_seconds": 0.17241812405729787,
+      "ci95_high_seconds": 0.20315925327274828,
+      "ci95_half_width_seconds": 0.015370564607725198
+    },
+    {
+      "name": "zstd dump -> dump",
+      "command": [
+        "zstd",
+        "-q",
+        "-d",
+        "-c",
+        "data/PXD075509/benchmarks/15HCD_1/15HCD_1.bin.zst"
+      ],
+      "runs_seconds": [
+        0.05328797400579788,
+        0.05293207299837377,
+        0.053581405998556875
+      ],
+      "median_seconds": 0.05328797400579788,
+      "mean_seconds": 0.05326715100090951,
+      "min_seconds": 0.05293207299837377,
+      "max_seconds": 0.053581405998556875,
+      "throughput_mib_s": 577.8125985787221,
+      "throughput_input_mib_s": 335.16144038418037,
+      "throughput_output_mib_s": 577.8125985787221,
+      "throughput_basis": "output",
+      "input_bytes": 18720327,
+      "output_bytes": 32273524,
+      "repeats": 3,
+      "stdev_seconds": 0.00032516693317607504,
+      "ci95_low_seconds": 0.052459326364736984,
+      "ci95_high_seconds": 0.05407497563708203,
+      "ci95_half_width_seconds": 0.0008078246361725218
+    },
+    {
+      "name": "dump -> bzip2 dump",
+      "command": [
+        "bzip2",
+        "-c",
+        "data/PXD075509/benchmarks/15HCD_1/15HCD_1.bin"
+      ],
+      "runs_seconds": [
+        2.6290178029958042,
+        2.6327940990013303,
+        2.632620898002642
+      ],
+      "median_seconds": 2.632620898002642,
+      "mean_seconds": 2.6314775999999256,
+      "min_seconds": 2.6290178029958042,
+      "max_seconds": 2.6327940990013303,
+      "throughput_mib_s": 11.696254202856059,
+      "throughput_input_mib_s": 11.696254202856059,
+      "throughput_output_mib_s": null,
+      "throughput_basis": "input",
+      "input_bytes": 32273524,
+      "output_bytes": null,
+      "repeats": 3,
+      "stdev_seconds": 0.002132006243564952,
+      "ci95_low_seconds": 2.626180975428654,
+      "ci95_high_seconds": 2.636774224571197,
+      "ci95_half_width_seconds": 0.005296624571271518
+    },
+    {
+      "name": "bzip2 dump -> dump",
+      "command": [
+        "bzip2",
+        "-d",
+        "-c",
+        "data/PXD075509/benchmarks/15HCD_1/15HCD_1.bin.bz2"
+      ],
+      "runs_seconds": [
+        1.4591158469993388,
+        1.4528283899999224,
+        1.4514870339990011
+      ],
+      "median_seconds": 1.4528283899999224,
+      "mean_seconds": 1.4544770903327542,
+      "min_seconds": 1.4514870339990011,
+      "max_seconds": 1.4591158469993388,
+      "throughput_mib_s": 21.161165853550322,
+      "throughput_input_mib_s": 12.929940385871038,
+      "throughput_output_mib_s": 21.161165853550322,
+      "throughput_basis": "output",
+      "input_bytes": 19719837,
+      "output_bytes": 32273524,
+      "repeats": 3,
+      "stdev_seconds": 0.0040728806193086435,
+      "ci95_low_seconds": 1.4443586773922676,
+      "ci95_high_seconds": 1.4645955032732407,
+      "ci95_half_width_seconds": 0.010118412940486541
+    },
+    {
+      "name": "dump -> lz4 dump",
+      "command": [
+        "lz4",
+        "-q",
+        "-c",
+        "data/PXD075509/benchmarks/15HCD_1/15HCD_1.bin"
+      ],
+      "runs_seconds": [
+        0.07732603600015864,
+        0.07860524100397015,
+        0.07652084299479611
+      ],
+      "median_seconds": 0.07732603600015864,
+      "mean_seconds": 0.07748403999964164,
+      "min_seconds": 0.07652084299479611,
+      "max_seconds": 0.07860524100397015,
+      "throughput_mib_s": 397.22284665155627,
+      "throughput_input_mib_s": 397.22284665155627,
+      "throughput_output_mib_s": null,
+      "throughput_basis": "input",
+      "input_bytes": 32273524,
+      "output_bytes": null,
+      "repeats": 3,
+      "stdev_seconds": 0.0010511435263805032,
+      "ci95_low_seconds": 0.07487264397462322,
+      "ci95_high_seconds": 0.08009543602466006,
+      "ci95_half_width_seconds": 0.0026113960250184172
+    },
+    {
+      "name": "lz4 dump -> dump",
+      "command": [
+        "lz4",
+        "-q",
+        "-d",
+        "-c",
+        "data/PXD075509/benchmarks/15HCD_1/15HCD_1.bin.lz4"
+      ],
+      "runs_seconds": [
+        0.05424939899967285,
+        0.05586697500257287,
+        0.054152459000761155
+      ],
+      "median_seconds": 0.05424939899967285,
+      "mean_seconds": 0.05475627766766896,
+      "min_seconds": 0.054152459000761155,
+      "max_seconds": 0.05586697500257287,
+      "throughput_mib_s": 562.0986715993286,
+      "throughput_input_mib_s": 453.5095305922501,
+      "throughput_output_mib_s": 562.0986715993286,
+      "throughput_basis": "output",
+      "input_bytes": 26038757,
+      "output_bytes": 32273524,
+      "repeats": 3,
+      "stdev_seconds": 0.0009631125417983308,
+      "ci95_low_seconds": 0.05236358038116432,
+      "ci95_high_seconds": 0.0571489749541736,
+      "ci95_half_width_seconds": 0.002392697286504637
+    },
+    {
+      "name": "dump -> xz dump",
+      "command": [
+        "xz",
+        "-c",
+        "data/PXD075509/benchmarks/15HCD_1/15HCD_1.bin"
+      ],
+      "runs_seconds": [
+        11.634157398999378,
+        11.686247689001902,
+        12.368193845999485
+      ],
+      "median_seconds": 11.686247689001902,
+      "mean_seconds": 11.896199644666922,
+      "min_seconds": 11.634157398999378,
+      "max_seconds": 12.368193845999485,
+      "throughput_mib_s": 2.5872490255758867,
+      "throughput_input_mib_s": 2.5872490255758867,
+      "throughput_output_mib_s": null,
+      "throughput_basis": "input",
+      "input_bytes": 32273524,
+      "output_bytes": null,
+      "repeats": 3,
+      "stdev_seconds": 0.40958789550816826,
+      "ci95_low_seconds": 10.878644786189387,
+      "ci95_high_seconds": 12.913754503144457,
+      "ci95_half_width_seconds": 1.0175548584775345
+    },
+    {
+      "name": "xz dump -> dump",
+      "command": [
+        "xz",
+        "-d",
+        "-c",
+        "data/PXD075509/benchmarks/15HCD_1/15HCD_1.bin.xz"
+      ],
+      "runs_seconds": [
+        0.48998246699920855,
+        0.49430750600004103,
+        0.4948925680000684
+      ],
+      "median_seconds": 0.49430750600004103,
+      "mean_seconds": 0.49306084699977265,
+      "min_seconds": 0.48998246699920855,
+      "max_seconds": 0.4948925680000684,
+      "throughput_mib_s": 62.42319000992365,
+      "throughput_input_mib_s": 31.98272251615448,
+      "throughput_output_mib_s": 62.42319000992365,
+      "throughput_basis": "output",
+      "input_bytes": 16535444,
+      "output_bytes": 32273524,
+      "repeats": 3,
+      "stdev_seconds": 0.002681956740306199,
+      "ci95_low_seconds": 0.48639795939676067,
+      "ci95_high_seconds": 0.49972373460278463,
+      "ci95_half_width_seconds": 0.006662887603011988
+    },
+    {
+      "name": "mzML -> gzip mzML",
+      "command": [
+        "gzip",
+        "-n",
+        "-c",
+        "data/PXD075509/15HCD_1.mzML"
+      ],
+      "runs_seconds": [
+        1.5216122599958908,
+        1.5473993699997663,
+        1.527672326003085
+      ],
+      "median_seconds": 1.527672326003085,
+      "mean_seconds": 1.532227985332914,
+      "min_seconds": 1.5216122599958908,
+      "max_seconds": 1.5473993699997663,
+      "throughput_mib_s": 49.308148374502494,
+      "throughput_input_mib_s": 49.308148374502494,
+      "throughput_output_mib_s": null,
+      "throughput_basis": "input",
+      "input_bytes": 79221306,
+      "output_bytes": null,
+      "repeats": 3,
+      "stdev_seconds": 0.013483667325141523,
+      "ci95_low_seconds": 1.498729995408749,
+      "ci95_high_seconds": 1.565725975257079,
+      "ci95_half_width_seconds": 0.033497989924164924
+    },
+    {
+      "name": "gzip mzML -> mzML",
+      "command": [
+        "gzip",
+        "-d",
+        "-c",
+        "data/PXD075509/benchmarks/15HCD_1/15HCD_1.mzML.gz"
+      ],
+      "runs_seconds": [
+        0.3537550730034127,
+        0.3536783320014365,
+        0.35346876100084046
+      ],
+      "median_seconds": 0.3536783320014365,
+      "mean_seconds": 0.3536340553352299,
+      "min_seconds": 0.35346876100084046,
+      "max_seconds": 0.3537550730034127,
+      "throughput_mib_s": 213.6426729963576,
+      "throughput_input_mib_s": 68.6746340957493,
+      "throughput_output_mib_s": 213.6426729963576,
+      "throughput_basis": "output",
+      "input_bytes": 25465391,
+      "output_bytes": 79221306,
+      "repeats": 3,
+      "stdev_seconds": 0.00014820242265904264,
+      "ci95_low_seconds": 0.353265870394052,
+      "ci95_high_seconds": 0.3540022402764078,
+      "ci95_half_width_seconds": 0.00036818494117788804
+    },
+    {
+      "name": "mzML -> zstd mzML",
+      "command": [
+        "zstd",
+        "-q",
+        "-c",
+        "data/PXD075509/15HCD_1.mzML"
+      ],
+      "runs_seconds": [
+        0.16863101099443156,
+        0.1717048239952419,
+        0.1752516199994716
+      ],
+      "median_seconds": 0.1717048239952419,
+      "mean_seconds": 0.17186248499638168,
+      "min_seconds": 0.16863101099443156,
+      "max_seconds": 0.1752516199994716,
+      "throughput_mib_s": 439.6033540766676,
+      "throughput_input_mib_s": 439.6033540766676,
+      "throughput_output_mib_s": null,
+      "throughput_basis": "input",
+      "input_bytes": 79221306,
+      "output_bytes": null,
+      "repeats": 3,
+      "stdev_seconds": 0.003313119171244005,
+      "ci95_low_seconds": 0.1636315764505329,
+      "ci95_high_seconds": 0.18009339354223047,
+      "ci95_half_width_seconds": 0.008230908545848781
+    },
+    {
+      "name": "zstd mzML -> mzML",
+      "command": [
+        "zstd",
+        "-q",
+        "-d",
+        "-c",
+        "data/PXD075509/benchmarks/15HCD_1/15HCD_1.mzML.zst"
+      ],
+      "runs_seconds": [
+        0.05742607200227212,
+        0.057312901997647714,
+        0.05732243100646883
+      ],
+      "median_seconds": 0.05732243100646883,
+      "mean_seconds": 0.05735380166879622,
+      "min_seconds": 0.057312901997647714,
+      "max_seconds": 0.05742607200227212,
+      "throughput_mib_s": 1317.285387299176,
+      "throughput_input_mib_s": 411.8828261418978,
+      "throughput_output_mib_s": 1317.285387299176,
+      "throughput_basis": "output",
+      "input_bytes": 24770559,
+      "output_bytes": 79221306,
+      "repeats": 3,
+      "stdev_seconds": 6.276903159852372e-05,
+      "ci95_low_seconds": 0.05719786216529658,
+      "ci95_high_seconds": 0.05750974117229587,
+      "ci95_half_width_seconds": 0.00015593950349964366
+    },
+    {
+      "name": "mzML -> bzip2 mzML",
+      "command": [
+        "bzip2",
+        "-c",
+        "data/PXD075509/15HCD_1.mzML"
+      ],
+      "runs_seconds": [
+        6.92097997199744,
+        7.3319193060015095,
+        7.057793199004664
+      ],
+      "median_seconds": 7.057793199004664,
+      "mean_seconds": 7.103564159001205,
+      "min_seconds": 6.92097997199744,
+      "max_seconds": 7.3319193060015095,
+      "throughput_mib_s": 10.635692611944148,
+      "throughput_input_mib_s": 10.635692611944148,
+      "throughput_output_mib_s": null,
+      "throughput_basis": "input",
+      "input_bytes": 79221306,
+      "output_bytes": null,
+      "repeats": 3,
+      "stdev_seconds": 0.20925826063068761,
+      "ci95_low_seconds": 6.583695866709183,
+      "ci95_high_seconds": 7.623432451293226,
+      "ci95_half_width_seconds": 0.5198682922920215
+    },
+    {
+      "name": "bzip2 mzML -> mzML",
+      "command": [
+        "bzip2",
+        "-d",
+        "-c",
+        "data/PXD075509/benchmarks/15HCD_1/15HCD_1.mzML.bz2"
+      ],
+      "runs_seconds": [
+        2.441673843000899,
+        2.4444242239987943,
+        2.4480707189941313
+      ],
+      "median_seconds": 2.4444242239987943,
+      "mean_seconds": 2.4447229286646084,
+      "min_seconds": 2.441673843000899,
+      "max_seconds": 2.4480707189941313,
+      "throughput_mib_s": 30.90383943248288,
+      "throughput_input_mib_s": 9.643528451791312,
+      "throughput_output_mib_s": 30.90383943248288,
+      "throughput_basis": "output",
+      "input_bytes": 24720971,
+      "output_bytes": 79221306,
+      "repeats": 3,
+      "stdev_seconds": 0.0032088820446117983,
+      "ci95_low_seconds": 2.436750980395178,
+      "ci95_high_seconds": 2.452694876934039,
+      "ci95_half_width_seconds": 0.00797194826943059
+    },
+    {
+      "name": "mzML -> lz4 mzML",
+      "command": [
+        "lz4",
+        "-q",
+        "-c",
+        "data/PXD075509/15HCD_1.mzML"
+      ],
+      "runs_seconds": [
+        0.09634233700489858,
+        0.09714294000150403,
+        0.09867309699620819
+      ],
+      "median_seconds": 0.09714294000150403,
+      "mean_seconds": 0.09738612466753693,
+      "min_seconds": 0.09634233700489858,
+      "max_seconds": 0.09867309699620819,
+      "throughput_mib_s": 775.7914703175875,
+      "throughput_input_mib_s": 775.7914703175875,
+      "throughput_output_mib_s": null,
+      "throughput_basis": "input",
+      "input_bytes": 79221306,
+      "output_bytes": null,
+      "repeats": 3,
+      "stdev_seconds": 0.001184256990951516,
+      "ci95_low_seconds": 0.0944440297764425,
+      "ci95_high_seconds": 0.10032821955863136,
+      "ci95_half_width_seconds": 0.002942094891094429
+    },
+    {
+      "name": "lz4 mzML -> mzML",
+      "command": [
+        "lz4",
+        "-q",
+        "-d",
+        "-c",
+        "data/PXD075509/benchmarks/15HCD_1/15HCD_1.mzML.lz4"
+      ],
+      "runs_seconds": [
+        0.08624229400447803,
+        0.08693897700140951,
+        0.09257124100258807
+      ],
+      "median_seconds": 0.08693897700140951,
+      "mean_seconds": 0.08858417066949187,
+      "min_seconds": 0.08624229400447803,
+      "max_seconds": 0.09257124100258807,
+      "throughput_mib_s": 852.876132082817,
+      "throughput_input_mib_s": 374.9366947034957,
+      "throughput_output_mib_s": 852.876132082817,
+      "throughput_basis": "output",
+      "input_bytes": 34826833,
+      "output_bytes": 79221306,
+      "repeats": 3,
+      "stdev_seconds": 0.00347043069090066,
+      "ci95_low_seconds": 0.07996244710475071,
+      "ci95_high_seconds": 0.09720589423423302,
+      "ci95_half_width_seconds": 0.008621723564741158
+    },
+    {
+      "name": "mzML -> xz mzML",
+      "command": [
+        "xz",
+        "-c",
+        "data/PXD075509/15HCD_1.mzML"
+      ],
+      "runs_seconds": [
+        5.530065904000367,
+        5.131250430000364,
+        5.224065912996593
+      ],
+      "median_seconds": 5.224065912996593,
+      "mean_seconds": 5.295127415665775,
+      "min_seconds": 5.131250430000364,
+      "max_seconds": 5.530065904000367,
+      "throughput_mib_s": 14.268084394124259,
+      "throughput_input_mib_s": 14.268084394124259,
+      "throughput_output_mib_s": null,
+      "throughput_basis": "input",
+      "input_bytes": 79221306,
+      "output_bytes": null,
+      "repeats": 3,
+      "stdev_seconds": 0.20868816077263044,
+      "ci95_low_seconds": 4.776675444233684,
+      "ci95_high_seconds": 5.813579387097866,
+      "ci95_half_width_seconds": 0.5184519714320905
+    },
+    {
+      "name": "xz mzML -> mzML",
+      "command": [
+        "xz",
+        "-d",
+        "-c",
+        "data/PXD075509/benchmarks/15HCD_1/15HCD_1.mzML.xz"
+      ],
+      "runs_seconds": [
+        0.359462126994913,
+        0.3591417560019181,
+        0.3616882960050134
+      ],
+      "median_seconds": 0.359462126994913,
+      "mean_seconds": 0.36009739300061483,
+      "min_seconds": 0.3591417560019181,
+      "max_seconds": 0.3616882960050134,
+      "throughput_mib_s": 209.80803058530157,
+      "throughput_input_mib_s": 64.98321865977485,
+      "throughput_output_mib_s": 209.80803058530157,
+      "throughput_basis": "output",
+      "input_bytes": 24536980,
+      "output_bytes": 79221306,
+      "repeats": 3,
+      "stdev_seconds": 0.0013870431393224313,
+      "ci95_low_seconds": 0.3566515087330039,
+      "ci95_high_seconds": 0.3635432772682258,
+      "ci95_half_width_seconds": 0.0034458842676109423
+    },
+    {
+      "name": "dump -> mzv1 lossless",
+      "command": [
+        "zig-out/bin/mzarc",
+        "encode-v1",
+        "data/PXD075509/benchmarks/15HCD_1/15HCD_1.bin",
+        "-o",
+        "data/PXD075509/benchmarks/15HCD_1/15HCD_1.lossless.mzv1"
+      ],
+      "runs_seconds": [
+        0.19298963400069624,
+        0.1904244729958009,
+        0.19045568400179036
+      ],
+      "median_seconds": 0.19045568400179036,
+      "mean_seconds": 0.1912899303327625,
+      "min_seconds": 0.1904244729958009,
+      "max_seconds": 0.19298963400069624,
+      "throughput_mib_s": 160.89937868229353,
+      "throughput_input_mib_s": 160.89937868229353,
+      "throughput_output_mib_s": null,
+      "throughput_basis": "input",
+      "input_bytes": 32273524,
+      "output_bytes": null,
+      "repeats": 3,
+      "stdev_seconds": 0.0014720692751410448,
+      "ci95_low_seconds": 0.18763281238723134,
+      "ci95_high_seconds": 0.19494704827829368,
+      "ci95_half_width_seconds": 0.0036571179455311812
+    },
+    {
+      "name": "mzv1 lossless -> dump",
+      "command": [
+        "zig-out/bin/mzarc",
+        "decode-v1",
+        "data/PXD075509/benchmarks/15HCD_1/15HCD_1.lossless.mzv1",
+        "-o",
+        "data/PXD075509/benchmarks/15HCD_1/15HCD_1.lossless.roundtrip.bin"
+      ],
+      "runs_seconds": [
+        0.14910601900191978,
+        0.14982751200295752,
+        0.1506586960022105
+      ],
+      "median_seconds": 0.14982751200295752,
+      "mean_seconds": 0.14986407566902926,
+      "min_seconds": 0.14910601900191978,
+      "max_seconds": 0.1506586960022105,
+      "throughput_mib_s": 205.37564323750297,
+      "throughput_input_mib_s": 134.99298186968943,
+      "throughput_output_mib_s": 205.37564323750297,
+      "throughput_basis": "output",
+      "input_bytes": 21213320,
+      "output_bytes": 32273524,
+      "repeats": 3,
+      "stdev_seconds": 0.0007769840043819416,
+      "ci95_low_seconds": 0.14793378461968743,
+      "ci95_high_seconds": 0.1517943667183711,
+      "ci95_half_width_seconds": 0.0019302910493418314
+    },
+    {
+      "name": "dump -> mzv1 lossy q=16384",
+      "command": [
+        "zig-out/bin/mzarc",
+        "encode-v1",
+        "data/PXD075509/benchmarks/15HCD_1/15HCD_1.bin",
+        "-o",
+        "data/PXD075509/benchmarks/15HCD_1/15HCD_1.lossy.q16384.mzv1",
+        "--lossy",
+        "--intensity-quant",
+        "16384"
+      ],
+      "runs_seconds": [
+        0.2490161910027382,
+        0.24271927399968263,
+        0.24073375599982683
+      ],
+      "median_seconds": 0.24271927399968263,
+      "mean_seconds": 0.24415640700074923,
+      "min_seconds": 0.24073375599982683,
+      "max_seconds": 0.2490161910027382,
+      "throughput_mib_s": 126.06030419929245,
+      "throughput_input_mib_s": 126.06030419929245,
+      "throughput_output_mib_s": null,
+      "throughput_basis": "input",
+      "input_bytes": 32273524,
+      "output_bytes": null,
+      "repeats": 3,
+      "stdev_seconds": 0.0043241988670074906,
+      "ci95_low_seconds": 0.23341363453505568,
+      "ci95_high_seconds": 0.2548991794664428,
+      "ci95_half_width_seconds": 0.010742772465693561
+    },
+    {
+      "name": "mzv1 lossy q=16384 -> dump",
+      "command": [
+        "zig-out/bin/mzarc",
+        "decode-v1",
+        "data/PXD075509/benchmarks/15HCD_1/15HCD_1.lossy.q16384.mzv1",
+        "-o",
+        "data/PXD075509/benchmarks/15HCD_1/15HCD_1.lossy.q16384.roundtrip.bin"
+      ],
+      "runs_seconds": [
+        0.18526275099429768,
+        0.2039711109973723,
+        0.18517454100219766
+      ],
+      "median_seconds": 0.18526275099429768,
+      "mean_seconds": 0.19146946766462256,
+      "min_seconds": 0.18517454100219766,
+      "max_seconds": 0.2039711109973723,
+      "throughput_mib_s": 160.7485063500157,
+      "throughput_input_mib_s": 72.02922855855984,
+      "throughput_output_mib_s": 160.7485063500157,
+      "throughput_basis": "output",
+      "input_bytes": 14461329,
+      "output_bytes": 32273524,
+      "repeats": 3,
+      "stdev_seconds": 0.010826830550310718,
+      "ci95_low_seconds": 0.16457195885344733,
+      "ci95_high_seconds": 0.21836697647579778,
+      "ci95_half_width_seconds": 0.026897508811175214
+    },
+    {
+      "name": "mzML -> mzMLb",
+      "command": [
+        "<python-callable>"
+      ],
+      "runs_seconds": [
+        23.39254696200078,
+        21.51487715999974,
+        21.30579352800123
+      ],
+      "median_seconds": 21.51487715999974,
+      "mean_seconds": 22.071072550000583,
+      "min_seconds": 21.30579352800123,
+      "max_seconds": 23.39254696200078,
+      "throughput_mib_s": 3.4230925875126244,
+      "throughput_input_mib_s": 3.4230925875126244,
+      "throughput_output_mib_s": null,
+      "throughput_basis": "input",
+      "input_bytes": 79221306,
+      "output_bytes": null,
+      "repeats": 3,
+      "stdev_seconds": 1.1491953521794576,
+      "ci95_low_seconds": 19.216082627754,
+      "ci95_high_seconds": 24.926062472247168,
+      "ci95_half_width_seconds": 2.8549899222465864
+    },
+    {
+      "name": "mzMLb -> dump",
+      "command": [
+        "<python-callable>"
+      ],
+      "runs_seconds": [
+        4.84515680399636,
+        4.808756710001035,
+        4.782586959001492
+      ],
+      "median_seconds": 4.808756710001035,
+      "mean_seconds": 4.812166824332962,
+      "min_seconds": 4.782586959001492,
+      "max_seconds": 4.84515680399636,
+      "throughput_mib_s": 6.395960917873426,
+      "throughput_input_mib_s": 3.3766229123219023,
+      "throughput_output_mib_s": 6.395960917873426,
+      "throughput_basis": "output",
+      "input_bytes": 17038178,
+      "output_bytes": 32273524,
+      "repeats": 3,
+      "stdev_seconds": 0.031424004128819814,
+      "ci95_low_seconds": 4.734098970217237,
+      "ci95_high_seconds": 4.890234678448688,
+      "ci95_half_width_seconds": 0.0780678541157255
+    },
+    {
+      "name": "mzML -> MS-Numpress in mzML",
+      "command": [
+        "<python-callable>"
+      ],
+      "runs_seconds": [
+        22.033595918001083,
+        22.076229568003328,
+        22.588344730000244
+      ],
+      "median_seconds": 22.076229568003328,
+      "mean_seconds": 22.232723405334884,
+      "min_seconds": 22.033595918001083,
+      "max_seconds": 22.588344730000244,
+      "throughput_mib_s": 3.398203785786825,
+      "throughput_input_mib_s": 3.398203785786825,
+      "throughput_output_mib_s": null,
+      "throughput_basis": "input",
+      "input_bytes": 79221306,
+      "output_bytes": null,
+      "repeats": 3,
+      "stdev_seconds": 0.3087139484145269,
+      "ci95_low_seconds": 21.46577354784643,
+      "ci95_high_seconds": 22.999673262823336,
+      "ci95_half_width_seconds": 0.7669498574884522
+    },
+    {
+      "name": "MS-Numpress in mzML -> dump",
+      "command": [
+        "<python-callable>"
+      ],
+      "runs_seconds": [
+        6.203852086000552,
+        6.250549692995264,
+        6.242623120000644
+      ],
+      "median_seconds": 6.242623120000644,
+      "mean_seconds": 6.23234163299882,
+      "min_seconds": 6.203852086000552,
+      "max_seconds": 6.250549692995264,
+      "throughput_mib_s": 4.938501890807135,
+      "throughput_input_mib_s": 10.696925930228604,
+      "throughput_output_mib_s": 4.938501890807135,
+      "throughput_basis": "output",
+      "input_bytes": 69905308,
+      "output_bytes": 32273524,
+      "repeats": 3,
+      "stdev_seconds": 0.024988964684129217,
+      "ci95_low_seconds": 6.170260593247605,
+      "ci95_high_seconds": 6.294422672750036,
+      "ci95_half_width_seconds": 0.0620810397512153
+    },
+    {
+      "name": "mzML -> MScompress",
+      "command": [
+        "<python-callable>"
+      ],
+      "runs_seconds": [
+        0.7228086999966763,
+        0.7152226780017372,
+        0.7085496700019576
+      ],
+      "median_seconds": 0.7152226780017372,
+      "mean_seconds": 0.7155270160001237,
+      "min_seconds": 0.7085496700019576,
+      "max_seconds": 0.7228086999966763,
+      "throughput_mib_s": 105.58836096322503,
+      "throughput_input_mib_s": 105.58836096322503,
+      "throughput_output_mib_s": null,
+      "throughput_basis": "input",
+      "input_bytes": 79221306,
+      "output_bytes": null,
+      "repeats": 3,
+      "stdev_seconds": 0.0071343850688422,
+      "ci95_low_seconds": 0.6978027905807102,
+      "ci95_high_seconds": 0.7332512414195372,
+      "ci95_half_width_seconds": 0.017724225419413507
+    },
+    {
+      "name": "MScompress -> dump",
+      "command": [
+        "<python-callable>"
+      ],
+      "runs_seconds": [
+        7.1761010289992555,
+        7.234674416002235,
+        7.511677114998747
+      ],
+      "median_seconds": 7.234674416002235,
+      "mean_seconds": 7.307484186666746,
+      "min_seconds": 7.1761010289992555,
+      "max_seconds": 7.511677114998747,
+      "throughput_mib_s": 4.211905240230161,
+      "throughput_input_mib_s": 2.9598384963550695,
+      "throughput_output_mib_s": 4.211905240230161,
+      "throughput_basis": "output",
+      "input_bytes": 22679622,
+      "output_bytes": 32273524,
+      "repeats": 3,
+      "stdev_seconds": 0.17924501220912264,
+      "ci95_low_seconds": 6.862178954184307,
+      "ci95_high_seconds": 7.752789419149185,
+      "ci95_half_width_seconds": 0.4453052324824388
+    },
+    {
+      "name": "mzML -> MScompress threaded",
+      "command": [
+        "<python-callable>"
+      ],
+      "runs_seconds": [
+        0.13260204999824055,
+        0.12982691800425528,
+        0.12653035399853252
+      ],
+      "median_seconds": 0.12982691800425528,
+      "mean_seconds": 0.1296531073336761,
+      "min_seconds": 0.12653035399853252,
+      "max_seconds": 0.13260204999824055,
+      "throughput_mib_s": 582.7189675440709,
+      "throughput_input_mib_s": 582.7189675440709,
+      "throughput_output_mib_s": null,
+      "throughput_basis": "input",
+      "input_bytes": 79221306,
+      "output_bytes": null,
+      "repeats": 3,
+      "stdev_seconds": 0.0030395773867633305,
+      "ci95_low_seconds": 0.1221017690945855,
+      "ci95_high_seconds": 0.1372044455727667,
+      "ci95_half_width_seconds": 0.007551338239090597
+    },
+    {
+      "name": "MScompress threaded -> dump",
+      "command": [
+        "<python-callable>"
+      ],
+      "runs_seconds": [
+        5.169871723999677,
+        5.186576184998557,
+        5.171505211001204
+      ],
+      "median_seconds": 5.171505211001204,
+      "mean_seconds": 5.175984373333146,
+      "min_seconds": 5.169871723999677,
+      "max_seconds": 5.186576184998557,
+      "throughput_mib_s": 5.946391781492283,
+      "throughput_input_mib_s": 4.1602527835183,
+      "throughput_output_mib_s": 5.946391781492283,
+      "throughput_basis": "output",
+      "input_bytes": 22579410,
+      "output_bytes": 32273524,
+      "repeats": 3,
+      "stdev_seconds": 0.009209067581069135,
+      "ci95_low_seconds": 5.153105934878468,
+      "ci95_high_seconds": 5.198862811787825,
+      "ci95_half_width_seconds": 0.022878438454678348
+    }
+  ],
+  "fidelity": {
+    "mzv1_lossless": {
+      "name": "mzv1_lossless",
+      "matched_spectra": 9001,
+      "matched_peaks": 2668458,
+      "global_order_preserved": true,
+      "ms1_relative_order_preserved": true,
+      "ms2_relative_order_preserved": true,
+      "max_abs_rt_error": 0.0,
+      "max_abs_precursor_mz_error": 0.0,
+      "exact_mz_count": 2668458,
+      "exact_intensity_count": 2668458,
+      "mz_abs": {
+        "count": 2668458,
+        "mean": 0.0,
+        "median": 0.0,
+        "p95": 0.0,
+        "p99": 0.0,
+        "p999": 0.0,
+        "max": 0.0,
+        "rmse": 0.0,
+        "quantiles": {
+          "p50": 0.0,
+          "p90": 0.0,
+          "p95": 0.0,
+          "p99": 0.0,
+          "p99.9": 0.0,
+          "p100": 0.0
+        }
+      },
+      "mz_ppm": {
+        "count": 2668458,
+        "mean": 0.0,
+        "median": 0.0,
+        "p95": 0.0,
+        "p99": 0.0,
+        "p999": 0.0,
+        "max": 0.0,
+        "rmse": 0.0,
+        "quantiles": {
+          "p50": 0.0,
+          "p90": 0.0,
+          "p95": 0.0,
+          "p99": 0.0,
+          "p99.9": 0.0,
+          "p100": 0.0
+        }
+      },
+      "intensity_abs": {
+        "count": 2668458,
+        "mean": 0.0,
+        "median": 0.0,
+        "p95": 0.0,
+        "p99": 0.0,
+        "p999": 0.0,
+        "max": 0.0,
+        "rmse": 0.0,
+        "quantiles": {
+          "p50": 0.0,
+          "p90": 0.0,
+          "p95": 0.0,
+          "p99": 0.0,
+          "p99.9": 0.0,
+          "p100": 0.0
+        }
+      },
+      "intensity_rel": {
+        "count": 2668458,
+        "mean": 0.0,
+        "median": 0.0,
+        "p95": 0.0,
+        "p99": 0.0,
+        "p999": 0.0,
+        "max": 0.0,
+        "rmse": 0.0,
+        "quantiles": {
+          "p50": 0.0,
+          "p90": 0.0,
+          "p95": 0.0,
+          "p99": 0.0,
+          "p99.9": 0.0,
+          "p100": 0.0
+        }
+      },
+      "intensity_log1p_abs": {
+        "count": 2668458,
+        "mean": 0.0,
+        "median": 0.0,
+        "p95": 0.0,
+        "p99": 0.0,
+        "p999": 0.0,
+        "max": 0.0,
+        "rmse": 0.0,
+        "quantiles": {
+          "p50": 0.0,
+          "p90": 0.0,
+          "p95": 0.0,
+          "p99": 0.0,
+          "p99.9": 0.0,
+          "p100": 0.0
+        }
+      }
+    },
+    "mzv1_lossy": {
+      "name": "mzv1_lossy",
+      "matched_spectra": 9001,
+      "matched_peaks": 2668458,
+      "global_order_preserved": true,
+      "ms1_relative_order_preserved": true,
+      "ms2_relative_order_preserved": true,
+      "max_abs_rt_error": 0.0,
+      "max_abs_precursor_mz_error": 0.0,
+      "exact_mz_count": 8112,
+      "exact_intensity_count": 211,
+      "mz_abs": {
+        "count": 2668458,
+        "mean": 5.000682040703224e-07,
+        "median": 4.999999418942025e-07,
+        "p95": 9.511718985777406e-07,
+        "p99": 9.92187551673851e-07,
+        "p999": 1.0000001111620804e-06,
+        "max": 1.0000001111620804e-06,
+        "rmse": 5.774215236729777e-07,
+        "quantiles": {
+          "p50": 4.999999418942025e-07,
+          "p90": 8.984375199361239e-07,
+          "p95": 9.511718985777406e-07,
+          "p99": 9.92187551673851e-07,
+          "p99.9": 1.0000001111620804e-06,
+          "p100": 1.0000001111620804e-06
+        }
+      },
+      "mz_ppm": {
+        "count": 2668458,
+        "mean": 0.0006086688962415269,
+        "median": 0.00043617878157533793,
+        "p95": 0.0018339364696811774,
+        "p99": 0.004381685895528825,
+        "p999": 0.005753074009525418,
+        "max": 0.007460076913208478,
+        "rmse": 0.0009638524690437311,
+        "quantiles": {
+          "p50": 0.00043617878157533793,
+          "p90": 0.0010778008132680456,
+          "p95": 0.0018339364696811774,
+          "p99": 0.004381685895528825,
+          "p99.9": 0.005753074009525418,
+          "p100": 0.007460076913208478
+        }
+      },
+      "intensity_abs": {
+        "count": 2668458,
+        "mean": 173.7009067916333,
+        "median": 3.3505859375,
+        "p95": 376.625,
+        "p99": 2201.5,
+        "p999": 22490.51600000076,
+        "max": 537856.0,
+        "rmse": 2607.534839019862,
+        "quantiles": {
+          "p50": 3.3505859375,
+          "p90": 161.625,
+          "p95": 376.625,
+          "p99": 2201.5,
+          "p99.9": 22490.51600000076,
+          "p100": 537856.0
+        }
+      },
+      "intensity_rel": {
+        "count": 2668458,
+        "mean": 0.0002842063111641296,
+        "median": 0.0002829259300740252,
+        "p95": 0.0005460953217593955,
+        "p99": 0.0005940453269578537,
+        "p999": 0.0006273785549791054,
+        "max": 0.0006448639836509027,
+        "rmse": 0.0003289912841214131,
+        "quantiles": {
+          "p50": 0.0002829259300740252,
+          "p90": 0.0005097546064660591,
+          "p95": 0.0005460953217593955,
+          "p99": 0.0005940453269578537,
+          "p99.9": 0.0006273785549791054,
+          "p100": 0.0006448639836509027
+        }
+      },
+      "intensity_log1p_abs": {
+        "count": 2668458,
+        "mean": 0.0002841444872908944,
+        "median": 0.0002828530337808388,
+        "p95": 0.0005460019629553336,
+        "p99": 0.0005939838864351903,
+        "p999": 0.0006272840088375563,
+        "max": 0.0006446247450959675,
+        "rmse": 0.00032892149933465704,
+        "quantiles": {
+          "p50": 0.0002828530337808388,
+          "p90": 0.0005096487336079038,
+          "p95": 0.0005460019629553336,
+          "p99": 0.0005939838864351903,
+          "p99.9": 0.0006272840088375563,
+          "p100": 0.0006446247450959675
+        }
+      }
+    }
+  },
+  "fidelity_rows": [
+    {
+      "artifact": "gzip dump",
+      "data": {
+        "name": "gzip_dump",
+        "matched_spectra": 9001,
+        "matched_peaks": 2668458,
+        "global_order_preserved": true,
+        "ms1_relative_order_preserved": true,
+        "ms2_relative_order_preserved": true,
+        "max_abs_rt_error": 0.0,
+        "max_abs_precursor_mz_error": 0.0,
+        "exact_mz_count": 2668458,
+        "exact_intensity_count": 2668458,
+        "mz_abs": {
+          "count": 2668458,
+          "mean": 0.0,
+          "median": 0.0,
+          "p95": 0.0,
+          "p99": 0.0,
+          "p999": 0.0,
+          "max": 0.0,
+          "rmse": 0.0,
+          "quantiles": {
+            "p50": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0,
+            "p99.9": 0.0,
+            "p100": 0.0
+          }
+        },
+        "mz_ppm": {
+          "count": 2668458,
+          "mean": 0.0,
+          "median": 0.0,
+          "p95": 0.0,
+          "p99": 0.0,
+          "p999": 0.0,
+          "max": 0.0,
+          "rmse": 0.0,
+          "quantiles": {
+            "p50": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0,
+            "p99.9": 0.0,
+            "p100": 0.0
+          }
+        },
+        "intensity_abs": {
+          "count": 2668458,
+          "mean": 0.0,
+          "median": 0.0,
+          "p95": 0.0,
+          "p99": 0.0,
+          "p999": 0.0,
+          "max": 0.0,
+          "rmse": 0.0,
+          "quantiles": {
+            "p50": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0,
+            "p99.9": 0.0,
+            "p100": 0.0
+          }
+        },
+        "intensity_rel": {
+          "count": 2668458,
+          "mean": 0.0,
+          "median": 0.0,
+          "p95": 0.0,
+          "p99": 0.0,
+          "p999": 0.0,
+          "max": 0.0,
+          "rmse": 0.0,
+          "quantiles": {
+            "p50": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0,
+            "p99.9": 0.0,
+            "p100": 0.0
+          }
+        },
+        "intensity_log1p_abs": {
+          "count": 2668458,
+          "mean": 0.0,
+          "median": 0.0,
+          "p95": 0.0,
+          "p99": 0.0,
+          "p999": 0.0,
+          "max": 0.0,
+          "rmse": 0.0,
+          "quantiles": {
+            "p50": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0,
+            "p99.9": 0.0,
+            "p100": 0.0
+          }
+        }
+      }
+    },
+    {
+      "artifact": "zstd dump",
+      "data": {
+        "name": "zstd_dump",
+        "matched_spectra": 9001,
+        "matched_peaks": 2668458,
+        "global_order_preserved": true,
+        "ms1_relative_order_preserved": true,
+        "ms2_relative_order_preserved": true,
+        "max_abs_rt_error": 0.0,
+        "max_abs_precursor_mz_error": 0.0,
+        "exact_mz_count": 2668458,
+        "exact_intensity_count": 2668458,
+        "mz_abs": {
+          "count": 2668458,
+          "mean": 0.0,
+          "median": 0.0,
+          "p95": 0.0,
+          "p99": 0.0,
+          "p999": 0.0,
+          "max": 0.0,
+          "rmse": 0.0,
+          "quantiles": {
+            "p50": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0,
+            "p99.9": 0.0,
+            "p100": 0.0
+          }
+        },
+        "mz_ppm": {
+          "count": 2668458,
+          "mean": 0.0,
+          "median": 0.0,
+          "p95": 0.0,
+          "p99": 0.0,
+          "p999": 0.0,
+          "max": 0.0,
+          "rmse": 0.0,
+          "quantiles": {
+            "p50": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0,
+            "p99.9": 0.0,
+            "p100": 0.0
+          }
+        },
+        "intensity_abs": {
+          "count": 2668458,
+          "mean": 0.0,
+          "median": 0.0,
+          "p95": 0.0,
+          "p99": 0.0,
+          "p999": 0.0,
+          "max": 0.0,
+          "rmse": 0.0,
+          "quantiles": {
+            "p50": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0,
+            "p99.9": 0.0,
+            "p100": 0.0
+          }
+        },
+        "intensity_rel": {
+          "count": 2668458,
+          "mean": 0.0,
+          "median": 0.0,
+          "p95": 0.0,
+          "p99": 0.0,
+          "p999": 0.0,
+          "max": 0.0,
+          "rmse": 0.0,
+          "quantiles": {
+            "p50": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0,
+            "p99.9": 0.0,
+            "p100": 0.0
+          }
+        },
+        "intensity_log1p_abs": {
+          "count": 2668458,
+          "mean": 0.0,
+          "median": 0.0,
+          "p95": 0.0,
+          "p99": 0.0,
+          "p999": 0.0,
+          "max": 0.0,
+          "rmse": 0.0,
+          "quantiles": {
+            "p50": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0,
+            "p99.9": 0.0,
+            "p100": 0.0
+          }
+        }
+      }
+    },
+    {
+      "artifact": "bzip2 dump",
+      "data": {
+        "name": "bzip2_dump",
+        "matched_spectra": 9001,
+        "matched_peaks": 2668458,
+        "global_order_preserved": true,
+        "ms1_relative_order_preserved": true,
+        "ms2_relative_order_preserved": true,
+        "max_abs_rt_error": 0.0,
+        "max_abs_precursor_mz_error": 0.0,
+        "exact_mz_count": 2668458,
+        "exact_intensity_count": 2668458,
+        "mz_abs": {
+          "count": 2668458,
+          "mean": 0.0,
+          "median": 0.0,
+          "p95": 0.0,
+          "p99": 0.0,
+          "p999": 0.0,
+          "max": 0.0,
+          "rmse": 0.0,
+          "quantiles": {
+            "p50": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0,
+            "p99.9": 0.0,
+            "p100": 0.0
+          }
+        },
+        "mz_ppm": {
+          "count": 2668458,
+          "mean": 0.0,
+          "median": 0.0,
+          "p95": 0.0,
+          "p99": 0.0,
+          "p999": 0.0,
+          "max": 0.0,
+          "rmse": 0.0,
+          "quantiles": {
+            "p50": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0,
+            "p99.9": 0.0,
+            "p100": 0.0
+          }
+        },
+        "intensity_abs": {
+          "count": 2668458,
+          "mean": 0.0,
+          "median": 0.0,
+          "p95": 0.0,
+          "p99": 0.0,
+          "p999": 0.0,
+          "max": 0.0,
+          "rmse": 0.0,
+          "quantiles": {
+            "p50": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0,
+            "p99.9": 0.0,
+            "p100": 0.0
+          }
+        },
+        "intensity_rel": {
+          "count": 2668458,
+          "mean": 0.0,
+          "median": 0.0,
+          "p95": 0.0,
+          "p99": 0.0,
+          "p999": 0.0,
+          "max": 0.0,
+          "rmse": 0.0,
+          "quantiles": {
+            "p50": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0,
+            "p99.9": 0.0,
+            "p100": 0.0
+          }
+        },
+        "intensity_log1p_abs": {
+          "count": 2668458,
+          "mean": 0.0,
+          "median": 0.0,
+          "p95": 0.0,
+          "p99": 0.0,
+          "p999": 0.0,
+          "max": 0.0,
+          "rmse": 0.0,
+          "quantiles": {
+            "p50": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0,
+            "p99.9": 0.0,
+            "p100": 0.0
+          }
+        }
+      }
+    },
+    {
+      "artifact": "lz4 dump",
+      "data": {
+        "name": "lz4_dump",
+        "matched_spectra": 9001,
+        "matched_peaks": 2668458,
+        "global_order_preserved": true,
+        "ms1_relative_order_preserved": true,
+        "ms2_relative_order_preserved": true,
+        "max_abs_rt_error": 0.0,
+        "max_abs_precursor_mz_error": 0.0,
+        "exact_mz_count": 2668458,
+        "exact_intensity_count": 2668458,
+        "mz_abs": {
+          "count": 2668458,
+          "mean": 0.0,
+          "median": 0.0,
+          "p95": 0.0,
+          "p99": 0.0,
+          "p999": 0.0,
+          "max": 0.0,
+          "rmse": 0.0,
+          "quantiles": {
+            "p50": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0,
+            "p99.9": 0.0,
+            "p100": 0.0
+          }
+        },
+        "mz_ppm": {
+          "count": 2668458,
+          "mean": 0.0,
+          "median": 0.0,
+          "p95": 0.0,
+          "p99": 0.0,
+          "p999": 0.0,
+          "max": 0.0,
+          "rmse": 0.0,
+          "quantiles": {
+            "p50": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0,
+            "p99.9": 0.0,
+            "p100": 0.0
+          }
+        },
+        "intensity_abs": {
+          "count": 2668458,
+          "mean": 0.0,
+          "median": 0.0,
+          "p95": 0.0,
+          "p99": 0.0,
+          "p999": 0.0,
+          "max": 0.0,
+          "rmse": 0.0,
+          "quantiles": {
+            "p50": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0,
+            "p99.9": 0.0,
+            "p100": 0.0
+          }
+        },
+        "intensity_rel": {
+          "count": 2668458,
+          "mean": 0.0,
+          "median": 0.0,
+          "p95": 0.0,
+          "p99": 0.0,
+          "p999": 0.0,
+          "max": 0.0,
+          "rmse": 0.0,
+          "quantiles": {
+            "p50": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0,
+            "p99.9": 0.0,
+            "p100": 0.0
+          }
+        },
+        "intensity_log1p_abs": {
+          "count": 2668458,
+          "mean": 0.0,
+          "median": 0.0,
+          "p95": 0.0,
+          "p99": 0.0,
+          "p999": 0.0,
+          "max": 0.0,
+          "rmse": 0.0,
+          "quantiles": {
+            "p50": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0,
+            "p99.9": 0.0,
+            "p100": 0.0
+          }
+        }
+      }
+    },
+    {
+      "artifact": "xz dump",
+      "data": {
+        "name": "xz_dump",
+        "matched_spectra": 9001,
+        "matched_peaks": 2668458,
+        "global_order_preserved": true,
+        "ms1_relative_order_preserved": true,
+        "ms2_relative_order_preserved": true,
+        "max_abs_rt_error": 0.0,
+        "max_abs_precursor_mz_error": 0.0,
+        "exact_mz_count": 2668458,
+        "exact_intensity_count": 2668458,
+        "mz_abs": {
+          "count": 2668458,
+          "mean": 0.0,
+          "median": 0.0,
+          "p95": 0.0,
+          "p99": 0.0,
+          "p999": 0.0,
+          "max": 0.0,
+          "rmse": 0.0,
+          "quantiles": {
+            "p50": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0,
+            "p99.9": 0.0,
+            "p100": 0.0
+          }
+        },
+        "mz_ppm": {
+          "count": 2668458,
+          "mean": 0.0,
+          "median": 0.0,
+          "p95": 0.0,
+          "p99": 0.0,
+          "p999": 0.0,
+          "max": 0.0,
+          "rmse": 0.0,
+          "quantiles": {
+            "p50": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0,
+            "p99.9": 0.0,
+            "p100": 0.0
+          }
+        },
+        "intensity_abs": {
+          "count": 2668458,
+          "mean": 0.0,
+          "median": 0.0,
+          "p95": 0.0,
+          "p99": 0.0,
+          "p999": 0.0,
+          "max": 0.0,
+          "rmse": 0.0,
+          "quantiles": {
+            "p50": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0,
+            "p99.9": 0.0,
+            "p100": 0.0
+          }
+        },
+        "intensity_rel": {
+          "count": 2668458,
+          "mean": 0.0,
+          "median": 0.0,
+          "p95": 0.0,
+          "p99": 0.0,
+          "p999": 0.0,
+          "max": 0.0,
+          "rmse": 0.0,
+          "quantiles": {
+            "p50": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0,
+            "p99.9": 0.0,
+            "p100": 0.0
+          }
+        },
+        "intensity_log1p_abs": {
+          "count": 2668458,
+          "mean": 0.0,
+          "median": 0.0,
+          "p95": 0.0,
+          "p99": 0.0,
+          "p999": 0.0,
+          "max": 0.0,
+          "rmse": 0.0,
+          "quantiles": {
+            "p50": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0,
+            "p99.9": 0.0,
+            "p100": 0.0
+          }
+        }
+      }
+    },
+    {
+      "artifact": "mzv1 lossless",
+      "data": {
+        "name": "mzv1_lossless",
+        "matched_spectra": 9001,
+        "matched_peaks": 2668458,
+        "global_order_preserved": true,
+        "ms1_relative_order_preserved": true,
+        "ms2_relative_order_preserved": true,
+        "max_abs_rt_error": 0.0,
+        "max_abs_precursor_mz_error": 0.0,
+        "exact_mz_count": 2668458,
+        "exact_intensity_count": 2668458,
+        "mz_abs": {
+          "count": 2668458,
+          "mean": 0.0,
+          "median": 0.0,
+          "p95": 0.0,
+          "p99": 0.0,
+          "p999": 0.0,
+          "max": 0.0,
+          "rmse": 0.0,
+          "quantiles": {
+            "p50": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0,
+            "p99.9": 0.0,
+            "p100": 0.0
+          }
+        },
+        "mz_ppm": {
+          "count": 2668458,
+          "mean": 0.0,
+          "median": 0.0,
+          "p95": 0.0,
+          "p99": 0.0,
+          "p999": 0.0,
+          "max": 0.0,
+          "rmse": 0.0,
+          "quantiles": {
+            "p50": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0,
+            "p99.9": 0.0,
+            "p100": 0.0
+          }
+        },
+        "intensity_abs": {
+          "count": 2668458,
+          "mean": 0.0,
+          "median": 0.0,
+          "p95": 0.0,
+          "p99": 0.0,
+          "p999": 0.0,
+          "max": 0.0,
+          "rmse": 0.0,
+          "quantiles": {
+            "p50": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0,
+            "p99.9": 0.0,
+            "p100": 0.0
+          }
+        },
+        "intensity_rel": {
+          "count": 2668458,
+          "mean": 0.0,
+          "median": 0.0,
+          "p95": 0.0,
+          "p99": 0.0,
+          "p999": 0.0,
+          "max": 0.0,
+          "rmse": 0.0,
+          "quantiles": {
+            "p50": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0,
+            "p99.9": 0.0,
+            "p100": 0.0
+          }
+        },
+        "intensity_log1p_abs": {
+          "count": 2668458,
+          "mean": 0.0,
+          "median": 0.0,
+          "p95": 0.0,
+          "p99": 0.0,
+          "p999": 0.0,
+          "max": 0.0,
+          "rmse": 0.0,
+          "quantiles": {
+            "p50": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0,
+            "p99.9": 0.0,
+            "p100": 0.0
+          }
+        }
+      }
+    },
+    {
+      "artifact": "mzv1 lossy q=16384",
+      "data": {
+        "name": "mzv1_lossy",
+        "matched_spectra": 9001,
+        "matched_peaks": 2668458,
+        "global_order_preserved": true,
+        "ms1_relative_order_preserved": true,
+        "ms2_relative_order_preserved": true,
+        "max_abs_rt_error": 0.0,
+        "max_abs_precursor_mz_error": 0.0,
+        "exact_mz_count": 8112,
+        "exact_intensity_count": 211,
+        "mz_abs": {
+          "count": 2668458,
+          "mean": 5.000682040703224e-07,
+          "median": 4.999999418942025e-07,
+          "p95": 9.511718985777406e-07,
+          "p99": 9.92187551673851e-07,
+          "p999": 1.0000001111620804e-06,
+          "max": 1.0000001111620804e-06,
+          "rmse": 5.774215236729777e-07,
+          "quantiles": {
+            "p50": 4.999999418942025e-07,
+            "p90": 8.984375199361239e-07,
+            "p95": 9.511718985777406e-07,
+            "p99": 9.92187551673851e-07,
+            "p99.9": 1.0000001111620804e-06,
+            "p100": 1.0000001111620804e-06
+          }
+        },
+        "mz_ppm": {
+          "count": 2668458,
+          "mean": 0.0006086688962415269,
+          "median": 0.00043617878157533793,
+          "p95": 0.0018339364696811774,
+          "p99": 0.004381685895528825,
+          "p999": 0.005753074009525418,
+          "max": 0.007460076913208478,
+          "rmse": 0.0009638524690437311,
+          "quantiles": {
+            "p50": 0.00043617878157533793,
+            "p90": 0.0010778008132680456,
+            "p95": 0.0018339364696811774,
+            "p99": 0.004381685895528825,
+            "p99.9": 0.005753074009525418,
+            "p100": 0.007460076913208478
+          }
+        },
+        "intensity_abs": {
+          "count": 2668458,
+          "mean": 173.7009067916333,
+          "median": 3.3505859375,
+          "p95": 376.625,
+          "p99": 2201.5,
+          "p999": 22490.51600000076,
+          "max": 537856.0,
+          "rmse": 2607.534839019862,
+          "quantiles": {
+            "p50": 3.3505859375,
+            "p90": 161.625,
+            "p95": 376.625,
+            "p99": 2201.5,
+            "p99.9": 22490.51600000076,
+            "p100": 537856.0
+          }
+        },
+        "intensity_rel": {
+          "count": 2668458,
+          "mean": 0.0002842063111641296,
+          "median": 0.0002829259300740252,
+          "p95": 0.0005460953217593955,
+          "p99": 0.0005940453269578537,
+          "p999": 0.0006273785549791054,
+          "max": 0.0006448639836509027,
+          "rmse": 0.0003289912841214131,
+          "quantiles": {
+            "p50": 0.0002829259300740252,
+            "p90": 0.0005097546064660591,
+            "p95": 0.0005460953217593955,
+            "p99": 0.0005940453269578537,
+            "p99.9": 0.0006273785549791054,
+            "p100": 0.0006448639836509027
+          }
+        },
+        "intensity_log1p_abs": {
+          "count": 2668458,
+          "mean": 0.0002841444872908944,
+          "median": 0.0002828530337808388,
+          "p95": 0.0005460019629553336,
+          "p99": 0.0005939838864351903,
+          "p999": 0.0006272840088375563,
+          "max": 0.0006446247450959675,
+          "rmse": 0.00032892149933465704,
+          "quantiles": {
+            "p50": 0.0002828530337808388,
+            "p90": 0.0005096487336079038,
+            "p95": 0.0005460019629553336,
+            "p99": 0.0005939838864351903,
+            "p99.9": 0.0006272840088375563,
+            "p100": 0.0006446247450959675
+          }
+        }
+      }
+    },
+    {
+      "artifact": "mzMLb",
+      "data": {
+        "name": "mzMLb",
+        "matched_spectra": 9001,
+        "matched_peaks": 2668458,
+        "global_order_preserved": true,
+        "ms1_relative_order_preserved": true,
+        "ms2_relative_order_preserved": true,
+        "max_abs_rt_error": 0.0,
+        "max_abs_precursor_mz_error": 0.0,
+        "exact_mz_count": 2668458,
+        "exact_intensity_count": 2668458,
+        "mz_abs": {
+          "count": 2668458,
+          "mean": 0.0,
+          "median": 0.0,
+          "p95": 0.0,
+          "p99": 0.0,
+          "p999": 0.0,
+          "max": 0.0,
+          "rmse": 0.0,
+          "quantiles": {
+            "p50": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0,
+            "p99.9": 0.0,
+            "p100": 0.0
+          }
+        },
+        "mz_ppm": {
+          "count": 2668458,
+          "mean": 0.0,
+          "median": 0.0,
+          "p95": 0.0,
+          "p99": 0.0,
+          "p999": 0.0,
+          "max": 0.0,
+          "rmse": 0.0,
+          "quantiles": {
+            "p50": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0,
+            "p99.9": 0.0,
+            "p100": 0.0
+          }
+        },
+        "intensity_abs": {
+          "count": 2668458,
+          "mean": 0.0,
+          "median": 0.0,
+          "p95": 0.0,
+          "p99": 0.0,
+          "p999": 0.0,
+          "max": 0.0,
+          "rmse": 0.0,
+          "quantiles": {
+            "p50": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0,
+            "p99.9": 0.0,
+            "p100": 0.0
+          }
+        },
+        "intensity_rel": {
+          "count": 2668458,
+          "mean": 0.0,
+          "median": 0.0,
+          "p95": 0.0,
+          "p99": 0.0,
+          "p999": 0.0,
+          "max": 0.0,
+          "rmse": 0.0,
+          "quantiles": {
+            "p50": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0,
+            "p99.9": 0.0,
+            "p100": 0.0
+          }
+        },
+        "intensity_log1p_abs": {
+          "count": 2668458,
+          "mean": 0.0,
+          "median": 0.0,
+          "p95": 0.0,
+          "p99": 0.0,
+          "p999": 0.0,
+          "max": 0.0,
+          "rmse": 0.0,
+          "quantiles": {
+            "p50": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0,
+            "p99.9": 0.0,
+            "p100": 0.0
+          }
+        }
+      }
+    },
+    {
+      "artifact": "MS-Numpress in mzML",
+      "data": {
+        "name": "MS-Numpress in mzML",
+        "matched_spectra": 9001,
+        "matched_peaks": 2668458,
+        "global_order_preserved": true,
+        "ms1_relative_order_preserved": true,
+        "ms2_relative_order_preserved": true,
+        "max_abs_rt_error": 0.0,
+        "max_abs_precursor_mz_error": 0.0,
+        "exact_mz_count": 1860,
+        "exact_intensity_count": 941,
+        "mz_abs": {
+          "count": 2668458,
+          "mean": 4.705757138980256e-08,
+          "median": 3.1091303753782995e-08,
+          "p95": 1.4996362551755738e-07,
+          "p99": 1.7054919453585183e-07,
+          "p999": 1.7554899136484896e-07,
+          "max": 2.3744371446809964e-07,
+          "rmse": 6.483911624028512e-08,
+          "quantiles": {
+            "p50": 3.1091303753782995e-08,
+            "p90": 1.24995631267666e-07,
+            "p95": 1.4996362551755738e-07,
+            "p99": 1.7054919453585183e-07,
+            "p99.9": 1.7554899136484896e-07,
+            "p100": 2.3744371446809964e-07
+          }
+        },
+        "mz_ppm": {
+          "count": 2668458,
+          "mean": 4.9864786779797104e-05,
+          "median": 2.9548162877172127e-05,
+          "p95": 0.00015964472877747426,
+          "p99": 0.00023369724218513728,
+          "p999": 0.0004699989301705763,
+          "max": 0.0014035396211893555,
+          "rmse": 7.477129777636997e-05,
+          "quantiles": {
+            "p50": 2.9548162877172127e-05,
+            "p90": 0.00012259631554553115,
+            "p95": 0.00015964472877747426,
+            "p99": 0.00023369724218513728,
+            "p99.9": 0.0004699989301705763,
+            "p100": 0.0014035396211893555
+          }
+        },
+        "intensity_abs": {
+          "count": 2668458,
+          "mean": 41.52766614847628,
+          "median": 0.6689453125,
+          "p95": 87.8125,
+          "p99": 514.0,
+          "p999": 5444.0,
+          "max": 191744.0,
+          "rmse": 690.1497167431261,
+          "quantiles": {
+            "p50": 0.6689453125,
+            "p90": 37.5,
+            "p95": 87.8125,
+            "p99": 514.0,
+            "p99.9": 5444.0,
+            "p100": 191744.0
+          }
+        },
+        "intensity_rel": {
+          "count": 2668458,
+          "mean": 5.853155157728682e-05,
+          "median": 5.7149052994411354e-05,
+          "p95": 0.00011805221962395048,
+          "p99": 0.00013551917934978363,
+          "p999": 0.00014774094706074883,
+          "max": 0.00016065402745819312,
+          "rmse": 6.836203676098028e-05,
+          "quantiles": {
+            "p50": 5.7149052994411354e-05,
+            "p90": 0.00010638321267285424,
+            "p95": 0.00011805221962395048,
+            "p99": 0.00013551917934978363,
+            "p99.9": 0.00014774094706074883,
+            "p100": 0.00016065402745819312
+          }
+        },
+        "intensity_log1p_abs": {
+          "count": 2668458,
+          "mean": 5.852003444979663e-05,
+          "median": 5.7135613269032604e-05,
+          "p95": 0.0001180485593306635,
+          "p99": 0.00013552065527933988,
+          "p999": 0.00014773291925007648,
+          "max": 0.00016066691420846269,
+          "rmse": 6.835030097401255e-05,
+          "quantiles": {
+            "p50": 5.7135613269032604e-05,
+            "p90": 0.0001063665040692996,
+            "p95": 0.0001180485593306635,
+            "p99": 0.00013552065527933988,
+            "p99.9": 0.00014773291925007648,
+            "p100": 0.00016066691420846269
+          }
+        }
+      }
+    },
+    {
+      "artifact": "MScompress",
+      "data": {
+        "name": "MScompress",
+        "matched_spectra": 9001,
+        "matched_peaks": 2668458,
+        "global_order_preserved": true,
+        "ms1_relative_order_preserved": true,
+        "ms2_relative_order_preserved": true,
+        "max_abs_rt_error": 0.0,
+        "max_abs_precursor_mz_error": 0.0,
+        "exact_mz_count": 2668458,
+        "exact_intensity_count": 2668458,
+        "mz_abs": {
+          "count": 2668458,
+          "mean": 0.0,
+          "median": 0.0,
+          "p95": 0.0,
+          "p99": 0.0,
+          "p999": 0.0,
+          "max": 0.0,
+          "rmse": 0.0,
+          "quantiles": {
+            "p50": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0,
+            "p99.9": 0.0,
+            "p100": 0.0
+          }
+        },
+        "mz_ppm": {
+          "count": 2668458,
+          "mean": 0.0,
+          "median": 0.0,
+          "p95": 0.0,
+          "p99": 0.0,
+          "p999": 0.0,
+          "max": 0.0,
+          "rmse": 0.0,
+          "quantiles": {
+            "p50": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0,
+            "p99.9": 0.0,
+            "p100": 0.0
+          }
+        },
+        "intensity_abs": {
+          "count": 2668458,
+          "mean": 0.0,
+          "median": 0.0,
+          "p95": 0.0,
+          "p99": 0.0,
+          "p999": 0.0,
+          "max": 0.0,
+          "rmse": 0.0,
+          "quantiles": {
+            "p50": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0,
+            "p99.9": 0.0,
+            "p100": 0.0
+          }
+        },
+        "intensity_rel": {
+          "count": 2668458,
+          "mean": 0.0,
+          "median": 0.0,
+          "p95": 0.0,
+          "p99": 0.0,
+          "p999": 0.0,
+          "max": 0.0,
+          "rmse": 0.0,
+          "quantiles": {
+            "p50": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0,
+            "p99.9": 0.0,
+            "p100": 0.0
+          }
+        },
+        "intensity_log1p_abs": {
+          "count": 2668458,
+          "mean": 0.0,
+          "median": 0.0,
+          "p95": 0.0,
+          "p99": 0.0,
+          "p999": 0.0,
+          "max": 0.0,
+          "rmse": 0.0,
+          "quantiles": {
+            "p50": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0,
+            "p99.9": 0.0,
+            "p100": 0.0
+          }
+        }
+      }
+    },
+    {
+      "artifact": "MScompress threaded",
+      "data": {
+        "name": "MScompress threaded",
+        "matched_spectra": 9001,
+        "matched_peaks": 2668458,
+        "global_order_preserved": true,
+        "ms1_relative_order_preserved": true,
+        "ms2_relative_order_preserved": true,
+        "max_abs_rt_error": 0.0,
+        "max_abs_precursor_mz_error": 0.0,
+        "exact_mz_count": 2668458,
+        "exact_intensity_count": 2668458,
+        "mz_abs": {
+          "count": 2668458,
+          "mean": 0.0,
+          "median": 0.0,
+          "p95": 0.0,
+          "p99": 0.0,
+          "p999": 0.0,
+          "max": 0.0,
+          "rmse": 0.0,
+          "quantiles": {
+            "p50": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0,
+            "p99.9": 0.0,
+            "p100": 0.0
+          }
+        },
+        "mz_ppm": {
+          "count": 2668458,
+          "mean": 0.0,
+          "median": 0.0,
+          "p95": 0.0,
+          "p99": 0.0,
+          "p999": 0.0,
+          "max": 0.0,
+          "rmse": 0.0,
+          "quantiles": {
+            "p50": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0,
+            "p99.9": 0.0,
+            "p100": 0.0
+          }
+        },
+        "intensity_abs": {
+          "count": 2668458,
+          "mean": 0.0,
+          "median": 0.0,
+          "p95": 0.0,
+          "p99": 0.0,
+          "p999": 0.0,
+          "max": 0.0,
+          "rmse": 0.0,
+          "quantiles": {
+            "p50": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0,
+            "p99.9": 0.0,
+            "p100": 0.0
+          }
+        },
+        "intensity_rel": {
+          "count": 2668458,
+          "mean": 0.0,
+          "median": 0.0,
+          "p95": 0.0,
+          "p99": 0.0,
+          "p999": 0.0,
+          "max": 0.0,
+          "rmse": 0.0,
+          "quantiles": {
+            "p50": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0,
+            "p99.9": 0.0,
+            "p100": 0.0
+          }
+        },
+        "intensity_log1p_abs": {
+          "count": 2668458,
+          "mean": 0.0,
+          "median": 0.0,
+          "p95": 0.0,
+          "p99": 0.0,
+          "p999": 0.0,
+          "max": 0.0,
+          "rmse": 0.0,
+          "quantiles": {
+            "p50": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0,
+            "p99.9": 0.0,
+            "p100": 0.0
+          }
+        }
+      }
+    }
+  ],
+  "fidelity_metrics": [
+    {
+      "artifact": "lz4 dump",
+      "status": "measured",
+      "global_order_preserved": true,
+      "ms1_relative_order_preserved": true,
+      "ms2_relative_order_preserved": true,
+      "max_abs_mz_error": 0.0,
+      "mean_abs_mz_error": 0.0,
+      "max_ppm_mz_error": 0.0,
+      "mean_ppm_mz_error": 0.0,
+      "mean_abs_intensity_error": 0.0,
+      "max_abs_intensity_error": 0.0,
+      "rmse_intensity_error": 0.0,
+      "p95_rel_intensity_error_pct": 0.0,
+      "p99_rel_intensity_error_pct": 0.0,
+      "mean_abs_log1p_intensity_error": 0.0,
+      "notes": null
+    },
+    {
+      "artifact": "gzip dump",
+      "status": "measured",
+      "global_order_preserved": true,
+      "ms1_relative_order_preserved": true,
+      "ms2_relative_order_preserved": true,
+      "max_abs_mz_error": 0.0,
+      "mean_abs_mz_error": 0.0,
+      "max_ppm_mz_error": 0.0,
+      "mean_ppm_mz_error": 0.0,
+      "mean_abs_intensity_error": 0.0,
+      "max_abs_intensity_error": 0.0,
+      "rmse_intensity_error": 0.0,
+      "p95_rel_intensity_error_pct": 0.0,
+      "p99_rel_intensity_error_pct": 0.0,
+      "mean_abs_log1p_intensity_error": 0.0,
+      "notes": null
+    },
+    {
+      "artifact": "zstd dump",
+      "status": "measured",
+      "global_order_preserved": true,
+      "ms1_relative_order_preserved": true,
+      "ms2_relative_order_preserved": true,
+      "max_abs_mz_error": 0.0,
+      "mean_abs_mz_error": 0.0,
+      "max_ppm_mz_error": 0.0,
+      "mean_ppm_mz_error": 0.0,
+      "mean_abs_intensity_error": 0.0,
+      "max_abs_intensity_error": 0.0,
+      "rmse_intensity_error": 0.0,
+      "p95_rel_intensity_error_pct": 0.0,
+      "p99_rel_intensity_error_pct": 0.0,
+      "mean_abs_log1p_intensity_error": 0.0,
+      "notes": null
+    },
+    {
+      "artifact": "bzip2 dump",
+      "status": "measured",
+      "global_order_preserved": true,
+      "ms1_relative_order_preserved": true,
+      "ms2_relative_order_preserved": true,
+      "max_abs_mz_error": 0.0,
+      "mean_abs_mz_error": 0.0,
+      "max_ppm_mz_error": 0.0,
+      "mean_ppm_mz_error": 0.0,
+      "mean_abs_intensity_error": 0.0,
+      "max_abs_intensity_error": 0.0,
+      "rmse_intensity_error": 0.0,
+      "p95_rel_intensity_error_pct": 0.0,
+      "p99_rel_intensity_error_pct": 0.0,
+      "mean_abs_log1p_intensity_error": 0.0,
+      "notes": null
+    },
+    {
+      "artifact": "xz dump",
+      "status": "measured",
+      "global_order_preserved": true,
+      "ms1_relative_order_preserved": true,
+      "ms2_relative_order_preserved": true,
+      "max_abs_mz_error": 0.0,
+      "mean_abs_mz_error": 0.0,
+      "max_ppm_mz_error": 0.0,
+      "mean_ppm_mz_error": 0.0,
+      "mean_abs_intensity_error": 0.0,
+      "max_abs_intensity_error": 0.0,
+      "rmse_intensity_error": 0.0,
+      "p95_rel_intensity_error_pct": 0.0,
+      "p99_rel_intensity_error_pct": 0.0,
+      "mean_abs_log1p_intensity_error": 0.0,
+      "notes": null
+    },
+    {
+      "artifact": "mzv1 lossless",
+      "status": "measured",
+      "global_order_preserved": true,
+      "ms1_relative_order_preserved": true,
+      "ms2_relative_order_preserved": true,
+      "max_abs_mz_error": 0.0,
+      "mean_abs_mz_error": 0.0,
+      "max_ppm_mz_error": 0.0,
+      "mean_ppm_mz_error": 0.0,
+      "mean_abs_intensity_error": 0.0,
+      "max_abs_intensity_error": 0.0,
+      "rmse_intensity_error": 0.0,
+      "p95_rel_intensity_error_pct": 0.0,
+      "p99_rel_intensity_error_pct": 0.0,
+      "mean_abs_log1p_intensity_error": 0.0,
+      "notes": null
+    },
+    {
+      "artifact": "mzv1 lossy q=16384",
+      "status": "measured",
+      "global_order_preserved": true,
+      "ms1_relative_order_preserved": true,
+      "ms2_relative_order_preserved": true,
+      "max_abs_mz_error": 1.0000001111620804e-06,
+      "mean_abs_mz_error": 5.000682040703224e-07,
+      "max_ppm_mz_error": 0.007460076913208478,
+      "mean_ppm_mz_error": 0.0006086688962415269,
+      "mean_abs_intensity_error": 173.7009067916333,
+      "max_abs_intensity_error": 537856.0,
+      "rmse_intensity_error": 2607.534839019862,
+      "p95_rel_intensity_error_pct": 0.05460953217593955,
+      "p99_rel_intensity_error_pct": 0.05940453269578537,
+      "mean_abs_log1p_intensity_error": 0.0002841444872908944,
+      "notes": null
+    },
+    {
+      "artifact": "mzMLb",
+      "status": "measured",
+      "global_order_preserved": true,
+      "ms1_relative_order_preserved": true,
+      "ms2_relative_order_preserved": true,
+      "max_abs_mz_error": 0.0,
+      "mean_abs_mz_error": 0.0,
+      "max_ppm_mz_error": 0.0,
+      "mean_ppm_mz_error": 0.0,
+      "mean_abs_intensity_error": 0.0,
+      "max_abs_intensity_error": 0.0,
+      "rmse_intensity_error": 0.0,
+      "p95_rel_intensity_error_pct": 0.0,
+      "p99_rel_intensity_error_pct": 0.0,
+      "mean_abs_log1p_intensity_error": 0.0,
+      "notes": null
+    },
+    {
+      "artifact": "MS-Numpress in mzML",
+      "status": "measured",
+      "global_order_preserved": true,
+      "ms1_relative_order_preserved": true,
+      "ms2_relative_order_preserved": true,
+      "max_abs_mz_error": 2.3744371446809964e-07,
+      "mean_abs_mz_error": 4.705757138980256e-08,
+      "max_ppm_mz_error": 0.0014035396211893555,
+      "mean_ppm_mz_error": 4.9864786779797104e-05,
+      "mean_abs_intensity_error": 41.52766614847628,
+      "max_abs_intensity_error": 191744.0,
+      "rmse_intensity_error": 690.1497167431261,
+      "p95_rel_intensity_error_pct": 0.011805221962395048,
+      "p99_rel_intensity_error_pct": 0.013551917934978362,
+      "mean_abs_log1p_intensity_error": 5.852003444979663e-05,
+      "notes": null
+    },
+    {
+      "artifact": "MScompress",
+      "status": "measured",
+      "global_order_preserved": true,
+      "ms1_relative_order_preserved": true,
+      "ms2_relative_order_preserved": true,
+      "max_abs_mz_error": 0.0,
+      "mean_abs_mz_error": 0.0,
+      "max_ppm_mz_error": 0.0,
+      "mean_ppm_mz_error": 0.0,
+      "mean_abs_intensity_error": 0.0,
+      "max_abs_intensity_error": 0.0,
+      "rmse_intensity_error": 0.0,
+      "p95_rel_intensity_error_pct": 0.0,
+      "p99_rel_intensity_error_pct": 0.0,
+      "mean_abs_log1p_intensity_error": 0.0,
+      "notes": null
+    },
+    {
+      "artifact": "MScompress threaded",
+      "status": "measured",
+      "global_order_preserved": true,
+      "ms1_relative_order_preserved": true,
+      "ms2_relative_order_preserved": true,
+      "max_abs_mz_error": 0.0,
+      "mean_abs_mz_error": 0.0,
+      "max_ppm_mz_error": 0.0,
+      "mean_ppm_mz_error": 0.0,
+      "mean_abs_intensity_error": 0.0,
+      "max_abs_intensity_error": 0.0,
+      "rmse_intensity_error": 0.0,
+      "p95_rel_intensity_error_pct": 0.0,
+      "p99_rel_intensity_error_pct": 0.0,
+      "mean_abs_log1p_intensity_error": 0.0,
+      "notes": null
+    }
+  ],
+  "performance_rows": [
+    {
+      "artifact": "gzip dump",
+      "direction": "compression",
+      "operation": "dump -> gzip dump",
+      "source_format": "dump",
+      "status": "measured",
+      "throughput_mib_s": 18.789255953979875,
+      "throughput_input_mib_s": 18.789255953979875,
+      "throughput_output_mib_s": null,
+      "throughput_basis": "input",
+      "mean_seconds": 1.6380867349992816,
+      "notes": null
+    },
+    {
+      "artifact": "gzip dump",
+      "direction": "decompression",
+      "operation": "gzip dump -> dump",
+      "source_format": "gzip dump",
+      "status": "measured",
+      "throughput_mib_s": 150.1053453280952,
+      "throughput_input_mib_s": 96.65250115130573,
+      "throughput_output_mib_s": 150.1053453280952,
+      "throughput_basis": "output",
+      "mean_seconds": 0.20504553566327863,
+      "notes": null
+    },
+    {
+      "artifact": "zstd dump",
+      "direction": "compression",
+      "operation": "dump -> zstd dump",
+      "source_format": "dump",
+      "status": "measured",
+      "throughput_mib_s": 163.89928039607955,
+      "throughput_input_mib_s": 163.89928039607955,
+      "throughput_output_mib_s": null,
+      "throughput_basis": "input",
+      "mean_seconds": 0.18778868866502307,
+      "notes": null
+    },
+    {
+      "artifact": "zstd dump",
+      "direction": "decompression",
+      "operation": "zstd dump -> dump",
+      "source_format": "zstd dump",
+      "status": "measured",
+      "throughput_mib_s": 577.8125985787221,
+      "throughput_input_mib_s": 335.16144038418037,
+      "throughput_output_mib_s": 577.8125985787221,
+      "throughput_basis": "output",
+      "mean_seconds": 0.05326715100090951,
+      "notes": null
+    },
+    {
+      "artifact": "bzip2 dump",
+      "direction": "compression",
+      "operation": "dump -> bzip2 dump",
+      "source_format": "dump",
+      "status": "measured",
+      "throughput_mib_s": 11.696254202856059,
+      "throughput_input_mib_s": 11.696254202856059,
+      "throughput_output_mib_s": null,
+      "throughput_basis": "input",
+      "mean_seconds": 2.6314775999999256,
+      "notes": null
+    },
+    {
+      "artifact": "bzip2 dump",
+      "direction": "decompression",
+      "operation": "bzip2 dump -> dump",
+      "source_format": "bzip2 dump",
+      "status": "measured",
+      "throughput_mib_s": 21.161165853550322,
+      "throughput_input_mib_s": 12.929940385871038,
+      "throughput_output_mib_s": 21.161165853550322,
+      "throughput_basis": "output",
+      "mean_seconds": 1.4544770903327542,
+      "notes": null
+    },
+    {
+      "artifact": "lz4 dump",
+      "direction": "compression",
+      "operation": "dump -> lz4 dump",
+      "source_format": "dump",
+      "status": "measured",
+      "throughput_mib_s": 397.22284665155627,
+      "throughput_input_mib_s": 397.22284665155627,
+      "throughput_output_mib_s": null,
+      "throughput_basis": "input",
+      "mean_seconds": 0.07748403999964164,
+      "notes": null
+    },
+    {
+      "artifact": "lz4 dump",
+      "direction": "decompression",
+      "operation": "lz4 dump -> dump",
+      "source_format": "lz4 dump",
+      "status": "measured",
+      "throughput_mib_s": 562.0986715993286,
+      "throughput_input_mib_s": 453.5095305922501,
+      "throughput_output_mib_s": 562.0986715993286,
+      "throughput_basis": "output",
+      "mean_seconds": 0.05475627766766896,
+      "notes": null
+    },
+    {
+      "artifact": "xz dump",
+      "direction": "compression",
+      "operation": "dump -> xz dump",
+      "source_format": "dump",
+      "status": "measured",
+      "throughput_mib_s": 2.5872490255758867,
+      "throughput_input_mib_s": 2.5872490255758867,
+      "throughput_output_mib_s": null,
+      "throughput_basis": "input",
+      "mean_seconds": 11.896199644666922,
+      "notes": null
+    },
+    {
+      "artifact": "xz dump",
+      "direction": "decompression",
+      "operation": "xz dump -> dump",
+      "source_format": "xz dump",
+      "status": "measured",
+      "throughput_mib_s": 62.42319000992365,
+      "throughput_input_mib_s": 31.98272251615448,
+      "throughput_output_mib_s": 62.42319000992365,
+      "throughput_basis": "output",
+      "mean_seconds": 0.49306084699977265,
+      "notes": null
+    },
+    {
+      "artifact": "gzip mzML",
+      "direction": "compression",
+      "operation": "mzML -> gzip mzML",
+      "source_format": "mzML",
+      "status": "measured",
+      "throughput_mib_s": 49.308148374502494,
+      "throughput_input_mib_s": 49.308148374502494,
+      "throughput_output_mib_s": null,
+      "throughput_basis": "input",
+      "mean_seconds": 1.532227985332914,
+      "notes": null
+    },
+    {
+      "artifact": "gzip mzML",
+      "direction": "decompression",
+      "operation": "gzip mzML -> mzML",
+      "source_format": "gzip mzML",
+      "status": "measured",
+      "throughput_mib_s": 213.6426729963576,
+      "throughput_input_mib_s": 68.6746340957493,
+      "throughput_output_mib_s": 213.6426729963576,
+      "throughput_basis": "output",
+      "mean_seconds": 0.3536340553352299,
+      "notes": null
+    },
+    {
+      "artifact": "zstd mzML",
+      "direction": "compression",
+      "operation": "mzML -> zstd mzML",
+      "source_format": "mzML",
+      "status": "measured",
+      "throughput_mib_s": 439.6033540766676,
+      "throughput_input_mib_s": 439.6033540766676,
+      "throughput_output_mib_s": null,
+      "throughput_basis": "input",
+      "mean_seconds": 0.17186248499638168,
+      "notes": null
+    },
+    {
+      "artifact": "zstd mzML",
+      "direction": "decompression",
+      "operation": "zstd mzML -> mzML",
+      "source_format": "zstd mzML",
+      "status": "measured",
+      "throughput_mib_s": 1317.285387299176,
+      "throughput_input_mib_s": 411.8828261418978,
+      "throughput_output_mib_s": 1317.285387299176,
+      "throughput_basis": "output",
+      "mean_seconds": 0.05735380166879622,
+      "notes": null
+    },
+    {
+      "artifact": "bzip2 mzML",
+      "direction": "compression",
+      "operation": "mzML -> bzip2 mzML",
+      "source_format": "mzML",
+      "status": "measured",
+      "throughput_mib_s": 10.635692611944148,
+      "throughput_input_mib_s": 10.635692611944148,
+      "throughput_output_mib_s": null,
+      "throughput_basis": "input",
+      "mean_seconds": 7.103564159001205,
+      "notes": null
+    },
+    {
+      "artifact": "bzip2 mzML",
+      "direction": "decompression",
+      "operation": "bzip2 mzML -> mzML",
+      "source_format": "bzip2 mzML",
+      "status": "measured",
+      "throughput_mib_s": 30.90383943248288,
+      "throughput_input_mib_s": 9.643528451791312,
+      "throughput_output_mib_s": 30.90383943248288,
+      "throughput_basis": "output",
+      "mean_seconds": 2.4447229286646084,
+      "notes": null
+    },
+    {
+      "artifact": "lz4 mzML",
+      "direction": "compression",
+      "operation": "mzML -> lz4 mzML",
+      "source_format": "mzML",
+      "status": "measured",
+      "throughput_mib_s": 775.7914703175875,
+      "throughput_input_mib_s": 775.7914703175875,
+      "throughput_output_mib_s": null,
+      "throughput_basis": "input",
+      "mean_seconds": 0.09738612466753693,
+      "notes": null
+    },
+    {
+      "artifact": "lz4 mzML",
+      "direction": "decompression",
+      "operation": "lz4 mzML -> mzML",
+      "source_format": "lz4 mzML",
+      "status": "measured",
+      "throughput_mib_s": 852.876132082817,
+      "throughput_input_mib_s": 374.9366947034957,
+      "throughput_output_mib_s": 852.876132082817,
+      "throughput_basis": "output",
+      "mean_seconds": 0.08858417066949187,
+      "notes": null
+    },
+    {
+      "artifact": "xz mzML",
+      "direction": "compression",
+      "operation": "mzML -> xz mzML",
+      "source_format": "mzML",
+      "status": "measured",
+      "throughput_mib_s": 14.268084394124259,
+      "throughput_input_mib_s": 14.268084394124259,
+      "throughput_output_mib_s": null,
+      "throughput_basis": "input",
+      "mean_seconds": 5.295127415665775,
+      "notes": null
+    },
+    {
+      "artifact": "xz mzML",
+      "direction": "decompression",
+      "operation": "xz mzML -> mzML",
+      "source_format": "xz mzML",
+      "status": "measured",
+      "throughput_mib_s": 209.80803058530157,
+      "throughput_input_mib_s": 64.98321865977485,
+      "throughput_output_mib_s": 209.80803058530157,
+      "throughput_basis": "output",
+      "mean_seconds": 0.36009739300061483,
+      "notes": null
+    },
+    {
+      "artifact": "mzv1 lossless",
+      "direction": "compression",
+      "operation": "dump -> mzv1 lossless",
+      "source_format": "dump",
+      "status": "measured",
+      "throughput_mib_s": 160.89937868229353,
+      "throughput_input_mib_s": 160.89937868229353,
+      "throughput_output_mib_s": null,
+      "throughput_basis": "input",
+      "mean_seconds": 0.1912899303327625,
+      "notes": null
+    },
+    {
+      "artifact": "mzv1 lossless",
+      "direction": "decompression",
+      "operation": "mzv1 lossless -> dump",
+      "source_format": "mzv1 lossless",
+      "status": "measured",
+      "throughput_mib_s": 205.37564323750297,
+      "throughput_input_mib_s": 134.99298186968943,
+      "throughput_output_mib_s": 205.37564323750297,
+      "throughput_basis": "output",
+      "mean_seconds": 0.14986407566902926,
+      "notes": null
+    },
+    {
+      "artifact": "mzv1 lossy q=16384",
+      "direction": "compression",
+      "operation": "dump -> mzv1 lossy q=16384",
+      "source_format": "dump",
+      "status": "measured",
+      "throughput_mib_s": 126.06030419929245,
+      "throughput_input_mib_s": 126.06030419929245,
+      "throughput_output_mib_s": null,
+      "throughput_basis": "input",
+      "mean_seconds": 0.24415640700074923,
+      "notes": null
+    },
+    {
+      "artifact": "mzv1 lossy q=16384",
+      "direction": "decompression",
+      "operation": "mzv1 lossy q=16384 -> dump",
+      "source_format": "mzv1 lossy q=16384",
+      "status": "measured",
+      "throughput_mib_s": 160.7485063500157,
+      "throughput_input_mib_s": 72.02922855855984,
+      "throughput_output_mib_s": 160.7485063500157,
+      "throughput_basis": "output",
+      "mean_seconds": 0.19146946766462256,
+      "notes": null
+    },
+    {
+      "artifact": "mzMLb",
+      "direction": "compression",
+      "operation": "mzML -> mzMLb",
+      "source_format": "mzML",
+      "status": "measured",
+      "throughput_mib_s": 3.4230925875126244,
+      "throughput_input_mib_s": 3.4230925875126244,
+      "throughput_output_mib_s": null,
+      "throughput_basis": "input",
+      "mean_seconds": 22.071072550000583,
+      "notes": null
+    },
+    {
+      "artifact": "mzMLb",
+      "direction": "decompression",
+      "operation": "mzMLb -> dump",
+      "source_format": "mzMLb",
+      "status": "measured",
+      "throughput_mib_s": 6.395960917873426,
+      "throughput_input_mib_s": 3.3766229123219023,
+      "throughput_output_mib_s": 6.395960917873426,
+      "throughput_basis": "output",
+      "mean_seconds": 4.812166824332962,
+      "notes": null
+    },
+    {
+      "artifact": "MS-Numpress in mzML",
+      "direction": "compression",
+      "operation": "mzML -> MS-Numpress in mzML",
+      "source_format": "mzML",
+      "status": "measured",
+      "throughput_mib_s": 3.398203785786825,
+      "throughput_input_mib_s": 3.398203785786825,
+      "throughput_output_mib_s": null,
+      "throughput_basis": "input",
+      "mean_seconds": 22.232723405334884,
+      "notes": null
+    },
+    {
+      "artifact": "MS-Numpress in mzML",
+      "direction": "decompression",
+      "operation": "MS-Numpress in mzML -> dump",
+      "source_format": "MS-Numpress in mzML",
+      "status": "measured",
+      "throughput_mib_s": 4.938501890807135,
+      "throughput_input_mib_s": 10.696925930228604,
+      "throughput_output_mib_s": 4.938501890807135,
+      "throughput_basis": "output",
+      "mean_seconds": 6.23234163299882,
+      "notes": null
+    },
+    {
+      "artifact": "MScompress",
+      "direction": "compression",
+      "operation": "mzML -> MScompress",
+      "source_format": "mzML",
+      "status": "measured",
+      "throughput_mib_s": 105.58836096322503,
+      "throughput_input_mib_s": 105.58836096322503,
+      "throughput_output_mib_s": null,
+      "throughput_basis": "input",
+      "mean_seconds": 0.7155270160001237,
+      "notes": null
+    },
+    {
+      "artifact": "MScompress",
+      "direction": "decompression",
+      "operation": "MScompress -> dump",
+      "source_format": "MScompress",
+      "status": "measured",
+      "throughput_mib_s": 4.211905240230161,
+      "throughput_input_mib_s": 2.9598384963550695,
+      "throughput_output_mib_s": 4.211905240230161,
+      "throughput_basis": "output",
+      "mean_seconds": 7.307484186666746,
+      "notes": null
+    },
+    {
+      "artifact": "MScompress threaded",
+      "direction": "compression",
+      "operation": "mzML -> MScompress threaded",
+      "source_format": "mzML",
+      "status": "measured",
+      "throughput_mib_s": 582.7189675440709,
+      "throughput_input_mib_s": 582.7189675440709,
+      "throughput_output_mib_s": null,
+      "throughput_basis": "input",
+      "mean_seconds": 0.1296531073336761,
+      "notes": null
+    },
+    {
+      "artifact": "MScompress threaded",
+      "direction": "decompression",
+      "operation": "MScompress threaded -> dump",
+      "source_format": "MScompress threaded",
+      "status": "measured",
+      "throughput_mib_s": 5.946391781492283,
+      "throughput_input_mib_s": 4.1602527835183,
+      "throughput_output_mib_s": 5.946391781492283,
+      "throughput_basis": "output",
+      "mean_seconds": 5.175984373333146,
+      "notes": null
+    }
+  ],
+  "search_impact_rows": [
+    {
+      "artifact": "lz4 dump",
+      "status": "not-measured",
+      "peptide_identification_difference": null,
+      "peptide_identification_pct_change": null,
+      "fdr_change_pct_points": null,
+      "notes": "Requires downstream peptide identification and FDR measurements on the original and round-tripped spectra. Dump round-trip was numerically exact on the current comparison.",
+      "source": null
+    },
+    {
+      "artifact": "lz4 mzML",
+      "status": "not-measured",
+      "peptide_identification_difference": null,
+      "peptide_identification_pct_change": null,
+      "fdr_change_pct_points": null,
+      "notes": "Requires downstream peptide identification and FDR measurements on the original and round-tripped spectra.",
+      "source": null
+    },
+    {
+      "artifact": "gzip dump",
+      "status": "not-measured",
+      "peptide_identification_difference": null,
+      "peptide_identification_pct_change": null,
+      "fdr_change_pct_points": null,
+      "notes": "Requires downstream peptide identification and FDR measurements on the original and round-tripped spectra. Dump round-trip was numerically exact on the current comparison.",
+      "source": null
+    },
+    {
+      "artifact": "gzip mzML",
+      "status": "not-measured",
+      "peptide_identification_difference": null,
+      "peptide_identification_pct_change": null,
+      "fdr_change_pct_points": null,
+      "notes": "Requires downstream peptide identification and FDR measurements on the original and round-tripped spectra.",
+      "source": null
+    },
+    {
+      "artifact": "zstd dump",
+      "status": "not-measured",
+      "peptide_identification_difference": null,
+      "peptide_identification_pct_change": null,
+      "fdr_change_pct_points": null,
+      "notes": "Requires downstream peptide identification and FDR measurements on the original and round-tripped spectra. Dump round-trip was numerically exact on the current comparison.",
+      "source": null
+    },
+    {
+      "artifact": "zstd mzML",
+      "status": "not-measured",
+      "peptide_identification_difference": null,
+      "peptide_identification_pct_change": null,
+      "fdr_change_pct_points": null,
+      "notes": "Requires downstream peptide identification and FDR measurements on the original and round-tripped spectra.",
+      "source": null
+    },
+    {
+      "artifact": "bzip2 dump",
+      "status": "not-measured",
+      "peptide_identification_difference": null,
+      "peptide_identification_pct_change": null,
+      "fdr_change_pct_points": null,
+      "notes": "Requires downstream peptide identification and FDR measurements on the original and round-tripped spectra. Dump round-trip was numerically exact on the current comparison.",
+      "source": null
+    },
+    {
+      "artifact": "bzip2 mzML",
+      "status": "not-measured",
+      "peptide_identification_difference": null,
+      "peptide_identification_pct_change": null,
+      "fdr_change_pct_points": null,
+      "notes": "Requires downstream peptide identification and FDR measurements on the original and round-tripped spectra.",
+      "source": null
+    },
+    {
+      "artifact": "xz dump",
+      "status": "not-measured",
+      "peptide_identification_difference": null,
+      "peptide_identification_pct_change": null,
+      "fdr_change_pct_points": null,
+      "notes": "Requires downstream peptide identification and FDR measurements on the original and round-tripped spectra. Dump round-trip was numerically exact on the current comparison.",
+      "source": null
+    },
+    {
+      "artifact": "xz mzML",
+      "status": "not-measured",
+      "peptide_identification_difference": null,
+      "peptide_identification_pct_change": null,
+      "fdr_change_pct_points": null,
+      "notes": "Requires downstream peptide identification and FDR measurements on the original and round-tripped spectra.",
+      "source": null
+    },
+    {
+      "artifact": "mzv1 lossless",
+      "status": "not-measured",
+      "peptide_identification_difference": null,
+      "peptide_identification_pct_change": null,
+      "fdr_change_pct_points": null,
+      "notes": "Requires downstream peptide identification and FDR measurements on the original and round-tripped spectra. Dump round-trip was numerically exact on the current comparison.",
+      "source": null
+    },
+    {
+      "artifact": "mzv1 lossy q=16384",
+      "status": "not-measured",
+      "peptide_identification_difference": null,
+      "peptide_identification_pct_change": null,
+      "fdr_change_pct_points": null,
+      "notes": "Requires downstream peptide identification and FDR measurements on the original and round-tripped spectra.",
+      "source": null
+    },
+    {
+      "artifact": "mzMLb",
+      "status": "not-measured",
+      "peptide_identification_difference": null,
+      "peptide_identification_pct_change": null,
+      "fdr_change_pct_points": null,
+      "notes": "Requires downstream peptide identification and FDR measurements on the original and round-tripped spectra. Dump round-trip was numerically exact on the current comparison.",
+      "source": null
+    },
+    {
+      "artifact": "MS-Numpress in mzML",
+      "status": "not-measured",
+      "peptide_identification_difference": null,
+      "peptide_identification_pct_change": null,
+      "fdr_change_pct_points": null,
+      "notes": "Requires downstream peptide identification and FDR measurements on the original and round-tripped spectra.",
+      "source": null
+    },
+    {
+      "artifact": "MScompress",
+      "status": "not-measured",
+      "peptide_identification_difference": null,
+      "peptide_identification_pct_change": null,
+      "fdr_change_pct_points": null,
+      "notes": "Requires downstream peptide identification and FDR measurements on the original and round-tripped spectra. Dump round-trip was numerically exact on the current comparison.",
+      "source": null
+    },
+    {
+      "artifact": "MScompress threaded",
+      "status": "not-measured",
+      "peptide_identification_difference": null,
+      "peptide_identification_pct_change": null,
+      "fdr_change_pct_points": null,
+      "notes": "Requires downstream peptide identification and FDR measurements on the original and round-tripped spectra. Dump round-trip was numerically exact on the current comparison.",
+      "source": null
+    }
+  ],
+  "lossy_sweep": [
+    {
+      "intensity_quant": 256,
+      "path": "data/PXD075509/benchmarks/15HCD_1/15HCD_1.lossy.q256.mzv1",
+      "bytes": 12459954,
+      "size_mib": 11.88273811340332,
+      "fidelity": {
+        "name": "mzv1_lossy_q256",
+        "matched_spectra": 9001,
+        "matched_peaks": 2668458,
+        "global_order_preserved": true,
+        "ms1_relative_order_preserved": true,
+        "ms2_relative_order_preserved": true,
+        "max_abs_rt_error": 0.0,
+        "max_abs_precursor_mz_error": 0.0,
+        "exact_mz_count": 8112,
+        "exact_intensity_count": 8,
+        "mz_abs": {
+          "count": 2668458,
+          "mean": 5.000682040703224e-07,
+          "median": 4.999999418942025e-07,
+          "p95": 9.511718985777406e-07,
+          "p99": 9.92187551673851e-07,
+          "p999": 1.0000001111620804e-06,
+          "max": 1.0000001111620804e-06,
+          "rmse": 5.774215236729777e-07,
+          "quantiles": {
+            "p50": 4.999999418942025e-07,
+            "p90": 8.984375199361239e-07,
+            "p95": 9.511718985777406e-07,
+            "p99": 9.92187551673851e-07,
+            "p99.9": 1.0000001111620804e-06,
+            "p100": 1.0000001111620804e-06
+          }
+        },
+        "mz_ppm": {
+          "count": 2668458,
+          "mean": 0.0006086688962415269,
+          "median": 0.00043617878157533793,
+          "p95": 0.0018339364696811774,
+          "p99": 0.004381685895528825,
+          "p999": 0.005753074009525418,
+          "max": 0.007460076913208478,
+          "rmse": 0.0009638524690437311,
+          "quantiles": {
+            "p50": 0.00043617878157533793,
+            "p90": 0.0010778008132680456,
+            "p95": 0.0018339364696811774,
+            "p99": 0.004381685895528825,
+            "p99.9": 0.005753074009525418,
+            "p100": 0.007460076913208478
+          }
+        },
+        "intensity_abs": {
+          "count": 2668458,
+          "mean": 11110.748777320618,
+          "median": 214.22265625,
+          "p95": 24200.26874999999,
+          "p99": 138693.5775000007,
+          "p999": 1471111.8440000322,
+          "max": 34969984.0,
+          "rmse": 166419.90872925683,
+          "quantiles": {
+            "p50": 214.22265625,
+            "p90": 10373.03125,
+            "p95": 24200.26874999999,
+            "p99": 138693.5775000007,
+            "p99.9": 1471111.8440000322,
+            "p100": 34969984.0
+          }
+        },
+        "intensity_rel": {
+          "count": 2668458,
+          "mean": 0.01820321814123549,
+          "median": 0.018116985774566323,
+          "p95": 0.03498879255207158,
+          "p99": 0.03813216535232558,
+          "p999": 0.04047828027156072,
+          "max": 0.04212043501517928,
+          "rmse": 0.021071856673382752,
+          "quantiles": {
+            "p50": 0.018116985774566323,
+            "p90": 0.03264164778756473,
+            "p95": 0.03498879255207158,
+            "p99": 0.03813216535232558,
+            "p99.9": 0.04047828027156072,
+            "p100": 0.04212043501517928
+          }
+        },
+        "intensity_log1p_abs": {
+          "count": 2668458,
+          "mean": 0.018196992631384103,
+          "median": 0.018114758483187998,
+          "p95": 0.03495204071069273,
+          "p99": 0.03801502727946657,
+          "p999": 0.04012818545831645,
+          "max": 0.04125466046107107,
+          "rmse": 0.02106197345228372,
+          "quantiles": {
+            "p50": 0.018114758483187998,
+            "p90": 0.032632933065550956,
+            "p95": 0.03495204071069273,
+            "p99": 0.03801502727946657,
+            "p99.9": 0.04012818545831645,
+            "p100": 0.04125466046107107
+          }
+        }
+      },
+      "p95_rel_intensity_error_pct": 3.498879255207158,
+      "p99_rel_intensity_error_pct": 3.813216535232558,
+      "mean_rel_intensity_error_pct": 1.8203218141235489
+    },
+    {
+      "intensity_quant": 1024,
+      "path": "data/PXD075509/benchmarks/15HCD_1/15HCD_1.lossy.q1024.mzv1",
+      "bytes": 13127097,
+      "size_mib": 12.518975257873535,
+      "fidelity": {
+        "name": "mzv1_lossy_q1024",
+        "matched_spectra": 9001,
+        "matched_peaks": 2668458,
+        "global_order_preserved": true,
+        "ms1_relative_order_preserved": true,
+        "ms2_relative_order_preserved": true,
+        "max_abs_rt_error": 0.0,
+        "max_abs_precursor_mz_error": 0.0,
+        "exact_mz_count": 8112,
+        "exact_intensity_count": 16,
+        "mz_abs": {
+          "count": 2668458,
+          "mean": 5.000682040703224e-07,
+          "median": 4.999999418942025e-07,
+          "p95": 9.511718985777406e-07,
+          "p99": 9.92187551673851e-07,
+          "p999": 1.0000001111620804e-06,
+          "max": 1.0000001111620804e-06,
+          "rmse": 5.774215236729777e-07,
+          "quantiles": {
+            "p50": 4.999999418942025e-07,
+            "p90": 8.984375199361239e-07,
+            "p95": 9.511718985777406e-07,
+            "p99": 9.92187551673851e-07,
+            "p99.9": 1.0000001111620804e-06,
+            "p100": 1.0000001111620804e-06
+          }
+        },
+        "mz_ppm": {
+          "count": 2668458,
+          "mean": 0.0006086688962415269,
+          "median": 0.00043617878157533793,
+          "p95": 0.0018339364696811774,
+          "p99": 0.004381685895528825,
+          "p999": 0.005753074009525418,
+          "max": 0.007460076913208478,
+          "rmse": 0.0009638524690437311,
+          "quantiles": {
+            "p50": 0.00043617878157533793,
+            "p90": 0.0010778008132680456,
+            "p95": 0.0018339364696811774,
+            "p99": 0.004381685895528825,
+            "p99.9": 0.005753074009525418,
+            "p100": 0.007460076913208478
+          }
+        },
+        "intensity_abs": {
+          "count": 2668458,
+          "mean": 2767.706654835864,
+          "median": 53.511962890625,
+          "p95": 6045.196874999994,
+          "p99": 34897.14500000025,
+          "p999": 356451.33200000785,
+          "max": 12165504.0,
+          "rmse": 42047.441851482894,
+          "quantiles": {
+            "p50": 53.511962890625,
+            "p90": 2589.25,
+            "p95": 6045.196874999994,
+            "p99": 34897.14500000025,
+            "p99.9": 356451.33200000785,
+            "p100": 12165504.0
+          }
+        },
+        "intensity_rel": {
+          "count": 2668458,
+          "mean": 0.0045479737226947325,
+          "median": 0.00452452296877367,
+          "p95": 0.008739658254293563,
+          "p99": 0.009504081963307933,
+          "p999": 0.010036520848872773,
+          "max": 0.010367835584074397,
+          "rmse": 0.0052646744406218944,
+          "quantiles": {
+            "p50": 0.00452452296877367,
+            "p90": 0.008158231160076088,
+            "p95": 0.008739658254293563,
+            "p99": 0.009504081963307933,
+            "p99.9": 0.010036520848872773,
+            "p100": 0.010367835584074397
+          }
+        },
+        "intensity_log1p_abs": {
+          "count": 2668458,
+          "mean": 0.00454695730399298,
+          "median": 0.0045236837540492125,
+          "p95": 0.008737282866937734,
+          "p99": 0.009502080088967788,
+          "p999": 0.010036041049284733,
+          "max": 0.010313728765636299,
+          "rmse": 0.005263484130976814,
+          "quantiles": {
+            "p50": 0.0045236837540492125,
+            "p90": 0.008157069898263281,
+            "p95": 0.008737282866937734,
+            "p99": 0.009502080088967788,
+            "p99.9": 0.010036041049284733,
+            "p100": 0.010313728765636299
+          }
+        }
+      },
+      "p95_rel_intensity_error_pct": 0.8739658254293563,
+      "p99_rel_intensity_error_pct": 0.9504081963307933,
+      "mean_rel_intensity_error_pct": 0.45479737226947325
+    },
+    {
+      "intensity_quant": 4096,
+      "path": "data/PXD075509/benchmarks/15HCD_1/15HCD_1.lossy.q4096.mzv1",
+      "bytes": 13794206,
+      "size_mib": 13.155179977416992,
+      "fidelity": {
+        "name": "mzv1_lossy_q4096",
+        "matched_spectra": 9001,
+        "matched_peaks": 2668458,
+        "global_order_preserved": true,
+        "ms1_relative_order_preserved": true,
+        "ms2_relative_order_preserved": true,
+        "max_abs_rt_error": 0.0,
+        "max_abs_precursor_mz_error": 0.0,
+        "exact_mz_count": 8112,
+        "exact_intensity_count": 64,
+        "mz_abs": {
+          "count": 2668458,
+          "mean": 5.000682040703224e-07,
+          "median": 4.999999418942025e-07,
+          "p95": 9.511718985777406e-07,
+          "p99": 9.92187551673851e-07,
+          "p999": 1.0000001111620804e-06,
+          "max": 1.0000001111620804e-06,
+          "rmse": 5.774215236729777e-07,
+          "quantiles": {
+            "p50": 4.999999418942025e-07,
+            "p90": 8.984375199361239e-07,
+            "p95": 9.511718985777406e-07,
+            "p99": 9.92187551673851e-07,
+            "p99.9": 1.0000001111620804e-06,
+            "p100": 1.0000001111620804e-06
+          }
+        },
+        "mz_ppm": {
+          "count": 2668458,
+          "mean": 0.0006086688962415269,
+          "median": 0.00043617878157533793,
+          "p95": 0.0018339364696811774,
+          "p99": 0.004381685895528825,
+          "p999": 0.005753074009525418,
+          "max": 0.007460076913208478,
+          "rmse": 0.0009638524690437311,
+          "quantiles": {
+            "p50": 0.00043617878157533793,
+            "p90": 0.0010778008132680456,
+            "p95": 0.0018339364696811774,
+            "p99": 0.004381685895528825,
+            "p99.9": 0.005753074009525418,
+            "p100": 0.007460076913208478
+          }
+        },
+        "intensity_abs": {
+          "count": 2668458,
+          "mean": 695.2526127160803,
+          "median": 13.3828125,
+          "p95": 1507.125,
+          "p99": 8751.215000000084,
+          "p999": 90634.06400000304,
+          "max": 3177472.0,
+          "rmse": 10758.661536703146,
+          "quantiles": {
+            "p50": 13.3828125,
+            "p90": 646.8125,
+            "p95": 1507.125,
+            "p99": 8751.215000000084,
+            "p99.9": 90634.06400000304,
+            "p100": 3177472.0
+          }
+        },
+        "intensity_rel": {
+          "count": 2668458,
+          "mean": 0.0011369413477794782,
+          "median": 0.0011308839243392857,
+          "p95": 0.0021848615674390642,
+          "p99": 0.00237622778235206,
+          "p999": 0.002510417826817534,
+          "max": 0.0025818098014523208,
+          "rmse": 0.0013160929277434164,
+          "quantiles": {
+            "p50": 0.0011308839243392857,
+            "p90": 0.002039223270327787,
+            "p95": 0.0021848615674390642,
+            "p99": 0.00237622778235206,
+            "p99.9": 0.002510417826817534,
+            "p100": 0.0025818098014523208
+          }
+        },
+        "intensity_log1p_abs": {
+          "count": 2668458,
+          "mean": 0.0011366941317627588,
+          "median": 0.0011306246692077693,
+          "p95": 0.0021845090814523794,
+          "p99": 0.0023759255120829794,
+          "p999": 0.0025104605433748785,
+          "max": 0.0025784207720338514,
+          "rmse": 0.00131581363373619,
+          "quantiles": {
+            "p50": 0.0011306246692077693,
+            "p90": 0.0020388270349180893,
+            "p95": 0.0021845090814523794,
+            "p99": 0.0023759255120829794,
+            "p99.9": 0.0025104605433748785,
+            "p100": 0.0025784207720338514
+          }
+        }
+      },
+      "p95_rel_intensity_error_pct": 0.21848615674390642,
+      "p99_rel_intensity_error_pct": 0.23762277823520603,
+      "mean_rel_intensity_error_pct": 0.11369413477794782
+    },
+    {
+      "intensity_quant": 16384,
+      "path": "data/PXD075509/benchmarks/15HCD_1/15HCD_1.lossy.q16384.mzv1",
+      "bytes": 14461329,
+      "size_mib": 13.791398048400879,
+      "fidelity": {
+        "name": "mzv1_lossy",
+        "matched_spectra": 9001,
+        "matched_peaks": 2668458,
+        "global_order_preserved": true,
+        "ms1_relative_order_preserved": true,
+        "ms2_relative_order_preserved": true,
+        "max_abs_rt_error": 0.0,
+        "max_abs_precursor_mz_error": 0.0,
+        "exact_mz_count": 8112,
+        "exact_intensity_count": 211,
+        "mz_abs": {
+          "count": 2668458,
+          "mean": 5.000682040703224e-07,
+          "median": 4.999999418942025e-07,
+          "p95": 9.511718985777406e-07,
+          "p99": 9.92187551673851e-07,
+          "p999": 1.0000001111620804e-06,
+          "max": 1.0000001111620804e-06,
+          "rmse": 5.774215236729777e-07,
+          "quantiles": {
+            "p50": 4.999999418942025e-07,
+            "p90": 8.984375199361239e-07,
+            "p95": 9.511718985777406e-07,
+            "p99": 9.92187551673851e-07,
+            "p99.9": 1.0000001111620804e-06,
+            "p100": 1.0000001111620804e-06
+          }
+        },
+        "mz_ppm": {
+          "count": 2668458,
+          "mean": 0.0006086688962415269,
+          "median": 0.00043617878157533793,
+          "p95": 0.0018339364696811774,
+          "p99": 0.004381685895528825,
+          "p999": 0.005753074009525418,
+          "max": 0.007460076913208478,
+          "rmse": 0.0009638524690437311,
+          "quantiles": {
+            "p50": 0.00043617878157533793,
+            "p90": 0.0010778008132680456,
+            "p95": 0.0018339364696811774,
+            "p99": 0.004381685895528825,
+            "p99.9": 0.005753074009525418,
+            "p100": 0.007460076913208478
+          }
+        },
+        "intensity_abs": {
+          "count": 2668458,
+          "mean": 173.7009067916333,
+          "median": 3.3505859375,
+          "p95": 376.625,
+          "p99": 2201.5,
+          "p999": 22490.51600000076,
+          "max": 537856.0,
+          "rmse": 2607.534839019862,
+          "quantiles": {
+            "p50": 3.3505859375,
+            "p90": 161.625,
+            "p95": 376.625,
+            "p99": 2201.5,
+            "p99.9": 22490.51600000076,
+            "p100": 537856.0
+          }
+        },
+        "intensity_rel": {
+          "count": 2668458,
+          "mean": 0.0002842063111641296,
+          "median": 0.0002829259300740252,
+          "p95": 0.0005460953217593955,
+          "p99": 0.0005940453269578537,
+          "p999": 0.0006273785549791054,
+          "max": 0.0006448639836509027,
+          "rmse": 0.0003289912841214131,
+          "quantiles": {
+            "p50": 0.0002829259300740252,
+            "p90": 0.0005097546064660591,
+            "p95": 0.0005460953217593955,
+            "p99": 0.0005940453269578537,
+            "p99.9": 0.0006273785549791054,
+            "p100": 0.0006448639836509027
+          }
+        },
+        "intensity_log1p_abs": {
+          "count": 2668458,
+          "mean": 0.0002841444872908944,
+          "median": 0.0002828530337808388,
+          "p95": 0.0005460019629553336,
+          "p99": 0.0005939838864351903,
+          "p999": 0.0006272840088375563,
+          "max": 0.0006446247450959675,
+          "rmse": 0.00032892149933465704,
+          "quantiles": {
+            "p50": 0.0002828530337808388,
+            "p90": 0.0005096487336079038,
+            "p95": 0.0005460019629553336,
+            "p99": 0.0005939838864351903,
+            "p99.9": 0.0006272840088375563,
+            "p100": 0.0006446247450959675
+          }
+        }
+      },
+      "p95_rel_intensity_error_pct": 0.05460953217593955,
+      "p99_rel_intensity_error_pct": 0.05940453269578537,
+      "mean_rel_intensity_error_pct": 0.028420631116412957
+    }
+  ],
+  "plot_rows": {
+    "sizes": [
+      {
+        "artifact": "mzML",
+        "size_mib": 75.55132484436035
+      },
+      {
+        "artifact": "dump",
+        "size_mib": 30.778430938720703
+      },
+      {
+        "artifact": "mzv1 lossless",
+        "size_mib": 20.23059844970703
+      },
+      {
+        "artifact": "mzv1 lossy",
+        "size_mib": 13.791398048400879
+      },
+      {
+        "artifact": "gzip dump",
+        "size_mib": 19.818163871765137
+      },
+      {
+        "artifact": "zstd dump",
+        "size_mib": 17.853095054626465
+      },
+      {
+        "artifact": "gzip mzML",
+        "size_mib": 24.28568935394287
+      },
+      {
+        "artifact": "zstd mzML",
+        "size_mib": 23.623045921325684
+      },
+      {
+        "artifact": "bzip2 dump",
+        "size_mib": 18.806302070617676
+      },
+      {
+        "artifact": "lz4 dump",
+        "size_mib": 24.832493782043457
+      },
+      {
+        "artifact": "xz dump",
+        "size_mib": 15.769428253173828
+      },
+      {
+        "artifact": "bzip2 mzML",
+        "size_mib": 23.57575511932373
+      },
+      {
+        "artifact": "lz4 mzML",
+        "size_mib": 33.21345615386963
+      },
+      {
+        "artifact": "xz mzML",
+        "size_mib": 23.400287628173828
+      },
+      {
+        "artifact": "mzMLb",
+        "size_mib": 16.248872756958008
+      },
+      {
+        "artifact": "MS-Numpress in mzML",
+        "size_mib": 66.66689682006836
+      },
+      {
+        "artifact": "MScompress",
+        "size_mib": 21.62897300720215
+      },
+      {
+        "artifact": "MScompress threaded",
+        "size_mib": 21.533403396606445
+      }
+    ],
+    "performance": [
+      {
+        "artifact": "gzip dump",
+        "direction": "compression",
+        "operation": "dump -> gzip dump",
+        "source_format": "dump",
+        "status": "measured",
+        "throughput_mib_s": 18.789255953979875,
+        "throughput_input_mib_s": 18.789255953979875,
+        "throughput_output_mib_s": null,
+        "throughput_basis": "input",
+        "mean_seconds": 1.6380867349992816,
+        "notes": null
+      },
+      {
+        "artifact": "gzip dump",
+        "direction": "decompression",
+        "operation": "gzip dump -> dump",
+        "source_format": "gzip dump",
+        "status": "measured",
+        "throughput_mib_s": 150.1053453280952,
+        "throughput_input_mib_s": 96.65250115130573,
+        "throughput_output_mib_s": 150.1053453280952,
+        "throughput_basis": "output",
+        "mean_seconds": 0.20504553566327863,
+        "notes": null
+      },
+      {
+        "artifact": "zstd dump",
+        "direction": "compression",
+        "operation": "dump -> zstd dump",
+        "source_format": "dump",
+        "status": "measured",
+        "throughput_mib_s": 163.89928039607955,
+        "throughput_input_mib_s": 163.89928039607955,
+        "throughput_output_mib_s": null,
+        "throughput_basis": "input",
+        "mean_seconds": 0.18778868866502307,
+        "notes": null
+      },
+      {
+        "artifact": "zstd dump",
+        "direction": "decompression",
+        "operation": "zstd dump -> dump",
+        "source_format": "zstd dump",
+        "status": "measured",
+        "throughput_mib_s": 577.8125985787221,
+        "throughput_input_mib_s": 335.16144038418037,
+        "throughput_output_mib_s": 577.8125985787221,
+        "throughput_basis": "output",
+        "mean_seconds": 0.05326715100090951,
+        "notes": null
+      },
+      {
+        "artifact": "bzip2 dump",
+        "direction": "compression",
+        "operation": "dump -> bzip2 dump",
+        "source_format": "dump",
+        "status": "measured",
+        "throughput_mib_s": 11.696254202856059,
+        "throughput_input_mib_s": 11.696254202856059,
+        "throughput_output_mib_s": null,
+        "throughput_basis": "input",
+        "mean_seconds": 2.6314775999999256,
+        "notes": null
+      },
+      {
+        "artifact": "bzip2 dump",
+        "direction": "decompression",
+        "operation": "bzip2 dump -> dump",
+        "source_format": "bzip2 dump",
+        "status": "measured",
+        "throughput_mib_s": 21.161165853550322,
+        "throughput_input_mib_s": 12.929940385871038,
+        "throughput_output_mib_s": 21.161165853550322,
+        "throughput_basis": "output",
+        "mean_seconds": 1.4544770903327542,
+        "notes": null
+      },
+      {
+        "artifact": "lz4 dump",
+        "direction": "compression",
+        "operation": "dump -> lz4 dump",
+        "source_format": "dump",
+        "status": "measured",
+        "throughput_mib_s": 397.22284665155627,
+        "throughput_input_mib_s": 397.22284665155627,
+        "throughput_output_mib_s": null,
+        "throughput_basis": "input",
+        "mean_seconds": 0.07748403999964164,
+        "notes": null
+      },
+      {
+        "artifact": "lz4 dump",
+        "direction": "decompression",
+        "operation": "lz4 dump -> dump",
+        "source_format": "lz4 dump",
+        "status": "measured",
+        "throughput_mib_s": 562.0986715993286,
+        "throughput_input_mib_s": 453.5095305922501,
+        "throughput_output_mib_s": 562.0986715993286,
+        "throughput_basis": "output",
+        "mean_seconds": 0.05475627766766896,
+        "notes": null
+      },
+      {
+        "artifact": "xz dump",
+        "direction": "compression",
+        "operation": "dump -> xz dump",
+        "source_format": "dump",
+        "status": "measured",
+        "throughput_mib_s": 2.5872490255758867,
+        "throughput_input_mib_s": 2.5872490255758867,
+        "throughput_output_mib_s": null,
+        "throughput_basis": "input",
+        "mean_seconds": 11.896199644666922,
+        "notes": null
+      },
+      {
+        "artifact": "xz dump",
+        "direction": "decompression",
+        "operation": "xz dump -> dump",
+        "source_format": "xz dump",
+        "status": "measured",
+        "throughput_mib_s": 62.42319000992365,
+        "throughput_input_mib_s": 31.98272251615448,
+        "throughput_output_mib_s": 62.42319000992365,
+        "throughput_basis": "output",
+        "mean_seconds": 0.49306084699977265,
+        "notes": null
+      },
+      {
+        "artifact": "gzip mzML",
+        "direction": "compression",
+        "operation": "mzML -> gzip mzML",
+        "source_format": "mzML",
+        "status": "measured",
+        "throughput_mib_s": 49.308148374502494,
+        "throughput_input_mib_s": 49.308148374502494,
+        "throughput_output_mib_s": null,
+        "throughput_basis": "input",
+        "mean_seconds": 1.532227985332914,
+        "notes": null
+      },
+      {
+        "artifact": "gzip mzML",
+        "direction": "decompression",
+        "operation": "gzip mzML -> mzML",
+        "source_format": "gzip mzML",
+        "status": "measured",
+        "throughput_mib_s": 213.6426729963576,
+        "throughput_input_mib_s": 68.6746340957493,
+        "throughput_output_mib_s": 213.6426729963576,
+        "throughput_basis": "output",
+        "mean_seconds": 0.3536340553352299,
+        "notes": null
+      },
+      {
+        "artifact": "zstd mzML",
+        "direction": "compression",
+        "operation": "mzML -> zstd mzML",
+        "source_format": "mzML",
+        "status": "measured",
+        "throughput_mib_s": 439.6033540766676,
+        "throughput_input_mib_s": 439.6033540766676,
+        "throughput_output_mib_s": null,
+        "throughput_basis": "input",
+        "mean_seconds": 0.17186248499638168,
+        "notes": null
+      },
+      {
+        "artifact": "zstd mzML",
+        "direction": "decompression",
+        "operation": "zstd mzML -> mzML",
+        "source_format": "zstd mzML",
+        "status": "measured",
+        "throughput_mib_s": 1317.285387299176,
+        "throughput_input_mib_s": 411.8828261418978,
+        "throughput_output_mib_s": 1317.285387299176,
+        "throughput_basis": "output",
+        "mean_seconds": 0.05735380166879622,
+        "notes": null
+      },
+      {
+        "artifact": "bzip2 mzML",
+        "direction": "compression",
+        "operation": "mzML -> bzip2 mzML",
+        "source_format": "mzML",
+        "status": "measured",
+        "throughput_mib_s": 10.635692611944148,
+        "throughput_input_mib_s": 10.635692611944148,
+        "throughput_output_mib_s": null,
+        "throughput_basis": "input",
+        "mean_seconds": 7.103564159001205,
+        "notes": null
+      },
+      {
+        "artifact": "bzip2 mzML",
+        "direction": "decompression",
+        "operation": "bzip2 mzML -> mzML",
+        "source_format": "bzip2 mzML",
+        "status": "measured",
+        "throughput_mib_s": 30.90383943248288,
+        "throughput_input_mib_s": 9.643528451791312,
+        "throughput_output_mib_s": 30.90383943248288,
+        "throughput_basis": "output",
+        "mean_seconds": 2.4447229286646084,
+        "notes": null
+      },
+      {
+        "artifact": "lz4 mzML",
+        "direction": "compression",
+        "operation": "mzML -> lz4 mzML",
+        "source_format": "mzML",
+        "status": "measured",
+        "throughput_mib_s": 775.7914703175875,
+        "throughput_input_mib_s": 775.7914703175875,
+        "throughput_output_mib_s": null,
+        "throughput_basis": "input",
+        "mean_seconds": 0.09738612466753693,
+        "notes": null
+      },
+      {
+        "artifact": "lz4 mzML",
+        "direction": "decompression",
+        "operation": "lz4 mzML -> mzML",
+        "source_format": "lz4 mzML",
+        "status": "measured",
+        "throughput_mib_s": 852.876132082817,
+        "throughput_input_mib_s": 374.9366947034957,
+        "throughput_output_mib_s": 852.876132082817,
+        "throughput_basis": "output",
+        "mean_seconds": 0.08858417066949187,
+        "notes": null
+      },
+      {
+        "artifact": "xz mzML",
+        "direction": "compression",
+        "operation": "mzML -> xz mzML",
+        "source_format": "mzML",
+        "status": "measured",
+        "throughput_mib_s": 14.268084394124259,
+        "throughput_input_mib_s": 14.268084394124259,
+        "throughput_output_mib_s": null,
+        "throughput_basis": "input",
+        "mean_seconds": 5.295127415665775,
+        "notes": null
+      },
+      {
+        "artifact": "xz mzML",
+        "direction": "decompression",
+        "operation": "xz mzML -> mzML",
+        "source_format": "xz mzML",
+        "status": "measured",
+        "throughput_mib_s": 209.80803058530157,
+        "throughput_input_mib_s": 64.98321865977485,
+        "throughput_output_mib_s": 209.80803058530157,
+        "throughput_basis": "output",
+        "mean_seconds": 0.36009739300061483,
+        "notes": null
+      },
+      {
+        "artifact": "mzv1 lossless",
+        "direction": "compression",
+        "operation": "dump -> mzv1 lossless",
+        "source_format": "dump",
+        "status": "measured",
+        "throughput_mib_s": 160.89937868229353,
+        "throughput_input_mib_s": 160.89937868229353,
+        "throughput_output_mib_s": null,
+        "throughput_basis": "input",
+        "mean_seconds": 0.1912899303327625,
+        "notes": null
+      },
+      {
+        "artifact": "mzv1 lossless",
+        "direction": "decompression",
+        "operation": "mzv1 lossless -> dump",
+        "source_format": "mzv1 lossless",
+        "status": "measured",
+        "throughput_mib_s": 205.37564323750297,
+        "throughput_input_mib_s": 134.99298186968943,
+        "throughput_output_mib_s": 205.37564323750297,
+        "throughput_basis": "output",
+        "mean_seconds": 0.14986407566902926,
+        "notes": null
+      },
+      {
+        "artifact": "mzv1 lossy q=16384",
+        "direction": "compression",
+        "operation": "dump -> mzv1 lossy q=16384",
+        "source_format": "dump",
+        "status": "measured",
+        "throughput_mib_s": 126.06030419929245,
+        "throughput_input_mib_s": 126.06030419929245,
+        "throughput_output_mib_s": null,
+        "throughput_basis": "input",
+        "mean_seconds": 0.24415640700074923,
+        "notes": null
+      },
+      {
+        "artifact": "mzv1 lossy q=16384",
+        "direction": "decompression",
+        "operation": "mzv1 lossy q=16384 -> dump",
+        "source_format": "mzv1 lossy q=16384",
+        "status": "measured",
+        "throughput_mib_s": 160.7485063500157,
+        "throughput_input_mib_s": 72.02922855855984,
+        "throughput_output_mib_s": 160.7485063500157,
+        "throughput_basis": "output",
+        "mean_seconds": 0.19146946766462256,
+        "notes": null
+      },
+      {
+        "artifact": "mzMLb",
+        "direction": "compression",
+        "operation": "mzML -> mzMLb",
+        "source_format": "mzML",
+        "status": "measured",
+        "throughput_mib_s": 3.4230925875126244,
+        "throughput_input_mib_s": 3.4230925875126244,
+        "throughput_output_mib_s": null,
+        "throughput_basis": "input",
+        "mean_seconds": 22.071072550000583,
+        "notes": null
+      },
+      {
+        "artifact": "mzMLb",
+        "direction": "decompression",
+        "operation": "mzMLb -> dump",
+        "source_format": "mzMLb",
+        "status": "measured",
+        "throughput_mib_s": 6.395960917873426,
+        "throughput_input_mib_s": 3.3766229123219023,
+        "throughput_output_mib_s": 6.395960917873426,
+        "throughput_basis": "output",
+        "mean_seconds": 4.812166824332962,
+        "notes": null
+      },
+      {
+        "artifact": "MS-Numpress in mzML",
+        "direction": "compression",
+        "operation": "mzML -> MS-Numpress in mzML",
+        "source_format": "mzML",
+        "status": "measured",
+        "throughput_mib_s": 3.398203785786825,
+        "throughput_input_mib_s": 3.398203785786825,
+        "throughput_output_mib_s": null,
+        "throughput_basis": "input",
+        "mean_seconds": 22.232723405334884,
+        "notes": null
+      },
+      {
+        "artifact": "MS-Numpress in mzML",
+        "direction": "decompression",
+        "operation": "MS-Numpress in mzML -> dump",
+        "source_format": "MS-Numpress in mzML",
+        "status": "measured",
+        "throughput_mib_s": 4.938501890807135,
+        "throughput_input_mib_s": 10.696925930228604,
+        "throughput_output_mib_s": 4.938501890807135,
+        "throughput_basis": "output",
+        "mean_seconds": 6.23234163299882,
+        "notes": null
+      },
+      {
+        "artifact": "MScompress",
+        "direction": "compression",
+        "operation": "mzML -> MScompress",
+        "source_format": "mzML",
+        "status": "measured",
+        "throughput_mib_s": 105.58836096322503,
+        "throughput_input_mib_s": 105.58836096322503,
+        "throughput_output_mib_s": null,
+        "throughput_basis": "input",
+        "mean_seconds": 0.7155270160001237,
+        "notes": null
+      },
+      {
+        "artifact": "MScompress",
+        "direction": "decompression",
+        "operation": "MScompress -> dump",
+        "source_format": "MScompress",
+        "status": "measured",
+        "throughput_mib_s": 4.211905240230161,
+        "throughput_input_mib_s": 2.9598384963550695,
+        "throughput_output_mib_s": 4.211905240230161,
+        "throughput_basis": "output",
+        "mean_seconds": 7.307484186666746,
+        "notes": null
+      },
+      {
+        "artifact": "MScompress threaded",
+        "direction": "compression",
+        "operation": "mzML -> MScompress threaded",
+        "source_format": "mzML",
+        "status": "measured",
+        "throughput_mib_s": 582.7189675440709,
+        "throughput_input_mib_s": 582.7189675440709,
+        "throughput_output_mib_s": null,
+        "throughput_basis": "input",
+        "mean_seconds": 0.1296531073336761,
+        "notes": null
+      },
+      {
+        "artifact": "MScompress threaded",
+        "direction": "decompression",
+        "operation": "MScompress threaded -> dump",
+        "source_format": "MScompress threaded",
+        "status": "measured",
+        "throughput_mib_s": 5.946391781492283,
+        "throughput_input_mib_s": 4.1602527835183,
+        "throughput_output_mib_s": 5.946391781492283,
+        "throughput_basis": "output",
+        "mean_seconds": 5.175984373333146,
+        "notes": null
+      }
+    ],
+    "fidelity": [
+      {
+        "artifact": "lz4 dump",
+        "status": "measured",
+        "global_order_preserved": true,
+        "ms1_relative_order_preserved": true,
+        "ms2_relative_order_preserved": true,
+        "max_abs_mz_error": 0.0,
+        "mean_abs_mz_error": 0.0,
+        "max_ppm_mz_error": 0.0,
+        "mean_ppm_mz_error": 0.0,
+        "mean_abs_intensity_error": 0.0,
+        "max_abs_intensity_error": 0.0,
+        "rmse_intensity_error": 0.0,
+        "p95_rel_intensity_error_pct": 0.0,
+        "p99_rel_intensity_error_pct": 0.0,
+        "mean_abs_log1p_intensity_error": 0.0,
+        "notes": null
+      },
+      {
+        "artifact": "gzip dump",
+        "status": "measured",
+        "global_order_preserved": true,
+        "ms1_relative_order_preserved": true,
+        "ms2_relative_order_preserved": true,
+        "max_abs_mz_error": 0.0,
+        "mean_abs_mz_error": 0.0,
+        "max_ppm_mz_error": 0.0,
+        "mean_ppm_mz_error": 0.0,
+        "mean_abs_intensity_error": 0.0,
+        "max_abs_intensity_error": 0.0,
+        "rmse_intensity_error": 0.0,
+        "p95_rel_intensity_error_pct": 0.0,
+        "p99_rel_intensity_error_pct": 0.0,
+        "mean_abs_log1p_intensity_error": 0.0,
+        "notes": null
+      },
+      {
+        "artifact": "zstd dump",
+        "status": "measured",
+        "global_order_preserved": true,
+        "ms1_relative_order_preserved": true,
+        "ms2_relative_order_preserved": true,
+        "max_abs_mz_error": 0.0,
+        "mean_abs_mz_error": 0.0,
+        "max_ppm_mz_error": 0.0,
+        "mean_ppm_mz_error": 0.0,
+        "mean_abs_intensity_error": 0.0,
+        "max_abs_intensity_error": 0.0,
+        "rmse_intensity_error": 0.0,
+        "p95_rel_intensity_error_pct": 0.0,
+        "p99_rel_intensity_error_pct": 0.0,
+        "mean_abs_log1p_intensity_error": 0.0,
+        "notes": null
+      },
+      {
+        "artifact": "bzip2 dump",
+        "status": "measured",
+        "global_order_preserved": true,
+        "ms1_relative_order_preserved": true,
+        "ms2_relative_order_preserved": true,
+        "max_abs_mz_error": 0.0,
+        "mean_abs_mz_error": 0.0,
+        "max_ppm_mz_error": 0.0,
+        "mean_ppm_mz_error": 0.0,
+        "mean_abs_intensity_error": 0.0,
+        "max_abs_intensity_error": 0.0,
+        "rmse_intensity_error": 0.0,
+        "p95_rel_intensity_error_pct": 0.0,
+        "p99_rel_intensity_error_pct": 0.0,
+        "mean_abs_log1p_intensity_error": 0.0,
+        "notes": null
+      },
+      {
+        "artifact": "xz dump",
+        "status": "measured",
+        "global_order_preserved": true,
+        "ms1_relative_order_preserved": true,
+        "ms2_relative_order_preserved": true,
+        "max_abs_mz_error": 0.0,
+        "mean_abs_mz_error": 0.0,
+        "max_ppm_mz_error": 0.0,
+        "mean_ppm_mz_error": 0.0,
+        "mean_abs_intensity_error": 0.0,
+        "max_abs_intensity_error": 0.0,
+        "rmse_intensity_error": 0.0,
+        "p95_rel_intensity_error_pct": 0.0,
+        "p99_rel_intensity_error_pct": 0.0,
+        "mean_abs_log1p_intensity_error": 0.0,
+        "notes": null
+      },
+      {
+        "artifact": "mzv1 lossless",
+        "status": "measured",
+        "global_order_preserved": true,
+        "ms1_relative_order_preserved": true,
+        "ms2_relative_order_preserved": true,
+        "max_abs_mz_error": 0.0,
+        "mean_abs_mz_error": 0.0,
+        "max_ppm_mz_error": 0.0,
+        "mean_ppm_mz_error": 0.0,
+        "mean_abs_intensity_error": 0.0,
+        "max_abs_intensity_error": 0.0,
+        "rmse_intensity_error": 0.0,
+        "p95_rel_intensity_error_pct": 0.0,
+        "p99_rel_intensity_error_pct": 0.0,
+        "mean_abs_log1p_intensity_error": 0.0,
+        "notes": null
+      },
+      {
+        "artifact": "mzv1 lossy q=16384",
+        "status": "measured",
+        "global_order_preserved": true,
+        "ms1_relative_order_preserved": true,
+        "ms2_relative_order_preserved": true,
+        "max_abs_mz_error": 1.0000001111620804e-06,
+        "mean_abs_mz_error": 5.000682040703224e-07,
+        "max_ppm_mz_error": 0.007460076913208478,
+        "mean_ppm_mz_error": 0.0006086688962415269,
+        "mean_abs_intensity_error": 173.7009067916333,
+        "max_abs_intensity_error": 537856.0,
+        "rmse_intensity_error": 2607.534839019862,
+        "p95_rel_intensity_error_pct": 0.05460953217593955,
+        "p99_rel_intensity_error_pct": 0.05940453269578537,
+        "mean_abs_log1p_intensity_error": 0.0002841444872908944,
+        "notes": null
+      },
+      {
+        "artifact": "mzMLb",
+        "status": "measured",
+        "global_order_preserved": true,
+        "ms1_relative_order_preserved": true,
+        "ms2_relative_order_preserved": true,
+        "max_abs_mz_error": 0.0,
+        "mean_abs_mz_error": 0.0,
+        "max_ppm_mz_error": 0.0,
+        "mean_ppm_mz_error": 0.0,
+        "mean_abs_intensity_error": 0.0,
+        "max_abs_intensity_error": 0.0,
+        "rmse_intensity_error": 0.0,
+        "p95_rel_intensity_error_pct": 0.0,
+        "p99_rel_intensity_error_pct": 0.0,
+        "mean_abs_log1p_intensity_error": 0.0,
+        "notes": null
+      },
+      {
+        "artifact": "MS-Numpress in mzML",
+        "status": "measured",
+        "global_order_preserved": true,
+        "ms1_relative_order_preserved": true,
+        "ms2_relative_order_preserved": true,
+        "max_abs_mz_error": 2.3744371446809964e-07,
+        "mean_abs_mz_error": 4.705757138980256e-08,
+        "max_ppm_mz_error": 0.0014035396211893555,
+        "mean_ppm_mz_error": 4.9864786779797104e-05,
+        "mean_abs_intensity_error": 41.52766614847628,
+        "max_abs_intensity_error": 191744.0,
+        "rmse_intensity_error": 690.1497167431261,
+        "p95_rel_intensity_error_pct": 0.011805221962395048,
+        "p99_rel_intensity_error_pct": 0.013551917934978362,
+        "mean_abs_log1p_intensity_error": 5.852003444979663e-05,
+        "notes": null
+      },
+      {
+        "artifact": "MScompress",
+        "status": "measured",
+        "global_order_preserved": true,
+        "ms1_relative_order_preserved": true,
+        "ms2_relative_order_preserved": true,
+        "max_abs_mz_error": 0.0,
+        "mean_abs_mz_error": 0.0,
+        "max_ppm_mz_error": 0.0,
+        "mean_ppm_mz_error": 0.0,
+        "mean_abs_intensity_error": 0.0,
+        "max_abs_intensity_error": 0.0,
+        "rmse_intensity_error": 0.0,
+        "p95_rel_intensity_error_pct": 0.0,
+        "p99_rel_intensity_error_pct": 0.0,
+        "mean_abs_log1p_intensity_error": 0.0,
+        "notes": null
+      },
+      {
+        "artifact": "MScompress threaded",
+        "status": "measured",
+        "global_order_preserved": true,
+        "ms1_relative_order_preserved": true,
+        "ms2_relative_order_preserved": true,
+        "max_abs_mz_error": 0.0,
+        "mean_abs_mz_error": 0.0,
+        "max_ppm_mz_error": 0.0,
+        "mean_ppm_mz_error": 0.0,
+        "mean_abs_intensity_error": 0.0,
+        "max_abs_intensity_error": 0.0,
+        "rmse_intensity_error": 0.0,
+        "p95_rel_intensity_error_pct": 0.0,
+        "p99_rel_intensity_error_pct": 0.0,
+        "mean_abs_log1p_intensity_error": 0.0,
+        "notes": null
+      }
+    ],
+    "lossy_sweep": [
+      {
+        "intensity_quant": 256,
+        "size_mib": 11.88273811340332,
+        "p95_rel_intensity_error_pct": 3.498879255207158
+      },
+      {
+        "intensity_quant": 1024,
+        "size_mib": 12.518975257873535,
+        "p95_rel_intensity_error_pct": 0.8739658254293563
+      },
+      {
+        "intensity_quant": 4096,
+        "size_mib": 13.155179977416992,
+        "p95_rel_intensity_error_pct": 0.21848615674390642
+      },
+      {
+        "intensity_quant": 16384,
+        "size_mib": 13.791398048400879,
+        "p95_rel_intensity_error_pct": 0.05460953217593955
+      }
+    ],
+    "intensity_quantiles": [
+      {
+        "artifact": "lossless",
+        "quantile_label": "p50",
+        "value_pct": 0.0
+      },
+      {
+        "artifact": "lossless",
+        "quantile_label": "p90",
+        "value_pct": 0.0
+      },
+      {
+        "artifact": "lossless",
+        "quantile_label": "p95",
+        "value_pct": 0.0
+      },
+      {
+        "artifact": "lossless",
+        "quantile_label": "p99",
+        "value_pct": 0.0
+      },
+      {
+        "artifact": "lossless",
+        "quantile_label": "p99.9",
+        "value_pct": 0.0
+      },
+      {
+        "artifact": "lossless",
+        "quantile_label": "p100",
+        "value_pct": 0.0
+      },
+      {
+        "artifact": "selected lossy",
+        "quantile_label": "p50",
+        "value_pct": 0.028292593007402517
+      },
+      {
+        "artifact": "selected lossy",
+        "quantile_label": "p90",
+        "value_pct": 0.05097546064660591
+      },
+      {
+        "artifact": "selected lossy",
+        "quantile_label": "p95",
+        "value_pct": 0.05460953217593955
+      },
+      {
+        "artifact": "selected lossy",
+        "quantile_label": "p99",
+        "value_pct": 0.05940453269578537
+      },
+      {
+        "artifact": "selected lossy",
+        "quantile_label": "p99.9",
+        "value_pct": 0.06273785549791054
+      },
+      {
+        "artifact": "selected lossy",
+        "quantile_label": "p100",
+        "value_pct": 0.06448639836509026
+      }
+    ]
+  },
+  "external_baselines": [
+    {
+      "name": "mzMLb",
+      "status": "benchmarked",
+      "reason": "Converted with psims MzMLToMzMLb using HDF5 compression `blosc:zstd`.",
+      "artifact_path": "data/PXD075509/benchmarks/15HCD_1/15HCD_1.mzMLb",
+      "artifact_bytes": 17038178,
+      "encode_operation": "mzML -> mzMLb",
+      "decode_operation": "mzMLb -> dump",
+      "fidelity": {
+        "name": "mzMLb",
+        "matched_spectra": 9001,
+        "matched_peaks": 2668458,
+        "global_order_preserved": true,
+        "ms1_relative_order_preserved": true,
+        "ms2_relative_order_preserved": true,
+        "max_abs_rt_error": 0.0,
+        "max_abs_precursor_mz_error": 0.0,
+        "exact_mz_count": 2668458,
+        "exact_intensity_count": 2668458,
+        "mz_abs": {
+          "count": 2668458,
+          "mean": 0.0,
+          "median": 0.0,
+          "p95": 0.0,
+          "p99": 0.0,
+          "p999": 0.0,
+          "max": 0.0,
+          "rmse": 0.0,
+          "quantiles": {
+            "p50": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0,
+            "p99.9": 0.0,
+            "p100": 0.0
+          }
+        },
+        "mz_ppm": {
+          "count": 2668458,
+          "mean": 0.0,
+          "median": 0.0,
+          "p95": 0.0,
+          "p99": 0.0,
+          "p999": 0.0,
+          "max": 0.0,
+          "rmse": 0.0,
+          "quantiles": {
+            "p50": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0,
+            "p99.9": 0.0,
+            "p100": 0.0
+          }
+        },
+        "intensity_abs": {
+          "count": 2668458,
+          "mean": 0.0,
+          "median": 0.0,
+          "p95": 0.0,
+          "p99": 0.0,
+          "p999": 0.0,
+          "max": 0.0,
+          "rmse": 0.0,
+          "quantiles": {
+            "p50": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0,
+            "p99.9": 0.0,
+            "p100": 0.0
+          }
+        },
+        "intensity_rel": {
+          "count": 2668458,
+          "mean": 0.0,
+          "median": 0.0,
+          "p95": 0.0,
+          "p99": 0.0,
+          "p999": 0.0,
+          "max": 0.0,
+          "rmse": 0.0,
+          "quantiles": {
+            "p50": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0,
+            "p99.9": 0.0,
+            "p100": 0.0
+          }
+        },
+        "intensity_log1p_abs": {
+          "count": 2668458,
+          "mean": 0.0,
+          "median": 0.0,
+          "p95": 0.0,
+          "p99": 0.0,
+          "p999": 0.0,
+          "max": 0.0,
+          "rmse": 0.0,
+          "quantiles": {
+            "p50": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0,
+            "p99.9": 0.0,
+            "p100": 0.0
+          }
+        }
+      }
+    },
+    {
+      "name": "MS-Numpress in mzML",
+      "status": "benchmarked",
+      "reason": "Converted with psims and per-array MS-Numpress compression settings.",
+      "artifact_path": "data/PXD075509/benchmarks/15HCD_1/15HCD_1.numpress.mzML",
+      "artifact_bytes": 69905308,
+      "encode_operation": "mzML -> MS-Numpress in mzML",
+      "decode_operation": "MS-Numpress in mzML -> dump",
+      "fidelity": {
+        "name": "MS-Numpress in mzML",
+        "matched_spectra": 9001,
+        "matched_peaks": 2668458,
+        "global_order_preserved": true,
+        "ms1_relative_order_preserved": true,
+        "ms2_relative_order_preserved": true,
+        "max_abs_rt_error": 0.0,
+        "max_abs_precursor_mz_error": 0.0,
+        "exact_mz_count": 1860,
+        "exact_intensity_count": 941,
+        "mz_abs": {
+          "count": 2668458,
+          "mean": 4.705757138980256e-08,
+          "median": 3.1091303753782995e-08,
+          "p95": 1.4996362551755738e-07,
+          "p99": 1.7054919453585183e-07,
+          "p999": 1.7554899136484896e-07,
+          "max": 2.3744371446809964e-07,
+          "rmse": 6.483911624028512e-08,
+          "quantiles": {
+            "p50": 3.1091303753782995e-08,
+            "p90": 1.24995631267666e-07,
+            "p95": 1.4996362551755738e-07,
+            "p99": 1.7054919453585183e-07,
+            "p99.9": 1.7554899136484896e-07,
+            "p100": 2.3744371446809964e-07
+          }
+        },
+        "mz_ppm": {
+          "count": 2668458,
+          "mean": 4.9864786779797104e-05,
+          "median": 2.9548162877172127e-05,
+          "p95": 0.00015964472877747426,
+          "p99": 0.00023369724218513728,
+          "p999": 0.0004699989301705763,
+          "max": 0.0014035396211893555,
+          "rmse": 7.477129777636997e-05,
+          "quantiles": {
+            "p50": 2.9548162877172127e-05,
+            "p90": 0.00012259631554553115,
+            "p95": 0.00015964472877747426,
+            "p99": 0.00023369724218513728,
+            "p99.9": 0.0004699989301705763,
+            "p100": 0.0014035396211893555
+          }
+        },
+        "intensity_abs": {
+          "count": 2668458,
+          "mean": 41.52766614847628,
+          "median": 0.6689453125,
+          "p95": 87.8125,
+          "p99": 514.0,
+          "p999": 5444.0,
+          "max": 191744.0,
+          "rmse": 690.1497167431261,
+          "quantiles": {
+            "p50": 0.6689453125,
+            "p90": 37.5,
+            "p95": 87.8125,
+            "p99": 514.0,
+            "p99.9": 5444.0,
+            "p100": 191744.0
+          }
+        },
+        "intensity_rel": {
+          "count": 2668458,
+          "mean": 5.853155157728682e-05,
+          "median": 5.7149052994411354e-05,
+          "p95": 0.00011805221962395048,
+          "p99": 0.00013551917934978363,
+          "p999": 0.00014774094706074883,
+          "max": 0.00016065402745819312,
+          "rmse": 6.836203676098028e-05,
+          "quantiles": {
+            "p50": 5.7149052994411354e-05,
+            "p90": 0.00010638321267285424,
+            "p95": 0.00011805221962395048,
+            "p99": 0.00013551917934978363,
+            "p99.9": 0.00014774094706074883,
+            "p100": 0.00016065402745819312
+          }
+        },
+        "intensity_log1p_abs": {
+          "count": 2668458,
+          "mean": 5.852003444979663e-05,
+          "median": 5.7135613269032604e-05,
+          "p95": 0.0001180485593306635,
+          "p99": 0.00013552065527933988,
+          "p999": 0.00014773291925007648,
+          "max": 0.00016066691420846269,
+          "rmse": 6.835030097401255e-05,
+          "quantiles": {
+            "p50": 5.7135613269032604e-05,
+            "p90": 0.0001063665040692996,
+            "p95": 0.0001180485593306635,
+            "p99": 0.00013552065527933988,
+            "p99.9": 0.00014773291925007648,
+            "p100": 0.00016066691420846269
+          }
+        }
+      }
+    },
+    {
+      "name": "MScompress",
+      "status": "benchmarked",
+      "reason": "Converted with the MScompress Python package using 1 thread for single-thread comparability.",
+      "artifact_path": "data/PXD075509/benchmarks/15HCD_1/15HCD_1.msz",
+      "artifact_bytes": 22679622,
+      "encode_operation": "mzML -> MScompress",
+      "decode_operation": "MScompress -> dump",
+      "fidelity": {
+        "name": "MScompress",
+        "matched_spectra": 9001,
+        "matched_peaks": 2668458,
+        "global_order_preserved": true,
+        "ms1_relative_order_preserved": true,
+        "ms2_relative_order_preserved": true,
+        "max_abs_rt_error": 0.0,
+        "max_abs_precursor_mz_error": 0.0,
+        "exact_mz_count": 2668458,
+        "exact_intensity_count": 2668458,
+        "mz_abs": {
+          "count": 2668458,
+          "mean": 0.0,
+          "median": 0.0,
+          "p95": 0.0,
+          "p99": 0.0,
+          "p999": 0.0,
+          "max": 0.0,
+          "rmse": 0.0,
+          "quantiles": {
+            "p50": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0,
+            "p99.9": 0.0,
+            "p100": 0.0
+          }
+        },
+        "mz_ppm": {
+          "count": 2668458,
+          "mean": 0.0,
+          "median": 0.0,
+          "p95": 0.0,
+          "p99": 0.0,
+          "p999": 0.0,
+          "max": 0.0,
+          "rmse": 0.0,
+          "quantiles": {
+            "p50": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0,
+            "p99.9": 0.0,
+            "p100": 0.0
+          }
+        },
+        "intensity_abs": {
+          "count": 2668458,
+          "mean": 0.0,
+          "median": 0.0,
+          "p95": 0.0,
+          "p99": 0.0,
+          "p999": 0.0,
+          "max": 0.0,
+          "rmse": 0.0,
+          "quantiles": {
+            "p50": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0,
+            "p99.9": 0.0,
+            "p100": 0.0
+          }
+        },
+        "intensity_rel": {
+          "count": 2668458,
+          "mean": 0.0,
+          "median": 0.0,
+          "p95": 0.0,
+          "p99": 0.0,
+          "p999": 0.0,
+          "max": 0.0,
+          "rmse": 0.0,
+          "quantiles": {
+            "p50": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0,
+            "p99.9": 0.0,
+            "p100": 0.0
+          }
+        },
+        "intensity_log1p_abs": {
+          "count": 2668458,
+          "mean": 0.0,
+          "median": 0.0,
+          "p95": 0.0,
+          "p99": 0.0,
+          "p999": 0.0,
+          "max": 0.0,
+          "rmse": 0.0,
+          "quantiles": {
+            "p50": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0,
+            "p99.9": 0.0,
+            "p100": 0.0
+          }
+        }
+      }
+    },
+    {
+      "name": "MScompress threaded",
+      "status": "benchmarked",
+      "reason": "Converted with the MScompress Python package using its default thread setting.",
+      "artifact_path": "data/PXD075509/benchmarks/15HCD_1/15HCD_1.threaded.msz",
+      "artifact_bytes": 22579410,
+      "encode_operation": "mzML -> MScompress threaded",
+      "decode_operation": "MScompress threaded -> dump",
+      "fidelity": {
+        "name": "MScompress threaded",
+        "matched_spectra": 9001,
+        "matched_peaks": 2668458,
+        "global_order_preserved": true,
+        "ms1_relative_order_preserved": true,
+        "ms2_relative_order_preserved": true,
+        "max_abs_rt_error": 0.0,
+        "max_abs_precursor_mz_error": 0.0,
+        "exact_mz_count": 2668458,
+        "exact_intensity_count": 2668458,
+        "mz_abs": {
+          "count": 2668458,
+          "mean": 0.0,
+          "median": 0.0,
+          "p95": 0.0,
+          "p99": 0.0,
+          "p999": 0.0,
+          "max": 0.0,
+          "rmse": 0.0,
+          "quantiles": {
+            "p50": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0,
+            "p99.9": 0.0,
+            "p100": 0.0
+          }
+        },
+        "mz_ppm": {
+          "count": 2668458,
+          "mean": 0.0,
+          "median": 0.0,
+          "p95": 0.0,
+          "p99": 0.0,
+          "p999": 0.0,
+          "max": 0.0,
+          "rmse": 0.0,
+          "quantiles": {
+            "p50": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0,
+            "p99.9": 0.0,
+            "p100": 0.0
+          }
+        },
+        "intensity_abs": {
+          "count": 2668458,
+          "mean": 0.0,
+          "median": 0.0,
+          "p95": 0.0,
+          "p99": 0.0,
+          "p999": 0.0,
+          "max": 0.0,
+          "rmse": 0.0,
+          "quantiles": {
+            "p50": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0,
+            "p99.9": 0.0,
+            "p100": 0.0
+          }
+        },
+        "intensity_rel": {
+          "count": 2668458,
+          "mean": 0.0,
+          "median": 0.0,
+          "p95": 0.0,
+          "p99": 0.0,
+          "p999": 0.0,
+          "max": 0.0,
+          "rmse": 0.0,
+          "quantiles": {
+            "p50": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0,
+            "p99.9": 0.0,
+            "p100": 0.0
+          }
+        },
+        "intensity_log1p_abs": {
+          "count": 2668458,
+          "mean": 0.0,
+          "median": 0.0,
+          "p95": 0.0,
+          "p99": 0.0,
+          "p999": 0.0,
+          "max": 0.0,
+          "rmse": 0.0,
+          "quantiles": {
+            "p50": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "p99": 0.0,
+            "p99.9": 0.0,
+            "p100": 0.0
+          }
+        }
+      }
+    }
+  ],
+  "comparison_candidates": [
+    {
+      "name": "MScompress",
+      "core_idea": "Multi-threaded mzML to MSZ compressor with random-access decode support and configurable lossless or lossy encoding.",
+      "why_it_matters": "It is a modern practical systems baseline with explicit focus on speed, threading, and usable compressed-file access.",
+      "source": "chrisagrams/mscompress"
+    },
+    {
+      "name": "MS-Numpress in mzML",
+      "core_idea": "Array-level compression inside the mzML ecosystem: linear prediction for smooth m/z arrays and logged or integer schemes for intensities.",
+      "why_it_matters": "It is the closest standard-adjacent baseline for testing whether mzarc beats established PSI-compatible spectrum array compression.",
+      "source": "ms-numpress project"
+    },
+    {
+      "name": "mzMLb",
+      "core_idea": "Keeps standards-compliant mzML metadata while moving bulk numeric arrays into HDF5 for better speed and storage efficiency.",
+      "why_it_matters": "It is a direct standard-preserving answer to the same problem mzarc is addressing: less storage and faster access without giving up open-format interoperability.",
+      "source": "PMID: 32864978"
+    }
+  ],
+  "plots": {
+    "size_comparison": "size_comparison.png",
+    "performance_overview": "performance_overview.png",
+    "fidelity_overview": "fidelity_overview.png",
+    "timing_intervals": "timing_intervals.png",
+    "lossy_tradeoff": "lossy_tradeoff.png",
+    "intensity_relative_quantiles": "intensity_relative_quantiles.png"
+  }
+}
