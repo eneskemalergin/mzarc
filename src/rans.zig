@@ -1,0 +1,215 @@
+const std = @import("std");
+
+pub const Allocator = std.mem.Allocator;
+
+pub const precision_bits: u5 = 12;
+pub const precision: usize = 1 << precision_bits;
+
+const table_entry_count = 256;
+const freq_table_bytes = table_entry_count * @sizeOf(u16);
+const state_bytes = @sizeOf(u32);
+const rans_lower_bound: u32 = 1 << 23;
+
+fn appendIntLe(list: *std.ArrayList(u8), allocator: Allocator, comptime T: type, value: T) !void {
+    var buffer: [@sizeOf(T)]u8 = undefined;
+    std.mem.writeInt(T, &buffer, value, .little);
+    try list.appendSlice(allocator, &buffer);
+}
+
+fn readIntLe(comptime T: type, bytes: []const u8) T {
+    return std.mem.readInt(T, bytes[0..@sizeOf(T)], .little);
+}
+
+fn countSymbols(symbols: []const u8) [table_entry_count]u32 {
+    var counts = [_]u32{0} ** table_entry_count;
+    for (symbols) |symbol| counts[symbol] += 1;
+    return counts;
+}
+
+fn bestIncrementIndex(counts: [table_entry_count]u32, remainders: [table_entry_count]u64) usize {
+    var best_idx: usize = 0;
+    var found = false;
+    for (0..table_entry_count) |idx| {
+        if (counts[idx] == 0) continue;
+        if (!found or remainders[idx] > remainders[best_idx] or (remainders[idx] == remainders[best_idx] and counts[idx] > counts[best_idx])) {
+            best_idx = idx;
+            found = true;
+        }
+    }
+    return best_idx;
+}
+
+fn bestDecrementIndex(freqs: [table_entry_count]u16, remainders: [table_entry_count]u64) usize {
+    var best_idx: usize = 0;
+    var found = false;
+    for (0..table_entry_count) |idx| {
+        if (freqs[idx] <= 1) continue;
+        if (!found or remainders[idx] < remainders[best_idx] or (remainders[idx] == remainders[best_idx] and freqs[idx] > freqs[best_idx])) {
+            best_idx = idx;
+            found = true;
+        }
+    }
+    return best_idx;
+}
+
+fn normalizeCounts(counts: [table_entry_count]u32) [table_entry_count]u16 {
+    var total: u64 = 0;
+    for (counts) |count| total += count;
+    if (total == 0) return [_]u16{0} ** table_entry_count;
+
+    var freqs = [_]u16{0} ** table_entry_count;
+    var remainders = [_]u64{0} ** table_entry_count;
+    var assigned_total: usize = 0;
+
+    for (0..table_entry_count) |idx| {
+        const count = counts[idx];
+        if (count == 0) continue;
+
+        const scaled = @as(u64, count) * precision;
+        var assigned: u16 = @intCast(scaled / total);
+        if (assigned == 0) assigned = 1;
+
+        freqs[idx] = assigned;
+        remainders[idx] = scaled % total;
+        assigned_total += assigned;
+    }
+
+    while (assigned_total < precision) {
+        const idx = bestIncrementIndex(counts, remainders);
+        freqs[idx] += 1;
+        assigned_total += 1;
+    }
+
+    while (assigned_total > precision) {
+        const idx = bestDecrementIndex(freqs, remainders);
+        freqs[idx] -= 1;
+        assigned_total -= 1;
+    }
+
+    return freqs;
+}
+
+fn buildStarts(freqs: [table_entry_count]u16) [table_entry_count]u16 {
+    var starts = [_]u16{0} ** table_entry_count;
+    var running: u16 = 0;
+    for (0..table_entry_count) |idx| {
+        starts[idx] = running;
+        running += freqs[idx];
+    }
+    return starts;
+}
+
+fn buildDecodeTable(freqs: [table_entry_count]u16, starts: [table_entry_count]u16) [precision]u8 {
+    var table = [_]u8{0} ** precision;
+    for (0..table_entry_count) |idx| {
+        const start = starts[idx];
+        const freq = freqs[idx];
+        for (0..freq) |slot| table[start + slot] = @intCast(idx);
+    }
+    return table;
+}
+
+fn validateFreqTable(freqs: [table_entry_count]u16, expected_len: usize) !void {
+    var total: usize = 0;
+    var non_zero_symbols: usize = 0;
+    for (freqs) |freq| {
+        total += freq;
+        if (freq != 0) non_zero_symbols += 1;
+    }
+
+    if (expected_len == 0) {
+        if (non_zero_symbols != 0) return error.InvalidFrequencyTable;
+        return;
+    }
+
+    if (total != precision) return error.InvalidFrequencyTable;
+}
+
+pub fn encodeAlloc(allocator: Allocator, symbols: []const u8) ![]u8 {
+    if (symbols.len == 0) return allocator.alloc(u8, 0);
+
+    const counts = countSymbols(symbols);
+    const freqs = normalizeCounts(counts);
+    const starts = buildStarts(freqs);
+
+    var renorm_bytes: std.ArrayList(u8) = .empty;
+    defer renorm_bytes.deinit(allocator);
+
+    var state: u32 = rans_lower_bound;
+    var index = symbols.len;
+    while (index > 0) {
+        index -= 1;
+        const symbol = symbols[index];
+        const freq = freqs[symbol];
+        if (freq == 0) return error.InvalidFrequencyTable;
+
+        const x_max = @as(u32, @intCast((((@as(u64, rans_lower_bound) >> precision_bits) << 8) * freq)));
+        while (state >= x_max) {
+            try renorm_bytes.append(allocator, @truncate(state & 0xff));
+            state >>= 8;
+        }
+
+        const quotient = @as(u64, state) / freq;
+        const remainder = @as(u64, state) % freq;
+        state = @intCast((quotient << precision_bits) + remainder + starts[symbol]);
+    }
+
+    var encoded: std.ArrayList(u8) = .empty;
+    errdefer encoded.deinit(allocator);
+
+    for (freqs) |freq| try appendIntLe(&encoded, allocator, u16, freq);
+    try appendIntLe(&encoded, allocator, u32, state);
+
+    var renorm_idx = renorm_bytes.items.len;
+    while (renorm_idx > 0) {
+        renorm_idx -= 1;
+        try encoded.append(allocator, renorm_bytes.items[renorm_idx]);
+    }
+
+    return encoded.toOwnedSlice(allocator);
+}
+
+pub fn decodeAlloc(allocator: Allocator, encoded: []const u8, expected_len: usize) ![]u8 {
+    if (expected_len == 0) {
+        if (encoded.len != 0) return error.TrailingData;
+        return allocator.alloc(u8, 0);
+    }
+    if (encoded.len < freq_table_bytes + state_bytes) return error.UnexpectedEndOfStream;
+
+    var freqs = [_]u16{0} ** table_entry_count;
+    var offset: usize = 0;
+    for (0..table_entry_count) |idx| {
+        freqs[idx] = readIntLe(u16, encoded[offset .. offset + @sizeOf(u16)]);
+        offset += @sizeOf(u16);
+    }
+    try validateFreqTable(freqs, expected_len);
+
+    const starts = buildStarts(freqs);
+    const decode_table = buildDecodeTable(freqs, starts);
+
+    var state = readIntLe(u32, encoded[offset .. offset + state_bytes]);
+    offset += state_bytes;
+    if (state < rans_lower_bound) return error.InvalidState;
+
+    const decoded = try allocator.alloc(u8, expected_len);
+    errdefer allocator.free(decoded);
+
+    for (decoded) |*symbol_out| {
+        const slot = @as(usize, state & (precision - 1));
+        const symbol = decode_table[slot];
+        const freq = freqs[symbol];
+        if (freq == 0) return error.InvalidFrequencyTable;
+
+        symbol_out.* = symbol;
+        state = @intCast((@as(u64, freq) * (state >> precision_bits)) + (slot - starts[symbol]));
+
+        while (state < rans_lower_bound) {
+            if (offset >= encoded.len) return error.UnexpectedEndOfStream;
+            state = (state << 8) | encoded[offset];
+            offset += 1;
+        }
+    }
+
+    if (offset != encoded.len) return error.TrailingData;
+    return decoded;
+}

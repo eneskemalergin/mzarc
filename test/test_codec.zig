@@ -309,6 +309,30 @@ test "codec inspect rejects invalid magic, unsupported version, trailing data, a
     try std.testing.expectError(error.UnsupportedMsLevel, codec.inspectAlloc(std.testing.allocator, bad_ms_level));
 }
 
+test "codec inspect accepts prior minor version files" {
+    var mz = [_]f64{ 123.000000001, 123.000000003, 123.000000004 };
+    var intensity = [_]f32{ 10.0, 11.0, 12.0 };
+    const input = [_]binary_reader.RawSpectrum{
+        .{ .scan_id = 1, .rt_seconds = 1.0, .ms_level = 2, .precursor_mz = 600.0, .mz = mz[0..], .intensity = intensity[0..] },
+    };
+
+    const encoded = try codec.encodeFileAlloc(std.testing.allocator, &input, .{ .block_options = .{ .mode = .lossless }, .block_size = 1 });
+    defer std.testing.allocator.free(encoded);
+
+    const old_minor = try std.testing.allocator.dupe(u8, encoded);
+    defer std.testing.allocator.free(old_minor);
+    std.mem.writeInt(u16, old_minor[6..8], 0, .little);
+
+    const inspection = try codec.inspectAlloc(std.testing.allocator, old_minor);
+    defer codec.freeInspection(std.testing.allocator, inspection);
+
+    try std.testing.expectEqual(@as(u16, 0), inspection.header.version_minor);
+
+    const decoded = try codec.decodeFileAlloc(std.testing.allocator, old_minor);
+    defer binary_reader.freeSpectra(std.testing.allocator, decoded);
+    try expectLosslessRoundTrip(&input, decoded);
+}
+
 test "codec inspect rejects truncated order tables and truncated blocks" {
     var mz_ms2 = [_]f64{ 400.00000125, 401.00000375 };
     var intensity_ms2 = [_]f32{ 10.0, 11.0 };

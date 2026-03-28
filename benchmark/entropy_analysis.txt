@@ -1,0 +1,65 @@
+# Part 3a H11/H12 Measurement
+
+Date: 2026-03-27
+Dataset: data/PXD075509/15HCD_1.mzML
+Dump: data/PXD075509/benchmarks/15HCD_1/15HCD_1.bin
+Codec: mzarc only (no external baselines rerun)
+Build: ./zig-x86_64-linux-0.16.0-dev.2905+5d71e3051/zig build
+
+Commands used:
+1. ./zig-out/bin/mzarc encode data/PXD075509/benchmarks/15HCD_1/15HCD_1.bin -o /tmp/15HCD_1.part3a.lossless.mzarc
+2. ./zig-out/bin/mzarc inspect /tmp/15HCD_1.part3a.lossless.mzarc --json
+3. ./zig-out/bin/mzarc decode /tmp/15HCD_1.part3a.timed.mzarc -o /tmp/15HCD_1.part3a.timed.roundtrip.bin
+4. ./zig-out/bin/mzarc validate data/PXD075509/benchmarks/15HCD_1/15HCD_1.bin /tmp/15HCD_1.part3a.timed.roundtrip.bin --mode=lossless
+
+Current lossless artifact:
+- total_bytes = 16015764 (15.27 MiB)
+- mz_payload_bytes = 7143905
+- intensity_payload_bytes = 8671747
+- version = 1.1
+
+v0.1.1 baseline (benchmark/baseline_v0.1.1.json):
+- total_bytes = 21213320 (20.23 MiB)
+- mz_payload_bytes = 10340312
+- intensity_payload_bytes = 10673832
+
+Delta vs v0.1.1 baseline:
+- total_bytes: -5197556 bytes (-24.50%)
+- mz_payload_bytes: -3196407 bytes (-30.91%)
+- intensity_payload_bytes: -2002085 bytes (-18.76%)
+
+External reference points from the baseline report:
+- zstd dump = 18720327 bytes (17.85 MiB)
+- xz dump = 16535444 bytes (15.77 MiB)
+
+Hypothesis status:
+- H11: PASS
+  m/z payload reduction = 30.91% vs v0.1.1 raw FOR output on 15HCD_1
+  threshold = 20%
+- H12: PASS
+  current lossless total = 16015764 bytes (15.27 MiB)
+  target <= 15.7 MiB: PASS
+  beats zstd (17.85 MiB): PASS
+  beats xz (15.77 MiB): PASS
+
+Correctness:
+- Lossless validate on the full round trip passed:
+  PASS spectrum_count 9001
+  PASS scan_id_exact
+  PASS rt_seconds_exact
+  PASS ms_level_exact
+  PASS precursor_mz_exact
+  PASS peak_count_exact
+  PASS mz_round_trip exact
+  PASS intensity_round_trip exact
+
+Current mzarc-only timings on 15HCD_1 (3 runs):
+- encode runs: 2.3514s, 2.4082s, 2.3743s
+- decode runs: 0.7593s, 0.7463s, 0.7486s
+- encode mean: 2.3780s
+- decode mean: 0.7514s
+
+Timing caveat:
+- Size targets are exceeded in a good way, but throughput regressed sharply versus the v0.1.1 baseline (encode 0.1913s, decode 0.1499s).
+- The current rANS implementation is functionally correct and materially improves compression, but it is not yet performance-competitive on the full dataset.
+- Part 3a size goals are met; performance work remains before this should be considered a finished shipping state.

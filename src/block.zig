@@ -3,6 +3,7 @@ const builtin = @import("builtin");
 const binary_reader = @import("binary_reader");
 const quantize = @import("quantize");
 const bitpack = @import("bitpack");
+const rans = @import("rans");
 
 pub const Allocator = std.mem.Allocator;
 
@@ -67,6 +68,10 @@ pub const flag_delta_scan_id: u8 = 0b0001_0000;
 /// rt_seconds array is stored as delta-encoded f32 bit patterns (positive,
 /// monotonically increasing) rather than raw f32 values.
 pub const flag_delta_rt: u8 = 0b0010_0000;
+/// m/z FOR payload bytes are entropy-coded with rANS.
+pub const flag_rans_mz: u8 = 0b0100_0000;
+/// Intensity payload bytes are entropy-coded with rANS.
+pub const flag_rans_intensity: u8 = 0b1000_0000;
 pub const header_len = 40;
 
 fn combineU32(low: u16, high: u16) u32 {
@@ -109,6 +114,56 @@ fn readF32Le(bytes: []const u8) f32 {
 
 fn readF64Le(bytes: []const u8) f64 {
     return @bitCast(readIntLe(u64, bytes));
+}
+
+fn packedByteLen(bit_width: u8, count: usize) usize {
+    if (bit_width == 0) return 0;
+    return ((@as(usize, bit_width) * count) + 7) / 8;
+}
+
+fn shouldUseRans(encoded_len: usize, raw_len: usize) bool {
+    if (raw_len == 0 or encoded_len >= raw_len) return false;
+    return encoded_len * 100 < raw_len * 95;
+}
+
+fn maybeEncodeRansAlloc(allocator: Allocator, raw: []const u8) !?[]u8 {
+    if (raw.len == 0) return null;
+    const encoded = try rans.encodeAlloc(allocator, raw);
+    errdefer allocator.free(encoded);
+    if (!shouldUseRans(encoded.len, raw.len)) {
+        allocator.free(encoded);
+        return null;
+    }
+    return encoded;
+}
+
+fn appendRawIntensityBytes(payload: *std.ArrayList(u8), allocator: Allocator, spectra: []const binary_reader.RawSpectrum) !void {
+    for (spectra) |spectrum| {
+        if (builtin.cpu.arch.endian() == .little) {
+            try payload.appendSlice(allocator, std.mem.sliceAsBytes(spectrum.intensity));
+        } else {
+            for (spectrum.intensity) |value| try appendF32Le(payload, allocator, value);
+        }
+    }
+}
+
+fn flattenRawIntensityBytesAlloc(allocator: Allocator, spectra: []const binary_reader.RawSpectrum, total_peaks: usize) ![]u8 {
+    var bytes = try allocator.alloc(u8, total_peaks * @sizeOf(f32));
+    errdefer allocator.free(bytes);
+
+    var offset: usize = 0;
+    for (spectra) |spectrum| {
+        for (spectrum.intensity) |value| {
+            const bits: u32 = @bitCast(value);
+            bytes[offset] = @truncate(bits & 0xff);
+            bytes[offset + 1] = @truncate((bits >> 8) & 0xff);
+            bytes[offset + 2] = @truncate((bits >> 16) & 0xff);
+            bytes[offset + 3] = @truncate((bits >> 24) & 0xff);
+            offset += @sizeOf(f32);
+        }
+    }
+
+    return bytes;
 }
 
 pub fn parseHeader(bytes: []const u8) !BlockHeader {
@@ -369,14 +424,21 @@ pub fn encodeBlock(allocator: Allocator, spectra: []const binary_reader.RawSpect
         defer packed_mz.deinit(allocator);
         mz_bit_width = packed_mz.bit_width;
         try appendIntLe(&payload, allocator, u64, packed_mz.base);
-        try appendIntLe(&payload, allocator, u32, @intCast(packed_mz.payload.len));
-        try payload.appendSlice(allocator, packed_mz.payload);
+        if (try maybeEncodeRansAlloc(allocator, packed_mz.payload)) |rans_payload| {
+            defer allocator.free(rans_payload);
+            flags |= flag_rans_mz;
+            try appendIntLe(&payload, allocator, u32, @intCast(rans_payload.len));
+            try payload.appendSlice(allocator, rans_payload);
+        } else {
+            try appendIntLe(&payload, allocator, u32, @intCast(packed_mz.payload.len));
+            try payload.appendSlice(allocator, packed_mz.payload);
+        }
     }
 
     var intensity_bit_width: u8 = 0;
     if (options.mode == .lossless) {
-        // Dry-run: compare split-exponent layout vs raw f32 and use whichever is smaller.
-        // Split layout: [bw:1][base:8][payload_len:4][exp_payload][mantissa: 3*total_peaks]
+        // Dry-run: choose the smallest exact lossless intensity representation among
+        // raw f32, raw f32+rANS, split exponent, and split exponent+rANS.
         const exp_values = try allocator.alloc(u64, total_peaks);
         defer allocator.free(exp_values);
         {
@@ -390,36 +452,88 @@ pub fn encodeBlock(allocator: Allocator, spectra: []const binary_reader.RawSpect
         }
         const packed_exp = try bitpack.packForU64(allocator, exp_values);
         defer packed_exp.deinit(allocator);
-        const split_bytes: usize = 1 + 8 + 4 + packed_exp.payload.len + 3 * total_peaks;
-        const raw_bytes: usize = 4 * total_peaks;
-        if (split_bytes < raw_bytes) {
-            // Split-exponent wins: FOR-pack the exponent stream, store mantissa raw.
-            flags |= flag_split_exponent;
-            intensity_bit_width = packed_exp.bit_width;
-            try payload.append(allocator, packed_exp.bit_width);
-            try appendIntLe(&payload, allocator, u64, packed_exp.base);
-            try appendIntLe(&payload, allocator, u32, @intCast(packed_exp.payload.len));
-            try payload.appendSlice(allocator, packed_exp.payload);
-            for (spectra) |spectrum| {
-                for (spectrum.intensity) |value| {
-                    const bits: u32 = @bitCast(value);
-                    try payload.append(allocator, @truncate(bits & 0xFF));
-                    try payload.append(allocator, @truncate((bits >> 8) & 0xFF));
-                    try payload.append(allocator, @truncate((bits >> 16) & 0xFF));
-                }
+        const raw_intensity = try flattenRawIntensityBytesAlloc(allocator, spectra, total_peaks);
+        defer allocator.free(raw_intensity);
+
+        const split_plain_bytes: usize = 1 + 8 + 4 + packed_exp.payload.len + 3 * total_peaks;
+        const raw_plain_bytes: usize = raw_intensity.len;
+
+        const encoded_raw_intensity = try maybeEncodeRansAlloc(allocator, raw_intensity);
+        defer if (encoded_raw_intensity) |buf| allocator.free(buf);
+        const encoded_exp = try maybeEncodeRansAlloc(allocator, packed_exp.payload);
+        defer if (encoded_exp) |buf| allocator.free(buf);
+
+        const IntensityEncoding = enum {
+            raw_plain,
+            raw_rans,
+            split_plain,
+            split_rans,
+        };
+
+        var best_encoding: IntensityEncoding = .raw_plain;
+        var best_size = raw_plain_bytes;
+
+        if (split_plain_bytes < best_size) {
+            best_encoding = .split_plain;
+            best_size = split_plain_bytes;
+        }
+        if (encoded_raw_intensity) |buf| {
+            const candidate = @sizeOf(u32) + buf.len;
+            if (candidate < best_size) {
+                best_encoding = .raw_rans;
+                best_size = candidate;
             }
-        } else {
-            // Fall back to raw f32 (compat path, v0.1.1 behaviour).
-            flags |= flag_lossless_intensity_raw;
-            for (spectra) |spectrum| {
-                if (builtin.cpu.arch.endian() == .little) {
-                    try payload.appendSlice(allocator, std.mem.sliceAsBytes(spectrum.intensity));
-                } else {
+        }
+        if (encoded_exp) |buf| {
+            const candidate = 1 + 8 + 4 + buf.len + 3 * total_peaks;
+            if (candidate < best_size) {
+                best_encoding = .split_rans;
+                best_size = candidate;
+            }
+        }
+
+        switch (best_encoding) {
+            .raw_plain => {
+                flags |= flag_lossless_intensity_raw;
+                try appendRawIntensityBytes(&payload, allocator, spectra);
+            },
+            .raw_rans => {
+                flags |= flag_lossless_intensity_raw | flag_rans_intensity;
+                try appendIntLe(&payload, allocator, u32, @intCast(encoded_raw_intensity.?.len));
+                try payload.appendSlice(allocator, encoded_raw_intensity.?);
+            },
+            .split_plain => {
+                flags |= flag_split_exponent;
+                intensity_bit_width = packed_exp.bit_width;
+                try payload.append(allocator, packed_exp.bit_width);
+                try appendIntLe(&payload, allocator, u64, packed_exp.base);
+                try appendIntLe(&payload, allocator, u32, @intCast(packed_exp.payload.len));
+                try payload.appendSlice(allocator, packed_exp.payload);
+                for (spectra) |spectrum| {
                     for (spectrum.intensity) |value| {
-                        try appendF32Le(&payload, allocator, value);
+                        const bits: u32 = @bitCast(value);
+                        try payload.append(allocator, @truncate(bits & 0xFF));
+                        try payload.append(allocator, @truncate((bits >> 8) & 0xFF));
+                        try payload.append(allocator, @truncate((bits >> 16) & 0xFF));
                     }
                 }
-            }
+            },
+            .split_rans => {
+                flags |= flag_split_exponent | flag_rans_intensity;
+                intensity_bit_width = packed_exp.bit_width;
+                try payload.append(allocator, packed_exp.bit_width);
+                try appendIntLe(&payload, allocator, u64, packed_exp.base);
+                try appendIntLe(&payload, allocator, u32, @intCast(encoded_exp.?.len));
+                try payload.appendSlice(allocator, encoded_exp.?);
+                for (spectra) |spectrum| {
+                    for (spectrum.intensity) |value| {
+                        const bits: u32 = @bitCast(value);
+                        try payload.append(allocator, @truncate(bits & 0xFF));
+                        try payload.append(allocator, @truncate((bits >> 8) & 0xFF));
+                        try payload.append(allocator, @truncate((bits >> 16) & 0xFF));
+                    }
+                }
+            },
         }
     } else {
         const quantized_intensity = try flattenIntensityLossyToU64(
@@ -437,8 +551,15 @@ pub fn encodeBlock(allocator: Allocator, spectra: []const binary_reader.RawSpect
 
         intensity_bit_width = packed_intensity.bit_width;
         try appendIntLe(&payload, allocator, u16, @intCast(packed_intensity.base));
-        try appendIntLe(&payload, allocator, u32, @intCast(packed_intensity.payload.len));
-        try payload.appendSlice(allocator, packed_intensity.payload);
+        if (try maybeEncodeRansAlloc(allocator, packed_intensity.payload)) |rans_payload| {
+            defer allocator.free(rans_payload);
+            flags |= flag_rans_intensity;
+            try appendIntLe(&payload, allocator, u32, @intCast(rans_payload.len));
+            try payload.appendSlice(allocator, rans_payload);
+        } else {
+            try appendIntLe(&payload, allocator, u32, @intCast(packed_intensity.payload.len));
+            try payload.appendSlice(allocator, packed_intensity.payload);
+        }
     }
 
     const decompressed_bytes = (@as(usize, spectra.len) * (@sizeOf(u32) + @sizeOf(f32) + @sizeOf(f64) + @sizeOf(u32))) +
@@ -580,11 +701,18 @@ pub fn decodeBlock(allocator: Allocator, block_bytes: []const u8) ![]binary_read
         offset += 4;
         if (payload.len - offset < mz_payload_len) return error.UnexpectedEndOfStream;
 
+        var mz_rans_payload: ?[]u8 = null;
+        defer if (mz_rans_payload) |buf| allocator.free(buf);
+        const mz_payload_bytes = if ((header.flags & flag_rans_mz) != 0) blk: {
+            mz_rans_payload = try rans.decodeAlloc(allocator, payload[offset .. offset + mz_payload_len], packedByteLen(header.mz_bit_width, total_peaks));
+            break :blk mz_rans_payload.?;
+        } else payload[offset .. offset + mz_payload_len];
+
         const mz_offsets = try bitpack.unpackForU64(allocator, .{
             .base = mz_base,
             .bit_width = header.mz_bit_width,
             .count = total_peaks,
-            .payload = payload[offset .. offset + mz_payload_len],
+            .payload = mz_payload_bytes,
         });
         defer allocator.free(mz_offsets);
         offset += mz_payload_len;
@@ -613,17 +741,35 @@ pub fn decodeBlock(allocator: Allocator, block_bytes: []const u8) ![]binary_read
     defer allocator.free(flat_intensity);
 
     if ((header.flags & flag_lossless_intensity_raw) != 0) {
-        const raw_len = total_peaks * @sizeOf(f32);
-        if (payload.len - offset < raw_len) return error.UnexpectedEndOfStream;
-        if (builtin.cpu.arch.endian() == .little) {
-            @memcpy(std.mem.sliceAsBytes(flat_intensity), payload[offset .. offset + raw_len]);
-        } else {
-            for (flat_intensity, 0..) |*value, idx| {
-                const start = offset + (idx * @sizeOf(f32));
-                value.* = readF32Le(payload[start .. start + @sizeOf(f32)]);
+        if ((header.flags & flag_rans_intensity) != 0) {
+            if (payload.len - offset < 4) return error.UnexpectedEndOfStream;
+            const encoded_len = readIntLe(u32, payload[offset .. offset + 4]);
+            offset += 4;
+            if (payload.len - offset < encoded_len) return error.UnexpectedEndOfStream;
+            const decoded_bytes = try rans.decodeAlloc(allocator, payload[offset .. offset + encoded_len], total_peaks * @sizeOf(f32));
+            defer allocator.free(decoded_bytes);
+            if (builtin.cpu.arch.endian() == .little) {
+                @memcpy(std.mem.sliceAsBytes(flat_intensity), decoded_bytes);
+            } else {
+                for (flat_intensity, 0..) |*value, idx| {
+                    const start = idx * @sizeOf(f32);
+                    value.* = readF32Le(decoded_bytes[start .. start + @sizeOf(f32)]);
+                }
             }
+            offset += encoded_len;
+        } else {
+            const raw_len = total_peaks * @sizeOf(f32);
+            if (payload.len - offset < raw_len) return error.UnexpectedEndOfStream;
+            if (builtin.cpu.arch.endian() == .little) {
+                @memcpy(std.mem.sliceAsBytes(flat_intensity), payload[offset .. offset + raw_len]);
+            } else {
+                for (flat_intensity, 0..) |*value, idx| {
+                    const start = offset + (idx * @sizeOf(f32));
+                    value.* = readF32Le(payload[start .. start + @sizeOf(f32)]);
+                }
+            }
+            offset += raw_len;
         }
-        offset += raw_len;
     } else if ((header.flags & flag_split_exponent) != 0) {
         // Split-exponent decode: reconstruct f32 from FOR-packed exponent + raw 3-byte mantissa.
         if (payload.len - offset < 13) return error.UnexpectedEndOfStream;
@@ -634,11 +780,19 @@ pub fn decodeBlock(allocator: Allocator, block_bytes: []const u8) ![]binary_read
         const exp_payload_len = readIntLe(u32, payload[offset .. offset + 4]);
         offset += 4;
         if (payload.len - offset < exp_payload_len) return error.UnexpectedEndOfStream;
+
+        var exp_rans_payload: ?[]u8 = null;
+        defer if (exp_rans_payload) |buf| allocator.free(buf);
+        const exp_payload_bytes = if ((header.flags & flag_rans_intensity) != 0) blk: {
+            exp_rans_payload = try rans.decodeAlloc(allocator, payload[offset .. offset + exp_payload_len], packedByteLen(exp_bit_width, total_peaks));
+            break :blk exp_rans_payload.?;
+        } else payload[offset .. offset + exp_payload_len];
+
         const exp_unpacked = try bitpack.unpackForU64(allocator, .{
             .base = exp_base,
             .bit_width = exp_bit_width,
             .count = total_peaks,
-            .payload = payload[offset .. offset + exp_payload_len],
+            .payload = exp_payload_bytes,
         });
         defer allocator.free(exp_unpacked);
         offset += exp_payload_len;
@@ -662,11 +816,18 @@ pub fn decodeBlock(allocator: Allocator, block_bytes: []const u8) ![]binary_read
         offset += 4;
         if (payload.len - offset < intensity_payload_len) return error.UnexpectedEndOfStream;
 
+        var intensity_rans_payload: ?[]u8 = null;
+        defer if (intensity_rans_payload) |buf| allocator.free(buf);
+        const intensity_payload_bytes = if ((header.flags & flag_rans_intensity) != 0) blk: {
+            intensity_rans_payload = try rans.decodeAlloc(allocator, payload[offset .. offset + intensity_payload_len], packedByteLen(header.intensity_bit_width, total_peaks));
+            break :blk intensity_rans_payload.?;
+        } else payload[offset .. offset + intensity_payload_len];
+
         const unpacked = try bitpack.unpackForU64(allocator, .{
             .base = intensity_base,
             .bit_width = header.intensity_bit_width,
             .count = total_peaks,
-            .payload = payload[offset .. offset + intensity_payload_len],
+            .payload = intensity_payload_bytes,
         });
         defer allocator.free(unpacked);
         offset += intensity_payload_len;
@@ -788,9 +949,18 @@ pub fn inspectBlockByteBreakdown(block_bytes: []const u8) !BlockByteBreakdown {
     var intensity_metadata_bytes: usize = 0;
     var intensity_payload_bytes: usize = 0;
     if ((header.flags & flag_lossless_intensity_raw) != 0) {
-        intensity_payload_bytes = total_peaks * @sizeOf(f32);
-        if (payload.len - offset < intensity_payload_bytes) return error.UnexpectedEndOfStream;
-        offset += intensity_payload_bytes;
+        if ((header.flags & flag_rans_intensity) != 0) {
+            intensity_metadata_bytes = @sizeOf(u32);
+            if (payload.len - offset < intensity_metadata_bytes) return error.UnexpectedEndOfStream;
+            intensity_payload_bytes = readIntLe(u32, payload[offset .. offset + @sizeOf(u32)]);
+            offset += @sizeOf(u32);
+            if (payload.len - offset < intensity_payload_bytes) return error.UnexpectedEndOfStream;
+            offset += intensity_payload_bytes;
+        } else {
+            intensity_payload_bytes = total_peaks * @sizeOf(f32);
+            if (payload.len - offset < intensity_payload_bytes) return error.UnexpectedEndOfStream;
+            offset += intensity_payload_bytes;
+        }
     } else if ((header.flags & flag_split_exponent) != 0) {
         if (payload.len - offset < 13) return error.UnexpectedEndOfStream;
         offset += 1; // bit_width byte

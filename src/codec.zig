@@ -8,7 +8,7 @@ const io = std.Io.Threaded.global_single_threaded.io();
 pub const magic = "MZAR".*;
 pub const header_len = 32;
 pub const version_major: u16 = 1;
-pub const version_minor: u16 = 0;
+pub const version_minor: u16 = 1;
 
 pub const flag_lossless: u32 = 0b0000_0001;
 pub const flag_contains_ms1: u32 = 0b0000_0010;
@@ -120,7 +120,7 @@ fn parseHeader(bytes: []const u8) !FileHeader {
     };
 
     if (!std.mem.eql(u8, &parsed.magic_bytes, &magic)) return error.InvalidMagic;
-    if (parsed.version_major != version_major or parsed.version_minor != version_minor) {
+    if (parsed.version_major != version_major or parsed.version_minor > version_minor) {
         return error.UnsupportedVersion;
     }
 

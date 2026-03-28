@@ -23,6 +23,11 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
+    const rans_module = b.createModule(.{
+        .root_source_file = b.path("src/rans.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
     const block_module = b.createModule(.{
         .root_source_file = b.path("src/block.zig"),
         .target = target,
@@ -32,6 +37,7 @@ pub fn build(b: *std.Build) void {
             .{ .name = "quantize", .module = quantize_module },
             .{ .name = "delta", .module = delta_module },
             .{ .name = "bitpack", .module = bitpack_module },
+            .{ .name = "rans", .module = rans_module },
         },
     });
     const codec_module = b.createModule(.{
@@ -71,6 +77,7 @@ pub fn build(b: *std.Build) void {
         "test/test_quantize.zig",
         "test/test_delta.zig",
         "test/test_bitpack.zig",
+        "test/test_rans.zig",
         "test/test_block.zig",
         "test/test_codec.zig",
     };
@@ -87,6 +94,7 @@ pub fn build(b: *std.Build) void {
                     .{ .name = "quantize", .module = quantize_module },
                     .{ .name = "delta", .module = delta_module },
                     .{ .name = "bitpack", .module = bitpack_module },
+                    .{ .name = "rans", .module = rans_module },
                     .{ .name = "block", .module = block_module },
                     .{ .name = "codec", .module = codec_module },
                 },
@@ -123,16 +131,16 @@ pub fn build(b: *std.Build) void {
 
     // Stage 4: lossless round-trip on frozen fixture
     const ci_enc_ls = b.addSystemCommand(&.{
-        "./zig-out/bin/mzarc", "encode", "fixtures/frozen.bin",
-        "-o", "/tmp/mzarc_ci_frozen.mzarc",
+        "./zig-out/bin/mzarc", "encode",                     "fixtures/frozen.bin",
+        "-o",                  "/tmp/mzarc_ci_frozen.mzarc",
     });
     ci_enc_ls.step.dependOn(b.getInstallStep());
     ci_enc_ls.step.dependOn(test_step);
     ci_enc_ls.step.dependOn(check_fixture_step);
 
     const ci_dec_ls = b.addSystemCommand(&.{
-        "./zig-out/bin/mzarc", "decode", "/tmp/mzarc_ci_frozen.mzarc",
-        "-o", "/tmp/mzarc_ci_frozen_rt.bin",
+        "./zig-out/bin/mzarc", "decode",                      "/tmp/mzarc_ci_frozen.mzarc",
+        "-o",                  "/tmp/mzarc_ci_frozen_rt.bin",
     });
     ci_dec_ls.step.dependOn(&ci_enc_ls.step);
 
@@ -145,14 +153,14 @@ pub fn build(b: *std.Build) void {
 
     // Stage 5: lossy round-trip on frozen fixture
     const ci_enc_ly = b.addSystemCommand(&.{
-        "./zig-out/bin/mzarc", "encode", "fixtures/frozen.bin",
-        "-o", "/tmp/mzarc_ci_frozen_lossy.mzarc", "--lossy",
+        "./zig-out/bin/mzarc", "encode",                           "fixtures/frozen.bin",
+        "-o",                  "/tmp/mzarc_ci_frozen_lossy.mzarc", "--lossy",
     });
     ci_enc_ly.step.dependOn(&ci_val_ls.step);
 
     const ci_dec_ly = b.addSystemCommand(&.{
-        "./zig-out/bin/mzarc", "decode", "/tmp/mzarc_ci_frozen_lossy.mzarc",
-        "-o", "/tmp/mzarc_ci_frozen_lossy_rt.bin",
+        "./zig-out/bin/mzarc", "decode",                            "/tmp/mzarc_ci_frozen_lossy.mzarc",
+        "-o",                  "/tmp/mzarc_ci_frozen_lossy_rt.bin",
     });
     ci_dec_ly.step.dependOn(&ci_enc_ly.step);
 

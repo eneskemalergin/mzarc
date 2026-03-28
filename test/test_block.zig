@@ -306,3 +306,39 @@ test "split-exponent: degenerate small spectrum falls back to raw f32" {
     try std.testing.expectEqual(@as(usize, 1), decoded.len);
     try std.testing.expectEqualSlices(f32, int_buf[0..], decoded[0].intensity);
 }
+
+test "block entropy coding activates on structured m/z and exponent streams" {
+    const peak_count = 8192;
+    const mz = try std.testing.allocator.alloc(f64, peak_count);
+    defer std.testing.allocator.free(mz);
+    const intensity = try std.testing.allocator.alloc(f32, peak_count);
+    defer std.testing.allocator.free(intensity);
+
+    var current_mz: f64 = 100.0;
+    for (0..peak_count) |idx| {
+        current_mz += if ((idx & 1) == 0) 0.000000001 else 0.000000002;
+        mz[idx] = current_mz;
+        const noisy_low_bytes = @as(u32, @truncate((idx *% 2_654_435_761) & 0x00ff_ffff));
+        const top_byte: u32 = if ((idx & 1) == 0) 0x44 else 0x45;
+        intensity[idx] = @bitCast((top_byte << 24) | noisy_low_bytes);
+    }
+
+    const spectra = [_]binary_reader.RawSpectrum{
+        .{ .scan_id = 1, .rt_seconds = 1.0, .ms_level = 2, .precursor_mz = 500.0, .mz = mz, .intensity = intensity },
+    };
+
+    const encoded = try block.encodeBlock(std.testing.allocator, &spectra, .{ .mode = .lossless });
+    defer std.testing.allocator.free(encoded);
+
+    const header = try block.parseHeader(encoded);
+    try std.testing.expect((header.flags & block.flag_rans_mz) != 0);
+    try std.testing.expect((header.flags & block.flag_split_exponent) != 0);
+    try std.testing.expect((header.flags & block.flag_rans_intensity) != 0);
+
+    const decoded = try block.decodeBlock(std.testing.allocator, encoded);
+    defer binary_reader.freeSpectra(std.testing.allocator, decoded);
+
+    try std.testing.expectEqual(@as(usize, 1), decoded.len);
+    try checkMzPpm(mz, decoded[0].mz);
+    try std.testing.expectEqualSlices(f32, intensity, decoded[0].intensity);
+}
