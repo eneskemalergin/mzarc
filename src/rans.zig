@@ -15,8 +15,9 @@ pub const Analysis = struct {
 
 const decode_table_mask: u32 = precision - 1;
 
-fn packDecodeEntry(start: u16, freq: u16, symbol: u8) u64 {
-    return @as(u64, start) | (@as(u64, freq) << 16) | (@as(u64, symbol) << 32);
+fn packDecodeEntry(start: u16, freq: u16, symbol: u8) u32 {
+    const freq_field: u32 = if (freq == precision) 0 else freq;
+    return @as(u32, start) | (freq_field << 12) | (@as(u32, symbol) << 24);
 }
 
 const table_entry_count = 256;
@@ -145,8 +146,8 @@ fn buildStarts(freqs: [table_entry_count]u16) [table_entry_count]u16 {
     return starts;
 }
 
-fn buildDecodeTable(freqs: [table_entry_count]u16, starts: [table_entry_count]u16) [precision]u64 {
-    var table = [_]u64{0} ** precision;
+fn buildDecodeTable(freqs: [table_entry_count]u16, starts: [table_entry_count]u16) [precision]u32 {
+    var table = [_]u32{0} ** precision;
     for (0..table_entry_count) |idx| {
         const start = starts[idx];
         const freq = freqs[idx];
@@ -252,9 +253,10 @@ pub fn decodeInto(encoded: []const u8, out: []u8) !void {
     for (out) |*symbol_out| {
         const slot = state & decode_table_mask;
         const entry = decode_table[slot];
-        symbol_out.* = @truncate((entry >> 32) & 0xff);
-        const start: u32 = @truncate(entry & 0xffff);
-        const freq: u32 = @truncate((entry >> 16) & 0xffff);
+        symbol_out.* = @truncate((entry >> 24) & 0xff);
+        const start: u32 = entry & 0x0fff;
+        const packed_freq: u32 = (entry >> 12) & 0x0fff;
+        const freq: u32 = if (packed_freq == 0) precision else packed_freq;
         state = @intCast((@as(u64, freq) * (state >> precision_bits)) + (slot - start));
 
         while (state < rans_lower_bound) {

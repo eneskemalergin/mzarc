@@ -1,223 +1,195 @@
-<p align="center">
-    <img src="assets/Spectrum-Archive-rect.png" alt="mzarc logo" width="120" />
-</p>
+# mzarc
 
-<h1 align="center">mzarc</h1>
+![mzarc logo](assets/Spectrum-Archive-rect.png)
 
-<p align="center">
-    Feasibility-first compression prototype for mzML-derived mass spectrometry spectra.
-</p>
+Feasibility-first compression prototype for mzML-derived mass spectrometry spectra.
 
-<p align="center">
-    Current version: <strong>v0.1.1</strong> &mdash; Phase 1 complete
-</p>
-
-<p align="center">
-    <a href="#current-state"><img src="https://img.shields.io/badge/version-v0.1.1-0f766e?style=for-the-badge" alt="Version v0.1.1" /></a>
-    <a href="#development"><img src="https://img.shields.io/badge/zig-0.16.0--dev-f7a41d?style=for-the-badge" alt="Zig 0.16.0 dev" /></a>
-    <a href="#development"><img src="https://img.shields.io/badge/python-3.12-3776AB?style=for-the-badge" alt="Python 3.12" /></a>
-    <a href="#current-state"><img src="https://img.shields.io/badge/status-prototype-orange?style=for-the-badge" alt="Prototype status" /></a>
-    <a href="#development"><img src="https://img.shields.io/badge/tests-passing-2ea44f?style=for-the-badge" alt="Tests passing" /></a>
-</p>
-
----
+- Release snapshot: `v0.1.5`
+- Current container format: `1.2`
+- Toolchain: Zig `0.16.0-dev.2905+5d71e3051`, Python `3.12`
+- Status: research prototype with current benchmark/report artifacts checked in
 
 ## What This Repository Is
 
-`mzarc` is a small, build-first experiment around one question:
+`mzarc` is an experiment around a narrow question: can a domain-specific codec for mzML-derived spectra beat generic compression on a practical benchmark while staying exact and operationally simple?
 
-Can we take real spectra from mzML, move them into a simple binary handoff format, and then prove that a domain-specific scalar codec is worth continuing?
+The current pipeline is intentionally split in two:
 
-That is the current scope. This repository is not trying to be the final mass spectrometry container yet. It is trying to produce clean evidence.
+`mzML -> Python dump tool -> flat binary dump -> Zig codec -> .mzarc`
 
-Right now the pipeline is intentionally narrow:
+Python handles mzML ingestion and normalization. Zig owns the codec, validation, and performance-sensitive transforms. That separation keeps XML and schema handling out of the codec bring-up path.
 
-`mzML -> Python dump tool -> flat binary dump -> Zig scalar transforms -> V1 block prototype`
+## v0.1.5 Snapshot
 
-The point of this shape is to keep XML parsing and codec work separate. Python handles mzML ingestion once. Zig handles the actual transform and decode work repeatedly.
+`v0.1.5` is the current public snapshot of the entropy-coded scalar pipeline. It includes:
 
----
+- flat dump ingest and inspection tools for mzML
+- lossless and lossy `.mzarc` encode/decode CLI paths
+- split-exponent intensity coding
+- rANS on m/z and intensity streams with dry-run gates
+- per-spectrum m/z width support in the container format
+- benchmark report generation, plots, and cached `--mzarc-only` refresh mode
+- unit tests, frozen fixture validation, and adversarial validation coverage
 
-## Current State
+What it does not claim yet:
 
-This repository is at `v0.1.1`. Phase 1 ("Prove the Thesis") is complete.
+- this is not the final v0.2.0 release state
+- decode throughput is still above the current regression gate versus the `v0.1.1` baseline
+- cross-spectrum delta and SIMD decode work are still deferred
 
-What exists today:
+## Current Benchmark Status
 
-- real mzML ingestion through `pyteomics`
-- flat binary dump generation in `tools/mzml_dump.py`
-- dump inspection in `tools/inspect_dump.py`
-- Zig dump reader and writer in `src/binary_reader.zig`
-- scalar m/z quantization in `src/quantize.zig`
-- scalar intra-spectrum delta coding in `src/delta.zig`
-- scalar frame-of-reference bit-packing in `src/bitpack.zig`
-- composed block encoder and decoder in `src/block.zig`
-- codec layer in `src/codec.zig` that stores `.mzarc` files with MS1/MS2 block streams
-- a CLI in `src/main.zig` with dump inspection plus `.mzarc` encode, decode, and inspect commands
-- 41 unit tests covering every layer, all passing
-- a reproducible benchmark suite in `tools/` comparing against gzip, zstd, bzip2, lz4, xz, mzMLb, MS-Numpress, and MScompress
+The checked-in public benchmark is based on `data/PXD075509/15HCD_1.mzML`.
 
-What this means in practice:
+Current lossless result:
 
-- lossless `.mzarc` is **20.23 MiB** on `15HCD_1.mzML` (75.55 MiB), smaller than gzip+mzML (24.29 MiB) and MScompress (21.63 MiB)
-- the lossless path is bit-exact: mean absolute m/z error is `0.0` and original global scan order is preserved
-- encode throughput is ~161 MiB/s and decode throughput is ~205 MiB/s in `ReleaseFast`
-- mzMLb (16.25 MiB) and xz dump (15.77 MiB) are still smaller — expected at the scalar codec stage; Phase 2 SIMD + cross-spectrum delta is next
+- input mzML: `75.55 MiB`
+- dump: `30.78 MiB`
+- mzarc lossless: `15.27 MiB` (`16016009` bytes)
+- mzarc lossy `q=16384`: `12.62 MiB` (`13233307` bytes)
 
-What Phase 2 will address:
+Current lossless throughput from [benchmark/report.md](benchmark/report.md):
 
-- SIMD-native decoding and cross-spectrum delta to close the gap with mzMLb
-- formal per-spectrum fidelity analysis
-- pymzarc Python bindings
+- encode: `0.32102s` mean, `95.88 MiB/s`
+- decode: `0.20311s` mean, `151.53 MiB/s`
 
----
+Current lossless payload breakdown:
 
-## What Phase 1 Proved
+- m/z payload: `7143905` bytes
+- intensity payload: `8671992` bytes
 
-1. mzML ingestion does not need to be written in Zig for the prototype to move forward.
-2. A flat binary handoff format is enough to isolate codec work from XML overhead.
-3. A scalar FOR + bit-pack transform chain can beat gzip+mzML without an outer compression layer.
-4. The lossless path can be bit-exact while still achieving meaningful size reduction.
+What this means relative to the baselines in the same report:
 
-The thesis holds. The repository earned the right to move to Phase 2.
+- lossless `.mzarc` is smaller than `gzip dump` (`19.82 MiB`)
+- lossless `.mzarc` is smaller than `zstd dump` (`17.85 MiB`)
+- lossless `.mzarc` is smaller than `mzMLb` (`16.25 MiB`)
+- lossless `.mzarc` is still slightly larger than `xz dump` (`15.77 MiB`)
+- the lossless path remains exact: mean absolute m/z error is `0.0` and round-trip order is preserved
 
----
+The unresolved issue is throughput regression against the `v0.1.1` baseline. The current decode median is about `+35.25%` slower than that baseline, so the compression target is met but the release gate is not fully closed yet.
 
-## What Is Implemented Right Now
+## What Changed Since v0.1.1
 
-### Python ingress
+The original `v0.1.1` baseline proved that a scalar, domain-aware codec could be worthwhile. `v0.1.5` is the first snapshot where that thesis is pushed with real entropy coding rather than only delta + FOR packing.
 
-- `tools/mzml_dump.py` reads mzML with `pyteomics`, normalizes arrays, and writes a flat dump format.
-- `tools/inspect_dump.py` validates the dump and reports counts and peak statistics.
+Key gains versus `v0.1.1` on `15HCD_1`:
 
-### Zig prototype core
+- total lossless size: `20.23 MiB -> 15.27 MiB`
+- m/z payload: `10340312 -> 7143905` bytes
+- intensity payload: `10673832 -> 8671992` bytes
+- exact lossless round-trip remains intact
 
-- `src/binary_reader.zig` reads and writes the dump format.
-- `src/quantize.zig` handles m/z fixed-point conversion and lossy log-intensity quantization.
-- `src/delta.zig` handles intra-spectrum delta encode and decode.
-- `src/bitpack.zig` handles scalar frame-of-reference packing and unpacking.
-- `src/block.zig` composes the above into a real block encoder and decoder with CRC32 validation.
-- `src/codec.zig` stores `.mzarc` files with block streams for MS1 and MS2 and supports encode, decode, and inspect operations.
+Key tradeoff in the current default:
 
-### Benchmarking
+- the per-spectrum m/z-width machinery is implemented in the format
+- the encoder now uses a cheap precheck and skips marginal per-spectrum wins on `15HCD_1`
+- that keeps encode materially faster than the earlier fully materialized 3a.4 path while only giving back `1635` bytes on this dataset
 
-- `tools/benchmark_v1.py` benchmarks mzML ingest, `.mzarc` encode and decode, size, round-trip fidelity, and repeated timing intervals with confidence bounds.
-- [benchmark/report.md](benchmark/report.md) contains the current public benchmark summary and plot references.
-- [benchmark/report.json](benchmark/report.json) contains the machine-readable benchmark output.
-- repo-root `benchmark/` contains the pushable report and plots.
-- ignored `data/.../benchmarks/...` stores generated dumps, round-trips, and encoded intermediates.
+## Implemented Pieces
 
-### Current benchmark snapshot
+### Ingest and dump layer
 
-- On `data/PXD075509/15HCD_1.mzML` (75.55 MiB), lossless `.mzarc` is **20.23 MiB** (73.2% smaller than mzML, comparable with gzip dump at 19.82 MiB).
-- Beats both MScompress (`21.63 MiB`) and gzip+mzML (`24.29 MiB`) without any outer compression layer.
-- mzMLb (`16.25 MiB`) and xz dump (`15.77 MiB`) are still smaller — closing this gap is the primary Phase 2 target.
-- Over 3 `ReleaseFast` runs, lossless encode averages `0.191s` (~161 MiB/s) and decode averages `0.150s` (~205 MiB/s).
-- The lossless path is bit-exact: mean absolute m/z error is `0.0`, intensity is exact, original global scan order preserved.
+- `tools/mzml_dump.py` converts mzML into the flat binary dump used by the codec pipeline
+- `tools/inspect_dump.py` inspects dump contents and basic statistics
+- `src/binary_reader.zig` reads and writes the dump format
 
-### Validation
+### Codec core
 
-- unit tests cover dump IO, quantization, delta coding, bit-packing, and block round-trips
-- the current CLI can encode, decode, and inspect a real `.mzarc` file end-to-end, including byte-breakdown inspection
-- the checked-in benchmark report currently uses `10` timing repeats per operation and records means, standard deviations, and two-sided 95% confidence intervals on real mzML input
+- `src/quantize.zig` handles m/z fixed-point conversion and lossy intensity quantization
+- `src/delta.zig` handles intra-spectrum delta transforms
+- `src/bitpack.zig` handles scalar FOR packing and unpacking
+- `src/block.zig` handles block encode/decode, CRC validation, entropy decisions, and per-spectrum width support
+- `src/codec.zig` writes and reads `.mzarc` container streams
+- `src/main.zig` exposes encode, decode, inspect, validate, and benchmark helpers
 
----
+### Benchmark and analysis
 
-## What Comes Next
+- `tools/benchmark_v1.py` produces the main benchmark report and plots
+- `tools/check_regression.py` compares the current report against `benchmark/baseline_v0.1.1.json`
+- [benchmark/report.md](benchmark/report.md) is the human-readable benchmark summary
+- [benchmark/report.json](benchmark/report.json) is the machine-readable benchmark artifact
+- [benchmark/entropy_analysis.txt](benchmark/entropy_analysis.txt) tracks the entropy-coding investigation and tradeoffs
 
-Phase 1 is complete. Phase 2 focus areas:
+## Validation State
 
-1. SIMD-native encode/decode to cut the gap with mzMLb and xz
-2. cross-spectrum delta compression on the m/z stream, which currently dominates artifact size
-3. pymzarc Python bindings via Zig C ABI
-4. a second, more representative DIA dataset to validate generalization
-5. downstream search-impact measurements (peptide IDs, FDR) alongside numeric fidelity
+The repo currently has three different confidence levels and they should not be conflated:
 
----
+- correctness work is in good shape: unit tests, frozen lossless/lossy validation, and adversarial validation are passing in the current codec state
+- benchmarked fidelity is exact for lossless `.mzarc` on the public dataset
+- full release gating is not fully green because the decode regression check still fails against the `v0.1.1` baseline
+
+That distinction matters. `v0.1.5` is a solid research snapshot, not a claim that every planned `v0.2.0` exit criterion is finished.
+
+## Quick Start
+
+Python is managed with `uv`. The repo carries its own Zig toolchain.
+
+```bash
+export ZIG="$PWD/zig-x86_64-linux-0.16.0-dev.2905+5d71e3051/zig"
+uv sync
+$ZIG build
+$ZIG build test
+```
+
+Convert mzML to the internal dump, then encode and decode `.mzarc`:
+
+```bash
+uv run python tools/mzml_dump.py data/PXD075509/15HCD_1.mzML -o data/PXD075509/15HCD_1.bin
+./zig-out/bin/mzarc encode data/PXD075509/15HCD_1.bin -o data/PXD075509/15HCD_1.lossless.mzarc
+./zig-out/bin/mzarc decode data/PXD075509/15HCD_1.lossless.mzarc -o data/PXD075509/15HCD_1.roundtrip.bin
+./zig-out/bin/mzarc inspect data/PXD075509/15HCD_1.lossless.mzarc
+```
+
+Run the public benchmark:
+
+```bash
+uv run python tools/benchmark_v1.py data/PXD075509/15HCD_1.mzML --build --repeats 3 --external-baselines all --public-dir benchmark
+```
+
+Refresh only the `.mzarc` numbers and regenerate the public report/plots without rerunning unchanged external baselines:
+
+```bash
+uv run python tools/benchmark_v1.py data/PXD075509/15HCD_1.mzML --build --repeats 3 --public-dir benchmark --mzarc-only
+```
+
+If you want the full release gate rather than just the core tests, run:
+
+```bash
+$ZIG build ci
+```
+
+At the moment that command is expected to fail on the decode-regression threshold, not on basic correctness.
 
 ## Repository Layout
 
 ```text
 mzarc/
+├── benchmark/              public benchmark artifacts and plots
+├── data/                   local datasets and generated benchmark workdirs
+├── fixtures/               frozen validation fixtures
+├── plan/                   project plans and milestone notes
+├── src/                    Zig codec implementation
+├── test/                   Zig tests and adversarial inputs
+├── tools/                  Python ingest, benchmark, and analysis scripts
 ├── build.zig
 ├── build.zig.zon
-├── benchmark/
-│   ├── report.json
-│   ├── report.md
-│   └── plots/
 ├── pyproject.toml
-├── src/
-│   ├── binary_reader.zig
-│   ├── bitpack.zig
-│   ├── block.zig
-│   ├── codec.zig
-│   ├── delta.zig
-│   ├── main.zig
-│   └── quantize.zig
-├── test/
-│   ├── test_binary_reader.zig
-│   ├── test_bitpack.zig
-│   ├── test_block.zig
-│   ├── test_codec.zig
-│   ├── test_delta.zig
-│   └── test_quantize.zig
-└── tools/
-    ├── benchmark_core.py
-    ├── benchmark_external.py
-    ├── benchmark_metrics.py
-    ├── benchmark_plotting.py
-    ├── benchmark_report.py
-    ├── benchmark_v1.py
-    ├── inspect_dump.py
-    └── mzml_dump.py
+└── README.md
 ```
 
-This tree is intentionally small. More files should only appear when the next working slice demands them.
+## Roadmap
 
----
+The next substantive work is already clear from the current results:
 
-## Development
+1. reduce decode cost in the m/z entropy path so the regression gate can close
+2. revisit SIMD FOR unpack as a real throughput lever rather than an observation-only note
+3. bring back additional size wins only when they survive a speed tradeoff on real data
+4. defer cross-spectrum delta until it is validated on a dataset where overlap actually supports it
+5. add downstream search-impact measurements before presenting lossy mode as more than a numerical experiment
 
-Python is managed with `uv`, pinned to Python `3.12`.
+## References
 
-The Zig toolchain is repo-local and should be used explicitly:
-
-```bash
-export ZIG="$PWD/zig-x86_64-linux-0.16.0-dev.2905+5d71e3051/zig"
-uv sync
-$ZIG build test
-$ZIG build
-$ZIG build -Doptimize=ReleaseFast
-```
-
-Current working commands:
-
-```bash
-uv run python tools/mzml_dump.py data/PXD075509/15HCD_1.mzML -o data/PXD075509/15HCD_1.bin
-uv run python tools/inspect_dump.py data/PXD075509/15HCD_1.bin
-./zig-out/bin/mzarc dump-inspect data/PXD075509/15HCD_1.bin
-./zig-out/bin/mzarc encode data/PXD075509/15HCD_1.bin -o data/PXD075509/15HCD_1.lossless.mzarc
-./zig-out/bin/mzarc decode data/PXD075509/15HCD_1.lossless.mzarc -o data/PXD075509/15HCD_1.roundtrip.bin
-$ZIG build -Doptimize=ReleaseFast
-uv run python tools/benchmark_v1.py data/PXD075509/15HCD_1.mzML --build --repeats 3 --external-baselines all --public-dir benchmark
-```
-
-The important rule for this stage is simple: every new step should leave behind a runnable command and a testable artifact.
-
----
-
-## License
-
-MIT. See [LICENSE](LICENSE) for details.
-
----
-
-<br />
-
-<p align="center">
-    <em>
-        Ions drift to ground<br />
-        Folded into bit-packed frames—<br />
-        The machine breathes light.
-    </em>
-</p>
+- [benchmark/report.md](benchmark/report.md)
+- [benchmark/report.json](benchmark/report.json)
+- [benchmark/entropy_analysis.txt](benchmark/entropy_analysis.txt)
+- [plan/v0.2.0-plan.md](plan/v0.2.0-plan.md)

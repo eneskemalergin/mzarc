@@ -127,8 +127,8 @@ Full end-to-end 15HCD_1 spot measurement after the m/z-path optimization (Releas
 - `intensity_payload_bytes`: 8671992
 
 Refreshed full benchmark suite (`benchmark/report.json`, 3 repeats, external baselines included):
-- `dump -> mzarc lossless` mean: 0.324994s
-- `mzarc lossless -> dump` mean: 0.207394s
+- `dump -> mzarc lossless` mean: 0.321022s
+- `mzarc lossless -> dump` mean: 0.203114s
 - `mzarc lossless` size: 16016009 bytes (15.27 MiB)
 - `lossless_mean_abs_mz`: 0.0
 - `lossless_byte_breakdown.mz_payload_bytes`: 7143905
@@ -141,10 +141,10 @@ Final status of the latest optimizations:
 
 Part 3a.4 per-spectrum FOR granularity (current 5/12+rANS baseline):
 - Implementation: added `flag_mz_per_spectrum_bit_widths` and a new m/z layout that stores one `u8` width per spectrum before the raw/rANS-coded m/z FOR payload. Old single-width blocks remain readable; new files are written as container version 1.2.
-- Encoder policy: evaluate both layouts and keep whichever yields the smaller final m/z payload after the existing 5% m/z rANS gate. The per-spectrum layout is therefore an opportunistic size-only win, not a mandatory rewrite of every block.
+- Encoder policy: the original 3a.4 implementation evaluated both layouts and kept whichever yielded the smaller final m/z payload after the existing 5% m/z rANS gate. The current speed-oriented encoder now applies a cheap raw-size precheck first, so only clearly better per-spectrum candidates are fully materialized.
 - Combined payload ordering with rANS follows the plan requirement: `[mz_base: u64][mz_payload_len: u32][per-spectrum widths][rans-coded FOR bytes]`.
 
-Real-data result on 15HCD_1 (`15HCD_1.bin`, ReleaseFast binary):
+Measured 3a.4 size-only result on 15HCD_1 (`15HCD_1.bin`, ReleaseFast binary, before the speed-oriented precheck):
 - previous lossless total bytes: 16016009
 - new lossless total bytes: 16014374
 - delta: -1635 bytes
@@ -154,27 +154,33 @@ Real-data result on 15HCD_1 (`15HCD_1.bin`, ReleaseFast binary):
 - `intensity_payload_bytes`: unchanged at 8671992
 - exact round-trip validation: PASS on all checks
 
-Activation summary on 15HCD_1:
+Activation summary on 15HCD_1 for that size-only measurement:
 - per-spectrum m/z layout used in 15 blocks
 - legacy block-wide m/z width used in 57 blocks
 - Interpretation: under the current 5/12 defaults plus m/z rANS, most of the easy width variability was already absorbed by the entropy stage, so 3a.4 is still a real win but much smaller than the rough pre-rANS estimate.
 
+Current default outcome after the encode-side speed optimization:
+- 15HCD_1 now stays on the faster block-wide path for those marginal cases
+- final public artifact returns to 16016009 bytes
+- final public `mz_payload_bytes` returns to 7143905
+- the 3a.4 format support remains implemented and still activates when the cheap precheck predicts a clear payload win
+
 Final 3a.5 close-out (current version 1.2 state):
-- Final public benchmark artifact (`benchmark/report.json`) now reflects the 3a.4 layout and the `mzarc-only` refresh mode.
-- Lossless size: 16,014,374 bytes (15.27 MiB)
-- Lossless `mz_payload_bytes`: 7,142,270
+- Final public benchmark artifact (`benchmark/report.json`) now reflects the speed-oriented default encoder plus the `mzarc-only` refresh mode.
+- Lossless size: 16,016,009 bytes (15.27 MiB)
+- Lossless `mz_payload_bytes`: 7,143,905
 - Lossless `intensity_payload_bytes`: 8,671,992
-- Lossless encode mean: 0.460171s
-- Lossless decode mean: 0.205068s
-- Lossless decode median: 0.203781s
+- Lossless encode mean: 0.321022s
+- Lossless decode mean: 0.203114s
+- Lossless decode median: 0.202638s
 - Lossless fidelity: mean absolute m/z error = 0.0, exact round-trip validate still passes
 
 Final hypothesis status on 15HCD_1:
 - H10 PASS: intensity payload reduction = 18.75% vs v0.1.1 baseline (10,673,832 -> 8,671,992)
-- H11 PASS: m/z payload reduction = 30.93% vs v0.1.1 baseline (10,340,312 -> 7,142,270)
+- H11 PASS: m/z payload reduction = 30.91% vs v0.1.1 baseline (10,340,312 -> 7,143,905)
 - H12 PASS: total lossless size = 15.27 MiB, beating zstd dump (17.85 MiB) and xz dump (15.77 MiB)
 
 Final CI/regression result:
 - `zig build ci` still passes tests, frozen round-trips, lossy fidelity checks, and the adversarial corpus.
-- The remaining failing exit criterion is decode-time regression: `tools/check_regression.py` reports baseline decode median 0.1498s vs current 0.2038s (+36.01%), which is above the current +10% limit.
+- The remaining failing exit criterion is decode-time regression: `tools/check_regression.py` reports baseline decode median 0.1498s vs current 0.2026s (+35.25%), which is above the current +10% limit.
 - Conclusion: Part 3a is complete on compression ratio and correctness, but v0.2.0 is not fully closed as a release-quality state until decode throughput is improved or the decode-time gate is deliberately revised.

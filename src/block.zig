@@ -198,6 +198,20 @@ const PerSpectrumMzPack = struct {
     }
 };
 
+const PerSpectrumMzAnalysis = struct {
+    max_bit_width: u8,
+    bit_widths: []u8,
+    payload_len: usize,
+
+    fn deinit(self: PerSpectrumMzAnalysis, allocator: Allocator) void {
+        allocator.free(self.bit_widths);
+    }
+
+    fn totalRawBytes(self: PerSpectrumMzAnalysis) usize {
+        return self.bit_widths.len + self.payload_len;
+    }
+};
+
 fn requiredBitWidthAgainstBase(values: []const u64, base: u64) u8 {
     var max_offset: u64 = 0;
     for (values) |value| {
@@ -237,6 +251,36 @@ fn packMzPerSpectrumAlloc(
     mz_values: []const u64,
     base: u64,
 ) !PerSpectrumMzPack {
+    const analysis = try analyzeMzPerSpectrumAlloc(allocator, spectra, mz_values, base);
+    defer analysis.deinit(allocator);
+
+    const payload = try allocator.alloc(u8, analysis.payload_len);
+    errdefer allocator.free(payload);
+
+    var value_cursor: usize = 0;
+    var payload_cursor: usize = 0;
+    for (spectra, 0..) |spectrum, spectrum_idx| {
+        const spectrum_values = mz_values[value_cursor .. value_cursor + spectrum.mz.len];
+        const bit_width = analysis.bit_widths[spectrum_idx];
+        const payload_len = packedByteLen(bit_width, spectrum.mz.len);
+        packForSliceFixedBase(payload[payload_cursor .. payload_cursor + payload_len], spectrum_values, base, bit_width);
+        value_cursor += spectrum.mz.len;
+        payload_cursor += payload_len;
+    }
+
+    return .{
+        .max_bit_width = analysis.max_bit_width,
+        .bit_widths = try allocator.dupe(u8, analysis.bit_widths),
+        .payload = payload,
+    };
+}
+
+fn analyzeMzPerSpectrumAlloc(
+    allocator: Allocator,
+    spectra: []const binary_reader.RawSpectrum,
+    mz_values: []const u64,
+    base: u64,
+) !PerSpectrumMzAnalysis {
     const bit_widths = try allocator.alloc(u8, spectra.len);
     errdefer allocator.free(bit_widths);
 
@@ -252,24 +296,10 @@ fn packMzPerSpectrumAlloc(
         value_cursor += spectrum.mz.len;
     }
 
-    const payload = try allocator.alloc(u8, total_payload_len);
-    errdefer allocator.free(payload);
-
-    value_cursor = 0;
-    var payload_cursor: usize = 0;
-    for (spectra, 0..) |spectrum, spectrum_idx| {
-        const spectrum_values = mz_values[value_cursor .. value_cursor + spectrum.mz.len];
-        const bit_width = bit_widths[spectrum_idx];
-        const payload_len = packedByteLen(bit_width, spectrum.mz.len);
-        packForSliceFixedBase(payload[payload_cursor .. payload_cursor + payload_len], spectrum_values, base, bit_width);
-        value_cursor += spectrum.mz.len;
-        payload_cursor += payload_len;
-    }
-
     return .{
         .max_bit_width = max_bit_width,
         .bit_widths = bit_widths,
-        .payload = payload,
+        .payload_len = total_payload_len,
     };
 }
 
@@ -684,39 +714,66 @@ pub fn encodeBlockDetailed(allocator: Allocator, spectra: []const binary_reader.
         try appendIntLe(&payload, allocator, u64, packed_mz.base);
         const block_mz_candidate = try maybeEncodeRansAlloc(allocator, packed_mz.payload, options.mz_rans_min_gain_percent);
         defer block_mz_candidate.deinit(allocator);
+        var per_spectrum_payload_buf: ?[]u8 = null;
+        defer if (per_spectrum_payload_buf) |buf| allocator.free(buf);
+        var per_spectrum_candidate: ?RansCandidate = null;
+        defer if (per_spectrum_candidate) |candidate| candidate.deinit(allocator);
 
-        var per_spectrum_mz = try packMzPerSpectrumAlloc(allocator, spectra, mz_deltas, packed_mz.base);
-        defer per_spectrum_mz.deinit(allocator);
-        const per_spectrum_candidate = try maybeEncodeRansAlloc(allocator, per_spectrum_mz.payload, options.mz_rans_min_gain_percent);
-        defer per_spectrum_candidate.deinit(allocator);
-
-        const block_stored_bytes = block_mz_candidate.storedBytes();
-        const per_spectrum_stored_bytes = per_spectrum_mz.bit_widths.len + per_spectrum_candidate.storedBytes();
-        const use_per_spectrum_widths = per_spectrum_stored_bytes < block_stored_bytes;
-        const selected_payload = if (use_per_spectrum_widths) per_spectrum_mz.payload else packed_mz.payload;
-        const selected_candidate = if (use_per_spectrum_widths) per_spectrum_candidate else block_mz_candidate;
-
-        mz_bit_width = if (use_per_spectrum_widths) per_spectrum_mz.max_bit_width else packed_mz.bit_width;
-        stats.mz_per_spectrum_widths = use_per_spectrum_widths;
-        stats.mz_raw_bytes = if (use_per_spectrum_widths) per_spectrum_mz.totalRawBytes() else packed_mz.payload.len;
-        stats.mz_estimated_rans_bytes = if (use_per_spectrum_widths)
-            per_spectrum_mz.bit_widths.len + if (selected_candidate.estimated_total_bytes == 0) selected_payload.len else selected_candidate.estimated_total_bytes
-        else if (selected_candidate.estimated_total_bytes == 0)
-            selected_payload.len
+        var selected_payload = packed_mz.payload;
+        var selected_stored_bytes = block_mz_candidate.storedBytes();
+        var selected_estimated_bytes = if (block_mz_candidate.estimated_total_bytes == 0)
+            packed_mz.payload.len
         else
-            selected_candidate.estimated_total_bytes;
-        stats.mz_stored_bytes = if (use_per_spectrum_widths)
-            per_spectrum_mz.bit_widths.len + selected_candidate.storedBytes()
-        else
-            selected_candidate.storedBytes();
-        stats.mz_rans_used = selected_candidate.used();
+            block_mz_candidate.estimated_total_bytes;
+        var selected_rans_used = block_mz_candidate.used();
+        var selected_encoded: ?[]const u8 = block_mz_candidate.encoded;
+        var selected_bit_widths: ?[]const u8 = null;
 
-        try appendIntLe(&payload, allocator, u32, @intCast(selected_candidate.storedBytes()));
-        if (use_per_spectrum_widths) {
-            flags |= flag_mz_per_spectrum_bit_widths;
-            try payload.appendSlice(allocator, per_spectrum_mz.bit_widths);
+        var per_spectrum_analysis = try analyzeMzPerSpectrumAlloc(allocator, spectra, mz_deltas, packed_mz.base);
+        defer per_spectrum_analysis.deinit(allocator);
+
+        if (per_spectrum_analysis.totalRawBytes() < packed_mz.payload.len) {
+            per_spectrum_payload_buf = try allocator.alloc(u8, per_spectrum_analysis.payload_len);
+
+            var value_cursor: usize = 0;
+            var payload_cursor: usize = 0;
+            for (spectra, 0..) |spectrum, spectrum_idx| {
+                const spectrum_values = mz_deltas[value_cursor .. value_cursor + spectrum.mz.len];
+                const bit_width = per_spectrum_analysis.bit_widths[spectrum_idx];
+                const spectrum_payload_len = packedByteLen(bit_width, spectrum.mz.len);
+                packForSliceFixedBase(per_spectrum_payload_buf.?[payload_cursor .. payload_cursor + spectrum_payload_len], spectrum_values, packed_mz.base, bit_width);
+                value_cursor += spectrum.mz.len;
+                payload_cursor += spectrum_payload_len;
+            }
+
+            per_spectrum_candidate = try maybeEncodeRansAlloc(allocator, per_spectrum_payload_buf.?, options.mz_rans_min_gain_percent);
+            const per_spectrum_stored_bytes = per_spectrum_analysis.bit_widths.len + per_spectrum_candidate.?.storedBytes();
+            if (per_spectrum_stored_bytes < selected_stored_bytes) {
+                selected_payload = per_spectrum_payload_buf.?;
+                selected_stored_bytes = per_spectrum_stored_bytes;
+                selected_estimated_bytes = per_spectrum_analysis.bit_widths.len + if (per_spectrum_candidate.?.estimated_total_bytes == 0)
+                    per_spectrum_payload_buf.?.len
+                else
+                    per_spectrum_candidate.?.estimated_total_bytes;
+                selected_rans_used = per_spectrum_candidate.?.used();
+                selected_encoded = per_spectrum_candidate.?.encoded;
+                selected_bit_widths = per_spectrum_analysis.bit_widths;
+            }
         }
-        if (selected_candidate.encoded) |rans_payload| {
+
+        mz_bit_width = if (selected_bit_widths != null) per_spectrum_analysis.max_bit_width else packed_mz.bit_width;
+        stats.mz_per_spectrum_widths = selected_bit_widths != null;
+        stats.mz_raw_bytes = if (selected_bit_widths != null) per_spectrum_analysis.totalRawBytes() else packed_mz.payload.len;
+        stats.mz_estimated_rans_bytes = selected_estimated_bytes;
+        stats.mz_stored_bytes = selected_stored_bytes;
+        stats.mz_rans_used = selected_rans_used;
+
+        try appendIntLe(&payload, allocator, u32, @intCast(if (selected_bit_widths != null) selected_stored_bytes - per_spectrum_analysis.bit_widths.len else selected_stored_bytes));
+        if (selected_bit_widths) |bit_widths| {
+            flags |= flag_mz_per_spectrum_bit_widths;
+            try payload.appendSlice(allocator, bit_widths);
+        }
+        if (selected_encoded) |rans_payload| {
             flags |= flag_rans_mz;
             try payload.appendSlice(allocator, rans_payload);
         } else {

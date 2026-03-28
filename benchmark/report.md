@@ -29,8 +29,8 @@ External formats that actually ran end-to-end in this benchmark: mzMLb, MS-Numpr
 | --- | ---: | ---: | ---: | ---: |
 | mzML | 79221306 | 75.55 MiB | 100.00% | 245.47% |
 | dump | 32273524 | 30.78 MiB | 40.74% | 100.00% |
-| mzarc lossless | 16014374 | 15.27 MiB | 20.21% | 49.62% |
-| mzarc lossy | 13231371 | 12.62 MiB | 16.70% | 41.00% |
+| mzarc lossless | 16016009 | 15.27 MiB | 20.22% | 49.63% |
+| mzarc lossy | 13233307 | 12.62 MiB | 16.70% | 41.00% |
 | gzip dump | 20780851 | 19.82 MiB | 26.23% | 64.39% |
 | zstd dump | 18720327 | 17.85 MiB | 23.63% | 58.01% |
 | gzip mzML | 25465391 | 24.29 MiB | 32.14% | 78.90% |
@@ -52,8 +52,8 @@ Lossless `.mzarc` is already materially smaller than mzML on this sample, and it
 
 | artifact | structural bytes | spectrum metadata | m/z stream | intensity stream | total |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| mzarc lossless | 0.04 MiB (0.24%) | 0.15 MiB (1.00%) | 6.81 MiB (44.60%) | 8.27 MiB (54.16%) | 15.27 MiB |
-| mzarc lossy q=16384 | 0.04 MiB (0.29%) | 0.15 MiB (1.20%) | 7.99 MiB (63.34%) | 4.44 MiB (35.16%) | 12.62 MiB |
+| mzarc lossless | 0.04 MiB (0.24%) | 0.15 MiB (1.00%) | 6.81 MiB (44.61%) | 8.27 MiB (54.15%) | 15.27 MiB |
+| mzarc lossy q=16384 | 0.04 MiB (0.29%) | 0.15 MiB (1.20%) | 7.99 MiB (63.35%) | 4.44 MiB (35.15%) | 12.62 MiB |
 
 The lossless byte breakdown shows whether the size regression is real payload or container overhead. On this run, the intensity stream is the largest component at 8.27 MiB, which keeps the diagnosis grounded in actual encoded bytes rather than guesswork.
 
@@ -83,10 +83,10 @@ The lossless byte breakdown shows whether the size regression is real payload or
 | lz4 mzML | decompression | measured | 888.2 MiB/s | 0.085064s | output | lz4 mzML |  |
 | xz mzML | compression | measured | 13.97 MiB/s | 5.4079s | input | mzML |  |
 | xz mzML | decompression | measured | 208.4 MiB/s | 0.36254s | output | xz mzML |  |
-| mzarc lossless | compression | measured | 66.88 MiB/s | 0.46017s | input | dump |  |
-| mzarc lossless | decompression | measured | 150.1 MiB/s | 0.20507s | output | mzarc lossless |  |
-| mzarc lossy q=16384 | compression | measured | 65.96 MiB/s | 0.46661s | input | dump |  |
-| mzarc lossy q=16384 | decompression | measured | 130.6 MiB/s | 0.23564s | output | mzarc lossy q=16384 |  |
+| mzarc lossless | compression | measured | 95.88 MiB/s | 0.32102s | input | dump |  |
+| mzarc lossless | decompression | measured | 151.5 MiB/s | 0.20311s | output | mzarc lossless |  |
+| mzarc lossy q=16384 | compression | measured | 72.4 MiB/s | 0.42514s | input | dump |  |
+| mzarc lossy q=16384 | decompression | measured | 130.4 MiB/s | 0.23602s | output | mzarc lossy q=16384 |  |
 | mzMLb | compression | measured | 3.385 MiB/s | 22.321s | input | mzML |  |
 | mzMLb | decompression | measured | 6.354 MiB/s | 4.8443s | output | mzMLb |  |
 | MS-Numpress in mzML | compression | measured | 3.335 MiB/s | 22.652s | input | mzML |  |
@@ -133,10 +133,10 @@ The chart above uses all 3 runs per operation. Gray dots are individual runs. Bl
 | MScompress -> dump | 7.2276s ± 0.2569s | 7.1133s | [6.5894s, 7.8658s] | 7.0477s | 7.5218s | 4.26 MiB/s | output |
 | mzML -> MScompress threaded | 0.1265s ± 0.0016s | 0.1265s | [0.1226s, 0.1305s] | 0.1250s | 0.1281s | 597.13 MiB/s | input |
 | MScompress threaded -> dump | 5.1459s ± 0.0422s | 5.1319s | [5.0411s, 5.2506s] | 5.1125s | 5.1933s | 5.98 MiB/s | output |
-| dump -> mzarc lossless | 0.4602s ± 0.0038s | 0.4596s | [0.4507s, 0.4697s] | 0.4567s | 0.4643s | 66.88 MiB/s | input |
-| mzarc lossless -> dump | 0.2051s ± 0.0024s | 0.2038s | [0.1992s, 0.2109s] | 0.2036s | 0.2078s | 150.09 MiB/s | output |
-| dump -> mzarc lossy q=16384 | 0.4666s ± 0.0043s | 0.4641s | [0.4560s, 0.4773s] | 0.4641s | 0.4716s | 65.96 MiB/s | input |
-| mzarc lossy q=16384 -> dump | 0.2356s ± 0.0013s | 0.2363s | [0.2324s, 0.2389s] | 0.2341s | 0.2365s | 130.62 MiB/s | output |
+| dump -> mzarc lossless | 0.3210s ± 0.0024s | 0.3214s | [0.3150s, 0.3270s] | 0.3184s | 0.3232s | 95.88 MiB/s | input |
+| mzarc lossless -> dump | 0.2031s ± 0.0014s | 0.2026s | [0.1996s, 0.2066s] | 0.2020s | 0.2047s | 151.53 MiB/s | output |
+| dump -> mzarc lossy q=16384 | 0.4251s ± 0.0046s | 0.4252s | [0.4137s, 0.4366s] | 0.4205s | 0.4297s | 72.40 MiB/s | input |
+| mzarc lossy q=16384 -> dump | 0.2360s ± 0.0023s | 0.2350s | [0.2303s, 0.2418s] | 0.2344s | 0.2387s | 130.41 MiB/s | output |
 
 ## External Baselines
 
@@ -189,10 +189,10 @@ On the current run, `lz4 dump`, `gzip dump`, `zstd dump`, `bzip2 dump`, `xz dump
 
 | q | bytes | size | p95 rel intensity err | p99 rel intensity err | mean rel intensity err |
 | ---: | ---: | ---: | ---: | ---: | ---: |
-| 256 | 10718195 | 10.22 MiB | 3.499% | 3.813% | 1.820% |
-| 1024 | 11897139 | 11.35 MiB | 0.874% | 0.950% | 0.455% |
-| 4096 | 12564248 | 11.98 MiB | 0.218% | 0.238% | 0.114% |
-| 16384 | 13231371 | 12.62 MiB | 0.055% | 0.059% | 0.028% |
+| 256 | 10720131 | 10.22 MiB | 3.499% | 3.813% | 1.820% |
+| 1024 | 11899075 | 11.35 MiB | 0.874% | 0.950% | 0.455% |
+| 4096 | 12566184 | 11.98 MiB | 0.218% | 0.238% | 0.114% |
+| 16384 | 13233307 | 12.62 MiB | 0.055% | 0.059% | 0.028% |
 
 The selected `q` stays user-controlled. Higher `q` means more preserved log-intensity precision and usually a larger file; lower `q` buys size at the cost of broader relative error tails.
 
