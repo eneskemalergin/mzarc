@@ -1,13 +1,27 @@
-# mzarc
+<!-- markdownlint-disable MD033 MD041 -->
+<p align="center">
+    <img src="assets/Spectrum-Archive-rect.png" alt="mzarc logo" width="120" />
+</p>
 
-![mzarc logo](assets/Spectrum-Archive-rect.png)
+<h1 align="center">mzarc</h1>
 
-Feasibility-first compression prototype for mzML-derived mass spectrometry spectra.
+<p align="center">
+    Feasibility-first compression prototype for mzML-derived mass spectrometry spectra.
+</p>
 
-- Release snapshot: `v0.1.5`
-- Current container format: `1.2`
-- Toolchain: Zig `0.16.0-dev.2905+5d71e3051`, Python `3.12`
-- Status: research prototype with current benchmark/report artifacts checked in
+<p align="center">
+    Current version: <strong>v0.1.5</strong> &mdash; entropy snapshot, benchmarked and documented
+</p>
+
+<p align="center">
+    <a href="#v015-snapshot"><img src="https://img.shields.io/badge/version-v0.1.5-0f766e?style=for-the-badge" alt="Version v0.1.5" /></a>
+    <a href="#quick-start"><img src="https://img.shields.io/badge/zig-0.16.0--dev-f7a41d?style=for-the-badge" alt="Zig 0.16.0 dev" /></a>
+    <a href="#quick-start"><img src="https://img.shields.io/badge/python-3.12-3776AB?style=for-the-badge" alt="Python 3.12" /></a>
+    <a href="#validation-state"><img src="https://img.shields.io/badge/status-research%20prototype-orange?style=for-the-badge" alt="Research prototype status" /></a>
+    <a href="#validation-state"><img src="https://img.shields.io/badge/release%20gate-decode%20regression%20open-bd561d?style=for-the-badge" alt="Decode regression still open" /></a>
+</p>
+
+---
 
 ## What This Repository Is
 
@@ -193,3 +207,16 @@ The next substantive work is already clear from the current results:
 - [benchmark/report.json](benchmark/report.json)
 - [benchmark/entropy_analysis.txt](benchmark/entropy_analysis.txt)
 - [plan/v0.2.0-plan.md](plan/v0.2.0-plan.md)
+
+---
+
+<br />
+
+<p align="center">
+    <em>
+        Ions drift to ground<br />
+        Folded into bit-packed frames—<br />
+        The machine breathes light.
+    </em>
+</p>
+<!-- markdownlint-enable MD033 MD041 -->
