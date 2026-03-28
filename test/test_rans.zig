@@ -57,3 +57,19 @@ test "rans rejects trailing data" {
 
     try std.testing.expectError(error.TrailingData, rans.decodeAlloc(std.testing.allocator, with_trailing, values.len));
 }
+
+test "rans decodeInto matches decodeAlloc" {
+    var values: [4096]u8 = undefined;
+    for (0..values.len) |idx| values[idx] = if ((idx & 7) == 0) 5 else 9;
+
+    const encoded = try rans.encodeAlloc(std.testing.allocator, values[0..]);
+    defer std.testing.allocator.free(encoded);
+
+    const decoded_alloc = try rans.decodeAlloc(std.testing.allocator, encoded, values.len);
+    defer std.testing.allocator.free(decoded_alloc);
+
+    var decoded_into: [4096]u8 = undefined;
+    try rans.decodeInto(encoded, decoded_into[0..]);
+
+    try std.testing.expectEqualSlices(u8, decoded_alloc, decoded_into[0..]);
+}

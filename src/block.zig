@@ -20,7 +20,8 @@ pub const EncodeOptions = struct {
     /// error is < 0.001 ppm across the full MS mass range.
     lossless_mz_scale_factor: u32 = 1_000_000_000,
     intensity_quant: u16 = 16384,
-    entropy_min_gain_percent: u8 = 5,
+    mz_rans_min_gain_percent: u8 = 5,
+    intensity_rans_min_gain_percent: u8 = 12,
     verbose_blocks: bool = false,
 };
 
@@ -174,6 +175,63 @@ fn readF64Le(bytes: []const u8) f64 {
 fn packedByteLen(bit_width: u8, count: usize) usize {
     if (bit_width == 0) return 0;
     return ((@as(usize, bit_width) * count) + 7) / 8;
+}
+
+fn unpackNextForValue(payload: []const u8, bit_width: u8, bit_offset: *usize, base: u64) !u64 {
+    if (bit_width == 0) return base;
+
+    var offset_value: u64 = 0;
+    var written: u8 = 0;
+
+    while (written < bit_width) {
+        const bit_index = bit_offset.* & 7;
+        const available_bits = 8 - bit_index;
+        const chunk_bits: u8 = @intCast(@min(@as(usize, bit_width - written), available_bits));
+        const mask = (@as(u64, 1) << @as(u6, @intCast(chunk_bits))) - 1;
+        const byte = payload[bit_offset.* / 8];
+        const chunk = (@as(u64, byte) >> @as(u6, @intCast(bit_index))) & mask;
+        offset_value |= chunk << @as(u6, @intCast(written));
+
+        bit_offset.* += chunk_bits;
+        written += chunk_bits;
+    }
+
+    const sum = @addWithOverflow(base, offset_value);
+    if (sum[1] != 0) return error.Overflow;
+    return sum[0];
+}
+
+fn decodeFlatMzFromPackedForPayload(
+    flat_mz: []f64,
+    peak_counts: []const u32,
+    payload: []const u8,
+    bit_width: u8,
+    base: u64,
+    uses_f32: bool,
+    scale_factor: u32,
+) !void {
+    const required_payload_len = packedByteLen(bit_width, flat_mz.len);
+    if (payload.len < required_payload_len) return error.UnexpectedEndOfStream;
+
+    var bit_offset: usize = 0;
+    var mz_cursor: usize = 0;
+    for (peak_counts) |peak_count| {
+        var previous: u64 = 0;
+        for (0..peak_count) |local_idx| {
+            const delta_value = try unpackNextForValue(payload, bit_width, &bit_offset, base);
+            const absolute = if (local_idx == 0) delta_value else blk: {
+                const sum = @addWithOverflow(previous, delta_value);
+                if (sum[1] != 0) return error.Overflow;
+                break :blk sum[0];
+            };
+            flat_mz[mz_cursor + local_idx] = if (uses_f32)
+                @as(f64, @as(f32, @bitCast(@as(u32, @truncate(absolute)))))
+            else
+                try quantize.dequantizeMzValue(absolute, scale_factor);
+            previous = absolute;
+        }
+        mz_cursor += peak_count;
+    }
 }
 
 fn shouldUseRans(encoded_len: usize, raw_len: usize, min_gain_percent: u8) bool {
@@ -503,7 +561,7 @@ pub fn encodeBlockDetailed(allocator: Allocator, spectra: []const binary_reader.
         mz_bit_width = packed_mz.bit_width;
         stats.mz_raw_bytes = packed_mz.payload.len;
         try appendIntLe(&payload, allocator, u64, packed_mz.base);
-        const mz_candidate = try maybeEncodeRansAlloc(allocator, packed_mz.payload, options.entropy_min_gain_percent);
+        const mz_candidate = try maybeEncodeRansAlloc(allocator, packed_mz.payload, options.mz_rans_min_gain_percent);
         defer mz_candidate.deinit(allocator);
         stats.mz_estimated_rans_bytes = mz_candidate.estimated_total_bytes;
         stats.mz_stored_bytes = mz_candidate.storedBytes();
@@ -538,7 +596,7 @@ pub fn encodeBlockDetailed(allocator: Allocator, spectra: []const binary_reader.
         const split_plain_bytes: usize = 1 + 8 + 4 + packed_exp.payload.len + 3 * total_peaks;
         const raw_plain_bytes: usize = total_peaks * @sizeOf(f32);
         if (split_plain_bytes < raw_plain_bytes) {
-            const encoded_exp = try maybeEncodeRansAlloc(allocator, packed_exp.payload, options.entropy_min_gain_percent);
+            const encoded_exp = try maybeEncodeRansAlloc(allocator, packed_exp.payload, options.intensity_rans_min_gain_percent);
             defer encoded_exp.deinit(allocator);
             stats.intensity_raw_f32_bytes = raw_plain_bytes;
             stats.intensity_base_bytes = split_plain_bytes;
@@ -609,7 +667,7 @@ pub fn encodeBlockDetailed(allocator: Allocator, spectra: []const binary_reader.
         stats.intensity_raw_f32_bytes = total_peaks * @sizeOf(f32);
         stats.intensity_base_bytes = packed_intensity.payload.len + @sizeOf(u16) + @sizeOf(u32);
         try appendIntLe(&payload, allocator, u16, @intCast(packed_intensity.base));
-        const intensity_candidate = try maybeEncodeRansAlloc(allocator, packed_intensity.payload, options.entropy_min_gain_percent);
+        const intensity_candidate = try maybeEncodeRansAlloc(allocator, packed_intensity.payload, options.intensity_rans_min_gain_percent);
         defer intensity_candidate.deinit(allocator);
         stats.intensity_estimated_rans_bytes = if (intensity_candidate.estimated_total_bytes == 0)
             stats.intensity_base_bytes
@@ -780,37 +838,23 @@ pub fn decodeBlock(allocator: Allocator, block_bytes: []const u8) ![]binary_read
         var mz_rans_payload: ?[]u8 = null;
         defer if (mz_rans_payload) |buf| allocator.free(buf);
         const mz_payload_bytes = if ((header.flags & flag_rans_mz) != 0) blk: {
-            mz_rans_payload = try rans.decodeAlloc(allocator, payload[offset .. offset + mz_payload_len], packedByteLen(header.mz_bit_width, total_peaks));
+            const decoded_len = packedByteLen(header.mz_bit_width, total_peaks);
+            mz_rans_payload = try allocator.alloc(u8, decoded_len);
+            errdefer if (mz_rans_payload) |buf| allocator.free(buf);
+            try rans.decodeInto(payload[offset .. offset + mz_payload_len], mz_rans_payload.?);
             break :blk mz_rans_payload.?;
         } else payload[offset .. offset + mz_payload_len];
 
-        const mz_offsets = try bitpack.unpackForU64(allocator, .{
-            .base = mz_base,
-            .bit_width = header.mz_bit_width,
-            .count = total_peaks,
-            .payload = mz_payload_bytes,
-        });
-        defer allocator.free(mz_offsets);
+        try decodeFlatMzFromPackedForPayload(
+            flat_mz,
+            peak_counts,
+            mz_payload_bytes,
+            header.mz_bit_width,
+            mz_base,
+            mz_uses_f32,
+            header.mz_scale_factor,
+        );
         offset += mz_payload_len;
-
-        var mz_cursor: usize = 0;
-        for (peak_counts) |peak_count| {
-            var previous: u64 = 0;
-            for (0..peak_count) |local_idx| {
-                const delta_value = mz_offsets[mz_cursor + local_idx];
-                const absolute = if (local_idx == 0) delta_value else blk: {
-                    const sum = @addWithOverflow(previous, delta_value);
-                    if (sum[1] != 0) return error.Overflow;
-                    break :blk sum[0];
-                };
-                flat_mz[mz_cursor + local_idx] = if (mz_uses_f32)
-                    @as(f64, @as(f32, @bitCast(@as(u32, @truncate(absolute)))))
-                else
-                    try quantize.dequantizeMzValue(absolute, header.mz_scale_factor);
-                previous = absolute;
-            }
-            mz_cursor += peak_count;
-        }
     }
 
     const flat_intensity = try allocator.alloc(f32, total_peaks);

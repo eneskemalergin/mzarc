@@ -13,6 +13,12 @@ pub const Analysis = struct {
     estimated_total_bytes: usize,
 };
 
+const decode_table_mask: u32 = precision - 1;
+
+fn packDecodeEntry(start: u16, freq: u16, symbol: u8) u64 {
+    return @as(u64, start) | (@as(u64, freq) << 16) | (@as(u64, symbol) << 32);
+}
+
 const table_entry_count = 256;
 const freq_table_bytes = table_entry_count * @sizeOf(u16);
 const state_bytes = @sizeOf(u32);
@@ -139,12 +145,12 @@ fn buildStarts(freqs: [table_entry_count]u16) [table_entry_count]u16 {
     return starts;
 }
 
-fn buildDecodeTable(freqs: [table_entry_count]u16, starts: [table_entry_count]u16) [precision]u8 {
-    var table = [_]u8{0} ** precision;
+fn buildDecodeTable(freqs: [table_entry_count]u16, starts: [table_entry_count]u16) [precision]u64 {
+    var table = [_]u64{0} ** precision;
     for (0..table_entry_count) |idx| {
         const start = starts[idx];
         const freq = freqs[idx];
-        for (0..freq) |slot| table[start + slot] = @intCast(idx);
+        for (0..freq) |slot| table[start + slot] = packDecodeEntry(start, freq, @intCast(idx));
     }
     return table;
 }
@@ -221,10 +227,10 @@ pub fn encodeAnalyzedAlloc(allocator: Allocator, symbols: []const u8, analysis: 
     return encodeFromCountsAlloc(allocator, symbols, analysis.counts);
 }
 
-pub fn decodeAlloc(allocator: Allocator, encoded: []const u8, expected_len: usize) ![]u8 {
-    if (expected_len == 0) {
+pub fn decodeInto(encoded: []const u8, out: []u8) !void {
+    if (out.len == 0) {
         if (encoded.len != 0) return error.TrailingData;
-        return allocator.alloc(u8, 0);
+        return;
     }
     if (encoded.len < freq_table_bytes + state_bytes) return error.UnexpectedEndOfStream;
 
@@ -234,7 +240,7 @@ pub fn decodeAlloc(allocator: Allocator, encoded: []const u8, expected_len: usiz
         freqs[idx] = readIntLe(u16, encoded[offset .. offset + @sizeOf(u16)]);
         offset += @sizeOf(u16);
     }
-    try validateFreqTable(freqs, expected_len);
+    try validateFreqTable(freqs, out.len);
 
     const starts = buildStarts(freqs);
     const decode_table = buildDecodeTable(freqs, starts);
@@ -243,17 +249,13 @@ pub fn decodeAlloc(allocator: Allocator, encoded: []const u8, expected_len: usiz
     offset += state_bytes;
     if (state < rans_lower_bound) return error.InvalidState;
 
-    const decoded = try allocator.alloc(u8, expected_len);
-    errdefer allocator.free(decoded);
-
-    for (decoded) |*symbol_out| {
-        const slot = @as(usize, state & (precision - 1));
-        const symbol = decode_table[slot];
-        const freq = freqs[symbol];
-        if (freq == 0) return error.InvalidFrequencyTable;
-
-        symbol_out.* = symbol;
-        state = @intCast((@as(u64, freq) * (state >> precision_bits)) + (slot - starts[symbol]));
+    for (out) |*symbol_out| {
+        const slot = state & decode_table_mask;
+        const entry = decode_table[slot];
+        symbol_out.* = @truncate((entry >> 32) & 0xff);
+        const start: u32 = @truncate(entry & 0xffff);
+        const freq: u32 = @truncate((entry >> 16) & 0xffff);
+        state = @intCast((@as(u64, freq) * (state >> precision_bits)) + (slot - start));
 
         while (state < rans_lower_bound) {
             if (offset >= encoded.len) return error.UnexpectedEndOfStream;
@@ -263,5 +265,16 @@ pub fn decodeAlloc(allocator: Allocator, encoded: []const u8, expected_len: usiz
     }
 
     if (offset != encoded.len) return error.TrailingData;
+}
+
+pub fn decodeAlloc(allocator: Allocator, encoded: []const u8, expected_len: usize) ![]u8 {
+    if (expected_len == 0) {
+        if (encoded.len != 0) return error.TrailingData;
+        return allocator.alloc(u8, 0);
+    }
+    const decoded = try allocator.alloc(u8, expected_len);
+    errdefer allocator.free(decoded);
+
+    try decodeInto(encoded, decoded);
     return decoded;
 }

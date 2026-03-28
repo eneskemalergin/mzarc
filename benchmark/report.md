@@ -29,8 +29,8 @@ External formats that actually ran end-to-end in this benchmark: mzMLb, MS-Numpr
 | ------------------- | -------: | --------: | ------: | ------: |
 | mzML                | 79221306 | 75.55 MiB | 100.00% | 245.47% |
 | dump                | 32273524 | 30.78 MiB |  40.74% | 100.00% |
-| mzarc lossless      | 19802353 | 18.88 MiB |  25.00% |  61.36% |
-| mzarc lossy         | 14461329 | 13.79 MiB |  18.25% |  44.81% |
+| mzarc lossless      | 16016009 | 15.27 MiB |  20.22% |  49.63% |
+| mzarc lossy         | 13340333 | 12.72 MiB |  16.84% |  41.34% |
 | gzip dump           | 20780851 | 19.82 MiB |  26.23% |  64.39% |
 | zstd dump           | 18720327 | 17.85 MiB |  23.63% |  58.01% |
 | gzip mzML           | 25465391 | 24.29 MiB |  32.14% |  78.90% |
@@ -52,10 +52,10 @@ Lossless `.mzarc` is already materially smaller than mzML on this sample, and it
 
 | artifact            | structural bytes | spectrum metadata |        m/z stream |  intensity stream |     total |
 | ------------------- | ---------------: | ----------------: | ----------------: | ----------------: | --------: |
-| mzarc lossless      | 0.04 MiB (0.20%) |  0.15 MiB (0.80%) | 9.86 MiB (52.22%) | 8.83 MiB (46.78%) | 18.88 MiB |
-| mzarc lossy q=16384 | 0.04 MiB (0.27%) |  0.15 MiB (1.10%) | 9.17 MiB (66.46%) | 4.44 MiB (32.17%) | 13.79 MiB |
+| mzarc lossless      | 0.04 MiB (0.24%) |  0.15 MiB (1.00%) | 6.81 MiB (44.61%) | 8.27 MiB (54.15%) | 15.27 MiB |
+| mzarc lossy q=16384 | 0.04 MiB (0.29%) |  0.15 MiB (1.19%) | 8.10 MiB (63.64%) | 4.44 MiB (34.87%) | 12.72 MiB |
 
-The lossless byte breakdown shows whether the size regression is real payload or container overhead. On this run, the m/z stream is the largest component at 9.86 MiB, which keeps the diagnosis grounded in actual encoded bytes rather than guesswork.
+The lossless byte breakdown shows whether the size regression is real payload or container overhead. On this run, the intensity stream is the largest component at 8.27 MiB, which keeps the diagnosis grounded in actual encoded bytes rather than guesswork.
 
 ## Performance Overview
 
@@ -63,38 +63,38 @@ The lossless byte breakdown shows whether the size regression is real payload or
 
 | artifact            | direction     | status   |  throughput | mean time | throughput basis | source format       | notes |
 | ------------------- | ------------- | -------- | ----------: | --------: | ---------------- | ------------------- | ----- |
-| gzip dump           | compression   | measured | 18.52 MiB/s |   1.6623s | input            | dump                |       |
-| gzip dump           | decompression | measured |   148 MiB/s |  0.20794s | output           | gzip dump           |       |
-| zstd dump           | compression   | measured | 166.2 MiB/s |  0.18521s | input            | dump                |       |
-| zstd dump           | decompression | measured | 568.9 MiB/s | 0.054097s | output           | zstd dump           |       |
-| bzip2 dump          | compression   | measured | 11.34 MiB/s |   2.7131s | input            | dump                |       |
-| bzip2 dump          | decompression | measured | 20.92 MiB/s |   1.4709s | output           | bzip2 dump          |       |
-| lz4 dump            | compression   | measured | 391.1 MiB/s | 0.078692s | input            | dump                |       |
-| lz4 dump            | decompression | measured | 557.9 MiB/s | 0.055168s | output           | lz4 dump            |       |
-| xz dump             | compression   | measured | 2.408 MiB/s |    12.78s | input            | dump                |       |
-| xz dump             | decompression | measured | 60.92 MiB/s |  0.50526s | output           | xz dump             |       |
-| gzip mzML           | compression   | measured | 48.84 MiB/s |   1.5468s | input            | mzML                |       |
-| gzip mzML           | decompression | measured | 212.2 MiB/s |    0.356s | output           | gzip mzML           |       |
-| zstd mzML           | compression   | measured | 439.8 MiB/s |  0.17179s | input            | mzML                |       |
-| zstd mzML           | decompression | measured |  1253 MiB/s | 0.060303s | output           | zstd mzML           |       |
-| bzip2 mzML          | compression   | measured | 10.75 MiB/s |    7.031s | input            | mzML                |       |
-| bzip2 mzML          | decompression | measured | 30.45 MiB/s |   2.4808s | output           | bzip2 mzML          |       |
-| lz4 mzML            | compression   | measured | 763.1 MiB/s |  0.09901s | input            | mzML                |       |
-| lz4 mzML            | decompression | measured | 851.6 MiB/s |  0.08872s | output           | lz4 mzML            |       |
-| xz mzML             | compression   | measured | 13.33 MiB/s |   5.6694s | input            | mzML                |       |
-| xz mzML             | decompression | measured | 205.9 MiB/s |  0.36686s | output           | xz mzML             |       |
-| mzarc lossless      | compression   | measured | 136.7 MiB/s |  0.22514s | input            | dump                |       |
-| mzarc lossless      | decompression | measured | 200.1 MiB/s |  0.15385s | output           | mzarc lossless      |       |
-| mzarc lossy q=16384 | compression   | measured | 126.2 MiB/s |  0.24385s | input            | dump                |       |
-| mzarc lossy q=16384 | decompression | measured | 157.2 MiB/s |   0.1958s | output           | mzarc lossy q=16384 |       |
-| mzMLb               | compression   | measured | 3.317 MiB/s |   22.776s | input            | mzML                |       |
-| mzMLb               | decompression | measured | 6.251 MiB/s |   4.9235s | output           | mzMLb               |       |
-| MS-Numpress in mzML | compression   | measured | 3.256 MiB/s |   23.202s | input            | mzML                |       |
-| MS-Numpress in mzML | decompression | measured | 4.844 MiB/s |   6.3538s | output           | MS-Numpress in mzML |       |
-| MScompress          | compression   | measured | 106.9 MiB/s |  0.70642s | input            | mzML                |       |
-| MScompress          | decompression | measured | 4.196 MiB/s |   7.3351s | output           | MScompress          |       |
-| MScompress threaded | compression   | measured | 592.3 MiB/s |  0.12756s | input            | mzML                |       |
-| MScompress threaded | decompression | measured |  5.85 MiB/s |   5.2615s | output           | MScompress threaded |       |
+| gzip dump           | compression   | measured | 18.64 MiB/s |   1.6514s | input            | dump                |       |
+| gzip dump           | decompression | measured |   149 MiB/s |   0.2066s | output           | gzip dump           |       |
+| zstd dump           | compression   | measured | 166.1 MiB/s |  0.18535s | input            | dump                |       |
+| zstd dump           | decompression | measured | 574.9 MiB/s | 0.053535s | output           | zstd dump           |       |
+| bzip2 dump          | compression   | measured | 11.35 MiB/s |   2.7108s | input            | dump                |       |
+| bzip2 dump          | decompression | measured | 20.95 MiB/s |    1.469s | output           | bzip2 dump          |       |
+| lz4 dump            | compression   | measured | 393.7 MiB/s |  0.07817s | input            | dump                |       |
+| lz4 dump            | decompression | measured | 540.9 MiB/s | 0.056899s | output           | lz4 dump            |       |
+| xz dump             | compression   | measured | 2.404 MiB/s |   12.802s | input            | dump                |       |
+| xz dump             | decompression | measured | 61.72 MiB/s |  0.49869s | output           | xz dump             |       |
+| gzip mzML           | compression   | measured | 49.12 MiB/s |    1.538s | input            | mzML                |       |
+| gzip mzML           | decompression | measured |   210 MiB/s |  0.35978s | output           | gzip mzML           |       |
+| zstd mzML           | compression   | measured | 423.2 MiB/s |  0.17852s | input            | mzML                |       |
+| zstd mzML           | decompression | measured |  1307 MiB/s | 0.057809s | output           | zstd mzML           |       |
+| bzip2 mzML          | compression   | measured | 10.67 MiB/s |   7.0787s | input            | mzML                |       |
+| bzip2 mzML          | decompression | measured | 30.54 MiB/s |   2.4742s | output           | bzip2 mzML          |       |
+| lz4 mzML            | compression   | measured | 764.4 MiB/s | 0.098841s | input            | mzML                |       |
+| lz4 mzML            | decompression | measured | 828.1 MiB/s | 0.091232s | output           | lz4 mzML            |       |
+| xz mzML             | compression   | measured |  13.4 MiB/s |   5.6378s | input            | mzML                |       |
+| xz mzML             | decompression | measured | 206.1 MiB/s |   0.3665s | output           | xz mzML             |       |
+| mzarc lossless      | compression   | measured |  94.7 MiB/s |  0.32499s | input            | dump                |       |
+| mzarc lossless      | decompression | measured | 148.4 MiB/s |  0.20739s | output           | mzarc lossless      |       |
+| mzarc lossy q=16384 | compression   | measured | 86.36 MiB/s |  0.35638s | input            | dump                |       |
+| mzarc lossy q=16384 | decompression | measured | 130.1 MiB/s |  0.23659s | output           | mzarc lossy q=16384 |       |
+| mzMLb               | compression   | measured | 3.352 MiB/s |   22.541s | input            | mzML                |       |
+| mzMLb               | decompression | measured | 6.265 MiB/s |   4.9129s | output           | mzMLb               |       |
+| MS-Numpress in mzML | compression   | measured | 3.328 MiB/s |   22.703s | input            | mzML                |       |
+| MS-Numpress in mzML | decompression | measured | 4.869 MiB/s |    6.321s | output           | MS-Numpress in mzML |       |
+| MScompress          | compression   | measured | 103.9 MiB/s |   0.7271s | input            | mzML                |       |
+| MScompress          | decompression | measured | 4.219 MiB/s |   7.2949s | output           | MScompress          |       |
+| MScompress threaded | compression   | measured | 586.5 MiB/s |  0.12882s | input            | mzML                |       |
+| MScompress threaded | decompression | measured |  5.87 MiB/s |   5.2437s | output           | MScompress threaded |       |
 
 ## Timing Variability
 
@@ -104,39 +104,39 @@ The chart above uses all 3 runs per operation. Gray dots are individual runs. Bl
 
 | operation                   |          mean ± sd |   median |       95% CI of mean |      min |      max |    throughput | basis  |
 | --------------------------- | -----------------: | -------: | -------------------: | -------: | -------: | ------------: | ------ |
-| mzML -> dump                |  4.6344s ± 0.0401s |  4.6409s |   [4.5349s, 4.7340s] |  4.5915s |  4.6708s |   16.30 MiB/s | input  |
-| dump -> gzip dump           |  1.6623s ± 0.0121s |  1.6565s |   [1.6323s, 1.6924s] |  1.6543s |  1.6762s |   18.52 MiB/s | input  |
-| gzip dump -> dump           |  0.2079s ± 0.0073s |  0.2048s |   [0.1899s, 0.2260s] |  0.2028s |  0.2162s |  148.02 MiB/s | output |
-| dump -> zstd dump           |  0.1852s ± 0.0014s |  0.1855s |   [0.1818s, 0.1886s] |  0.1837s |  0.1864s |  166.18 MiB/s | input  |
-| zstd dump -> dump           |  0.0541s ± 0.0006s |  0.0540s |   [0.0527s, 0.0555s] |  0.0536s |  0.0547s |  568.95 MiB/s | output |
-| dump -> bzip2 dump          |  2.7131s ± 0.0243s |  2.7072s |   [2.6527s, 2.7736s] |  2.6923s |  2.7399s |   11.34 MiB/s | input  |
-| bzip2 dump -> dump          |  1.4709s ± 0.0117s |  1.4684s |   [1.4419s, 1.5000s] |  1.4607s |  1.4837s |   20.92 MiB/s | output |
-| dump -> lz4 dump            |  0.0787s ± 0.0002s |  0.0787s |   [0.0783s, 0.0791s] |  0.0785s |  0.0788s |  391.13 MiB/s | input  |
-| lz4 dump -> dump            |  0.0552s ± 0.0008s |  0.0549s |   [0.0532s, 0.0571s] |  0.0546s |  0.0561s |  557.91 MiB/s | output |
-| dump -> xz dump             | 12.7803s ± 0.2250s | 12.8874s | [12.2214s, 13.3392s] | 12.5218s | 12.9317s |    2.41 MiB/s | input  |
-| xz dump -> dump             |  0.5053s ± 0.0077s |  0.5019s |   [0.4862s, 0.5243s] |  0.4999s |  0.5140s |   60.92 MiB/s | output |
-| mzML -> gzip mzML           |  1.5468s ± 0.0073s |  1.5456s |   [1.5286s, 1.5650s] |  1.5401s |  1.5546s |   48.84 MiB/s | input  |
-| gzip mzML -> mzML           |  0.3560s ± 0.0016s |  0.3556s |   [0.3521s, 0.3599s] |  0.3547s |  0.3577s |  212.23 MiB/s | output |
-| mzML -> zstd mzML           |  0.1718s ± 0.0013s |  0.1711s |   [0.1685s, 0.1750s] |  0.1709s |  0.1733s |  439.80 MiB/s | input  |
-| zstd mzML -> mzML           |  0.0603s ± 0.0021s |  0.0595s |   [0.0550s, 0.0656s] |  0.0587s |  0.0627s | 1252.86 MiB/s | output |
-| mzML -> bzip2 mzML          |  7.0310s ± 0.0418s |  7.0524s |   [6.9271s, 7.1349s] |  6.9828s |  7.0577s |   10.75 MiB/s | input  |
-| bzip2 mzML -> mzML          |  2.4808s ± 0.0119s |  2.4761s |   [2.4511s, 2.5105s] |  2.4719s |  2.4944s |   30.45 MiB/s | output |
-| mzML -> lz4 mzML            |  0.0990s ± 0.0006s |  0.0991s |   [0.0976s, 0.1004s] |  0.0984s |  0.0995s |  763.07 MiB/s | input  |
-| lz4 mzML -> mzML            |  0.0887s ± 0.0018s |  0.0894s |   [0.0842s, 0.0933s] |  0.0866s |  0.0901s |  851.58 MiB/s | output |
-| mzML -> xz mzML             |  5.6694s ± 0.0392s |  5.6880s |   [5.5721s, 5.7667s] |  5.6244s |  5.6957s |   13.33 MiB/s | input  |
-| xz mzML -> mzML             |  0.3669s ± 0.0076s |  0.3657s |   [0.3479s, 0.3858s] |  0.3599s |  0.3750s |  205.94 MiB/s | output |
-| dump -> mzarc lossless      |  0.2251s ± 0.0014s |  0.2259s |   [0.2216s, 0.2286s] |  0.2235s |  0.2260s |  136.71 MiB/s | input  |
-| mzarc lossless -> dump      |  0.1538s ± 0.0009s |  0.1535s |   [0.1516s, 0.1561s] |  0.1532s |  0.1549s |  200.06 MiB/s | output |
-| dump -> mzarc lossy q=16384 |  0.2439s ± 0.0011s |  0.2440s |   [0.2410s, 0.2467s] |  0.2427s |  0.2449s |  126.22 MiB/s | input  |
-| mzarc lossy q=16384 -> dump |  0.1958s ± 0.0026s |  0.1944s |   [0.1894s, 0.2022s] |  0.1942s |  0.1988s |  157.20 MiB/s | output |
-| mzML -> mzMLb               | 22.7763s ± 1.0926s | 22.2469s | [20.0620s, 25.4906s] | 22.0494s | 24.0328s |    3.32 MiB/s | input  |
-| mzMLb -> dump               |  4.9235s ± 0.0212s |  4.9165s |   [4.8709s, 4.9762s] |  4.9068s |  4.9474s |    6.25 MiB/s | output |
-| mzML -> MS-Numpress in mzML | 23.2022s ± 0.2521s | 23.3173s | [22.5759s, 23.8285s] | 22.9131s | 23.3762s |    3.26 MiB/s | input  |
-| MS-Numpress in mzML -> dump |  6.3538s ± 0.0090s |  6.3587s |   [6.3314s, 6.3763s] |  6.3434s |  6.3594s |    4.84 MiB/s | output |
-| mzML -> MScompress          |  0.7064s ± 0.0039s |  0.7085s |   [0.6968s, 0.7160s] |  0.7020s |  0.7088s |  106.95 MiB/s | input  |
-| MScompress -> dump          |  7.3351s ± 0.2192s |  7.2375s |   [6.7906s, 7.8797s] |  7.1818s |  7.5862s |    4.20 MiB/s | output |
-| mzML -> MScompress threaded |  0.1276s ± 0.0029s |  0.1262s |   [0.1204s, 0.1347s] |  0.1256s |  0.1309s |  592.28 MiB/s | input  |
-| MScompress threaded -> dump |  5.2615s ± 0.0287s |  5.2719s |   [5.1901s, 5.3329s] |  5.2291s |  5.2836s |    5.85 MiB/s | output |
+| mzML -> dump                |  4.5883s ± 0.0145s |  4.5809s |   [4.5522s, 4.6243s] |  4.5789s |  4.6049s |   16.47 MiB/s | input  |
+| dump -> gzip dump           |  1.6514s ± 0.0046s |  1.6512s |   [1.6398s, 1.6629s] |  1.6468s |  1.6561s |   18.64 MiB/s | input  |
+| gzip dump -> dump           |  0.2066s ± 0.0041s |  0.2057s |   [0.1964s, 0.2168s] |  0.2030s |  0.2111s |  148.98 MiB/s | output |
+| dump -> zstd dump           |  0.1854s ± 0.0002s |  0.1853s |   [0.1850s, 0.1857s] |  0.1853s |  0.1855s |  166.05 MiB/s | input  |
+| zstd dump -> dump           |  0.0535s ± 0.0014s |  0.0533s |   [0.0500s, 0.0571s] |  0.0522s |  0.0550s |  574.92 MiB/s | output |
+| dump -> bzip2 dump          |  2.7108s ± 0.0043s |  2.7119s |   [2.7002s, 2.7215s] |  2.7061s |  2.7145s |   11.35 MiB/s | input  |
+| bzip2 dump -> dump          |  1.4690s ± 0.0139s |  1.4613s |   [1.4344s, 1.5036s] |  1.4606s |  1.4851s |   20.95 MiB/s | output |
+| dump -> lz4 dump            |  0.0782s ± 0.0004s |  0.0781s |   [0.0773s, 0.0791s] |  0.0779s |  0.0786s |  393.74 MiB/s | input  |
+| lz4 dump -> dump            |  0.0569s ± 0.0024s |  0.0556s |   [0.0510s, 0.0628s] |  0.0555s |  0.0596s |  540.93 MiB/s | output |
+| dump -> xz dump             | 12.8020s ± 0.1949s | 12.6907s | [12.3176s, 13.2863s] | 12.6881s | 13.0271s |    2.40 MiB/s | input  |
+| xz dump -> dump             |  0.4987s ± 0.0034s |  0.4980s |   [0.4903s, 0.5071s] |  0.4957s |  0.5024s |   61.72 MiB/s | output |
+| mzML -> gzip mzML           |  1.5380s ± 0.0046s |  1.5384s |   [1.5267s, 1.5494s] |  1.5333s |  1.5424s |   49.12 MiB/s | input  |
+| gzip mzML -> mzML           |  0.3598s ± 0.0071s |  0.3636s |   [0.3421s, 0.3774s] |  0.3516s |  0.3642s |  209.99 MiB/s | output |
+| mzML -> zstd mzML           |  0.1785s ± 0.0049s |  0.1806s |   [0.1663s, 0.1907s] |  0.1729s |  0.1820s |  423.20 MiB/s | input  |
+| zstd mzML -> mzML           |  0.0578s ± 0.0001s |  0.0578s |   [0.0576s, 0.0580s] |  0.0577s |  0.0579s | 1306.91 MiB/s | output |
+| mzML -> bzip2 mzML          |  7.0787s ± 0.0109s |  7.0818s |   [7.0516s, 7.1058s] |  7.0666s |  7.0878s |   10.67 MiB/s | input  |
+| bzip2 mzML -> mzML          |  2.4742s ± 0.0248s |  2.4740s |   [2.4126s, 2.5359s] |  2.4495s |  2.4992s |   30.54 MiB/s | output |
+| mzML -> lz4 mzML            |  0.0988s ± 0.0013s |  0.0985s |   [0.0956s, 0.1020s] |  0.0978s |  0.1003s |  764.37 MiB/s | input  |
+| lz4 mzML -> mzML            |  0.0912s ± 0.0050s |  0.0896s |   [0.0789s, 0.1036s] |  0.0873s |  0.0968s |  828.12 MiB/s | output |
+| mzML -> xz mzML             |  5.6378s ± 0.1095s |  5.6176s |   [5.3657s, 5.9098s] |  5.5397s |  5.7559s |   13.40 MiB/s | input  |
+| xz mzML -> mzML             |  0.3665s ± 0.0065s |  0.3633s |   [0.3504s, 0.3826s] |  0.3623s |  0.3740s |  206.14 MiB/s | output |
+| dump -> mzarc lossless      |  0.3250s ± 0.0015s |  0.3243s |   [0.3213s, 0.3287s] |  0.3240s |  0.3267s |   94.70 MiB/s | input  |
+| mzarc lossless -> dump      |  0.2074s ± 0.0014s |  0.2077s |   [0.2039s, 0.2109s] |  0.2059s |  0.2086s |  148.41 MiB/s | output |
+| dump -> mzarc lossy q=16384 |  0.3564s ± 0.0018s |  0.3558s |   [0.3519s, 0.3609s] |  0.3549s |  0.3584s |   86.36 MiB/s | input  |
+| mzarc lossy q=16384 -> dump |  0.2366s ± 0.0017s |  0.2370s |   [0.2324s, 0.2408s] |  0.2347s |  0.2380s |  130.09 MiB/s | output |
+| mzML -> mzMLb               | 22.5415s ± 1.1111s | 21.9691s | [19.7811s, 25.3018s] | 21.8332s | 23.8221s |    3.35 MiB/s | input  |
+| mzMLb -> dump               |  4.9129s ± 0.0475s |  4.8975s |   [4.7948s, 5.0309s] |  4.8749s |  4.9661s |    6.26 MiB/s | output |
+| mzML -> MS-Numpress in mzML | 22.7030s ± 0.4710s | 22.5056s | [21.5329s, 23.8732s] | 22.3628s | 23.2406s |    3.33 MiB/s | input  |
+| MS-Numpress in mzML -> dump |  6.3210s ± 0.0960s |  6.3166s |   [6.0825s, 6.5594s] |  6.2272s |  6.4191s |    4.87 MiB/s | output |
+| mzML -> MScompress          |  0.7271s ± 0.0062s |  0.7241s |   [0.7117s, 0.7425s] |  0.7230s |  0.7342s |  103.91 MiB/s | input  |
+| MScompress -> dump          |  7.2949s ± 0.1435s |  7.2389s |   [6.9384s, 7.6514s] |  7.1878s |  7.4580s |    4.22 MiB/s | output |
+| mzML -> MScompress threaded |  0.1288s ± 0.0031s |  0.1282s |   [0.1210s, 0.1366s] |  0.1260s |  0.1322s |  586.51 MiB/s | input  |
+| MScompress threaded -> dump |  5.2437s ± 0.0732s |  5.2140s |   [5.0619s, 5.4256s] |  5.1900s |  5.3271s |    5.87 MiB/s | output |
 
 ## External Baselines
 
@@ -189,10 +189,10 @@ On the current run, `lz4 dump`, `gzip dump`, `zstd dump`, `bzip2 dump`, `xz dump
 
 |     q |    bytes |      size | p95 rel intensity err | p99 rel intensity err | mean rel intensity err |
 | ----: | -------: | --------: | --------------------: | --------------------: | ---------------------: |
-|   256 | 12459954 | 11.88 MiB |                3.499% |                3.813% |                 1.820% |
-|  1024 | 13127097 | 12.52 MiB |                0.874% |                0.950% |                 0.455% |
-|  4096 | 13794206 | 13.16 MiB |                0.218% |                0.238% |                 0.114% |
-| 16384 | 14461329 | 13.79 MiB |                0.055% |                0.059% |                 0.028% |
+|   256 | 10827157 | 10.33 MiB |                3.499% |                3.813% |                 1.820% |
+|  1024 | 12006101 | 11.45 MiB |                0.874% |                0.950% |                 0.455% |
+|  4096 | 12673210 | 12.09 MiB |                0.218% |                0.238% |                 0.114% |
+| 16384 | 13340333 | 12.72 MiB |                0.055% |                0.059% |                 0.028% |
 
 The selected `q` stays user-controlled. Higher `q` means more preserved log-intensity precision and usually a larger file; lower `q` buys size at the cost of broader relative error tails.
 

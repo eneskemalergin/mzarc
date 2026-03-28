@@ -83,3 +83,58 @@ Interpretation:
 - The encoder-side waste was real and fixable: encode time improved by ~35.6% (2.3780s -> 1.5315s).
 - Decode time barely moved (0.7514s -> 0.7403s). The remaining bottleneck is not bad activation decisions; it is the cost of decoding rANS on every block, especially for the m/z stream where every block still clears the gain gate by a wide margin.
 - Decision for Part 3a.4: defer. The entropy path is still not fast enough on 15HCD_1 to justify adding more payload/layout complexity.
+
+Focused rANS-core benchmark (ReleaseFast, `mzarc benchmark-rans-core /tmp/15HCD_1.optimized.mzarc --repeats 5`):
+- m/z rANS encode mean: 0.697527s
+- m/z rANS decode mean: 0.381665s
+- exponent rANS encode mean: 0.072986s
+- exponent rANS decode mean: 0.049690s
+- Interpretation: the remaining decode cost is overwhelmingly in the m/z rANS stream. Exponent rANS is a small fraction of the total.
+
+ReleaseFast intensity-threshold sweep (m/z threshold fixed at 5%):
+- threshold 5: total=16015764 bytes, intensity_payload=8671747, encode=0.324649s, decode=0.215119s, exponent sections=72
+- threshold 12: total=16016009 bytes, intensity_payload=8671992, encode=0.316924s, decode=0.209960s, exponent sections=71
+- threshold 20: total=16016009 bytes, intensity_payload=8671992, encode=0.316909s, decode=0.210431s, exponent sections=71
+- threshold 30: total=16019839 bytes, intensity_payload=8675822, encode=0.319725s, decode=0.211657s, exponent sections=70
+- threshold 35: total=16067870 bytes, intensity_payload=8723853, encode=0.320029s, decode=0.211516s, exponent sections=65
+
+Threshold recommendation:
+- Keep m/z rANS minimum gain at 5%.
+- Raise intensity rANS minimum gain to 12%.
+- Rationale: threshold 12 removes one weak exponent-rANS block on 15HCD_1, improves decode mean by ~1.8% over threshold 5 in ReleaseFast, and costs only 245 bytes on the full file.
+
+High-repeat decode confirmation on existing artifacts (10 runs):
+- threshold 5 decode mean: 0.213432s
+- threshold 12 decode mean: 0.209551s
+- threshold 12 remains consistently faster with lower run-to-run variance.
+
+Final m/z-path optimization pass (2026-03-27):
+- Change: streamlined the rANS hot decode loop in `src/rans.zig` and replaced the m/z decode path in `src/block.zig` with streaming FOR unpack directly into `flat_mz`, removing the intermediate unpacked `u64` m/z-delta array.
+- Validation: `zig build test` passed (51/51), `mzarc validate` on the full 15HCD_1 round trip still passed exactly, and `get_errors` reported no issues in the touched files.
+
+Focused rANS-core benchmark after the m/z-path optimization (ReleaseFast, `/tmp/15HCD_1.mzopt.mzarc`, 5 repeats):
+- m/z rANS encode mean: 0.107018s
+- m/z rANS decode mean: 0.060897s
+- exponent rANS encode mean: 0.014387s
+- exponent rANS decode mean: 0.008063s
+- Interpretation: the m/z stream is still the dominant entropy-coded cost, but it is now much smaller than in the earlier implementation.
+
+Full end-to-end 15HCD_1 spot measurement after the m/z-path optimization (ReleaseFast, 5 repeats):
+- encode mean: 0.320342s
+- decode mean: 0.204204s
+- artifact bytes: 16016009
+- `mz_payload_bytes`: 7143905
+- `intensity_payload_bytes`: 8671992
+
+Refreshed full benchmark suite (`benchmark/report.json`, 3 repeats, external baselines included):
+- `dump -> mzarc lossless` mean: 0.324994s
+- `mzarc lossless -> dump` mean: 0.207394s
+- `mzarc lossless` size: 16016009 bytes (15.27 MiB)
+- `lossless_mean_abs_mz`: 0.0
+- `lossless_byte_breakdown.mz_payload_bytes`: 7143905
+- `lossless_byte_breakdown.intensity_payload_bytes`: 8671992
+
+Final status of the latest optimizations:
+- No correctness regression detected.
+- No loss of lossless precision detected on 15HCD_1: validation is exact and the refreshed benchmark still reports zero mean absolute m/z error.
+- The final default codec state is: m/z rANS threshold = 5%, intensity rANS threshold = 12%.

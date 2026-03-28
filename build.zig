@@ -58,7 +58,9 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
             .imports = &.{
                 .{ .name = "binary_reader", .module = binary_reader_module },
+                .{ .name = "block", .module = block_module },
                 .{ .name = "codec", .module = codec_module },
+                .{ .name = "rans", .module = rans_module },
             },
         }),
     });
