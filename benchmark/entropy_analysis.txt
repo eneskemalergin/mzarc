@@ -63,3 +63,23 @@ Timing caveat:
 - Size targets are exceeded in a good way, but throughput regressed sharply versus the v0.1.1 baseline (encode 0.1913s, decode 0.1499s).
 - The current rANS implementation is functionally correct and materially improves compression, but it is not yet performance-competitive on the full dataset.
 - Part 3a size goals are met; performance work remains before this should be considered a finished shipping state.
+
+Follow-up optimization pass (2026-03-27, same dataset):
+- Change: removed the unnecessary lossless raw-f32+rANS candidate when split-exponent is available, added a cheap histogram-based entropy precheck before full rANS encode, and added `mzarc encode --verbose-blocks` per-block reporting.
+- Optimized encode runs: 1.5441s, 1.5262s, 1.5242s
+- Optimized decode runs: 0.7477s, 0.7373s, 0.7358s
+- Optimized encode mean: 1.5315s
+- Optimized decode mean: 0.7403s
+- Artifact size after optimization pass: unchanged at 16015764 bytes
+
+Per-block activation summary from `--verbose-blocks`:
+- 72/72 blocks used m/z rANS
+- 72/72 blocks used intensity split-exponent+rANS
+- Average m/z rANS gain: 28.58% per block
+- Average intensity rANS gain over split-exponent base: 6.42% per block
+- Intensity gain range: 1.32% to 8.15%
+
+Interpretation:
+- The encoder-side waste was real and fixable: encode time improved by ~35.6% (2.3780s -> 1.5315s).
+- Decode time barely moved (0.7514s -> 0.7403s). The remaining bottleneck is not bad activation decisions; it is the cost of decoding rANS on every block, especially for the m/z stream where every block still clears the gain gate by a wide margin.
+- Decision for Part 3a.4: defer. The entropy path is still not fast enough on 15HCD_1 to justify adding more payload/layout complexity.

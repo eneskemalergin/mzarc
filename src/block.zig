@@ -20,6 +20,61 @@ pub const EncodeOptions = struct {
     /// error is < 0.001 ppm across the full MS mass range.
     lossless_mz_scale_factor: u32 = 1_000_000_000,
     intensity_quant: u16 = 16384,
+    entropy_min_gain_percent: u8 = 5,
+    verbose_blocks: bool = false,
+};
+
+pub const IntensityEncodingMode = enum {
+    raw_plain,
+    split_plain,
+    split_rans,
+    lossy_plain,
+    lossy_rans,
+};
+
+pub const BlockEncodeStats = struct {
+    ms_level: u8,
+    spectrum_count: usize,
+    total_peaks: usize,
+    mz_raw_bytes: usize,
+    mz_stored_bytes: usize,
+    mz_rans_used: bool,
+    mz_estimated_rans_bytes: usize,
+    intensity_raw_f32_bytes: usize,
+    intensity_base_bytes: usize,
+    intensity_stored_bytes: usize,
+    intensity_rans_used: bool,
+    intensity_estimated_rans_bytes: usize,
+    intensity_mode: IntensityEncodingMode,
+    payload_bytes: usize,
+};
+
+pub const EncodedBlock = struct {
+    bytes: []u8,
+    stats: BlockEncodeStats,
+
+    pub fn deinit(self: EncodedBlock, allocator: Allocator) void {
+        allocator.free(self.bytes);
+    }
+};
+
+const RansCandidate = struct {
+    encoded: ?[]u8,
+    estimated_total_bytes: usize,
+    raw_bytes: usize,
+
+    fn storedBytes(self: RansCandidate) usize {
+        if (self.encoded) |encoded| return encoded.len;
+        return self.raw_bytes;
+    }
+
+    fn used(self: RansCandidate) bool {
+        return self.encoded != null;
+    }
+
+    fn deinit(self: RansCandidate, allocator: Allocator) void {
+        if (self.encoded) |encoded| allocator.free(encoded);
+    }
 };
 
 pub const BlockHeader = struct {
@@ -121,20 +176,46 @@ fn packedByteLen(bit_width: u8, count: usize) usize {
     return ((@as(usize, bit_width) * count) + 7) / 8;
 }
 
-fn shouldUseRans(encoded_len: usize, raw_len: usize) bool {
+fn shouldUseRans(encoded_len: usize, raw_len: usize, min_gain_percent: u8) bool {
     if (raw_len == 0 or encoded_len >= raw_len) return false;
-    return encoded_len * 100 < raw_len * 95;
+    const required = 100 - @min(@as(usize, min_gain_percent), 99);
+    return encoded_len * 100 < raw_len * required;
 }
 
-fn maybeEncodeRansAlloc(allocator: Allocator, raw: []const u8) !?[]u8 {
-    if (raw.len == 0) return null;
-    const encoded = try rans.encodeAlloc(allocator, raw);
-    errdefer allocator.free(encoded);
-    if (!shouldUseRans(encoded.len, raw.len)) {
-        allocator.free(encoded);
-        return null;
+fn maybeEncodeRansAlloc(allocator: Allocator, raw: []const u8, min_gain_percent: u8) !RansCandidate {
+    if (raw.len == 0) {
+        return .{
+            .encoded = null,
+            .estimated_total_bytes = 0,
+            .raw_bytes = 0,
+        };
     }
-    return encoded;
+
+    const analysis = rans.analyze(raw);
+    if (!shouldUseRans(analysis.estimated_total_bytes, raw.len, min_gain_percent)) {
+        return .{
+            .encoded = null,
+            .estimated_total_bytes = analysis.estimated_total_bytes,
+            .raw_bytes = raw.len,
+        };
+    }
+
+    const encoded = try rans.encodeAnalyzedAlloc(allocator, raw, analysis);
+    errdefer allocator.free(encoded);
+    if (!shouldUseRans(encoded.len, raw.len, min_gain_percent)) {
+        allocator.free(encoded);
+        return .{
+            .encoded = null,
+            .estimated_total_bytes = analysis.estimated_total_bytes,
+            .raw_bytes = raw.len,
+        };
+    }
+
+    return .{
+        .encoded = encoded,
+        .estimated_total_bytes = analysis.estimated_total_bytes,
+        .raw_bytes = raw.len,
+    };
 }
 
 fn appendRawIntensityBytes(payload: *std.ArrayList(u8), allocator: Allocator, spectra: []const binary_reader.RawSpectrum) !void {
@@ -145,25 +226,6 @@ fn appendRawIntensityBytes(payload: *std.ArrayList(u8), allocator: Allocator, sp
             for (spectrum.intensity) |value| try appendF32Le(payload, allocator, value);
         }
     }
-}
-
-fn flattenRawIntensityBytesAlloc(allocator: Allocator, spectra: []const binary_reader.RawSpectrum, total_peaks: usize) ![]u8 {
-    var bytes = try allocator.alloc(u8, total_peaks * @sizeOf(f32));
-    errdefer allocator.free(bytes);
-
-    var offset: usize = 0;
-    for (spectra) |spectrum| {
-        for (spectrum.intensity) |value| {
-            const bits: u32 = @bitCast(value);
-            bytes[offset] = @truncate(bits & 0xff);
-            bytes[offset + 1] = @truncate((bits >> 8) & 0xff);
-            bytes[offset + 2] = @truncate((bits >> 16) & 0xff);
-            bytes[offset + 3] = @truncate((bits >> 24) & 0xff);
-            offset += @sizeOf(f32);
-        }
-    }
-
-    return bytes;
 }
 
 pub fn parseHeader(bytes: []const u8) !BlockHeader {
@@ -325,7 +387,7 @@ fn flattenIntensityLossyToU64(
     return flat;
 }
 
-pub fn encodeBlock(allocator: Allocator, spectra: []const binary_reader.RawSpectrum, options: EncodeOptions) ![]u8 {
+pub fn encodeBlockDetailed(allocator: Allocator, spectra: []const binary_reader.RawSpectrum, options: EncodeOptions) !EncodedBlock {
     if (spectra.len == 0) return error.EmptyBlock;
     if (spectra.len > std.math.maxInt(u16)) return error.TooManySpectra;
 
@@ -403,6 +465,22 @@ pub fn encodeBlock(allocator: Allocator, spectra: []const binary_reader.RawSpect
     for (spectra) |spectrum| try appendIntLe(&payload, allocator, u32, @intCast(spectrum.mz.len));
     var mz_bit_width: u8 = 0;
     var mz_scale_for_header: u32 = options.mz_scale_factor;
+    var stats: BlockEncodeStats = .{
+        .ms_level = ms_level,
+        .spectrum_count = spectra.len,
+        .total_peaks = total_peaks,
+        .mz_raw_bytes = 0,
+        .mz_stored_bytes = 0,
+        .mz_rans_used = false,
+        .mz_estimated_rans_bytes = 0,
+        .intensity_raw_f32_bytes = total_peaks * @sizeOf(f32),
+        .intensity_base_bytes = total_peaks * @sizeOf(f32),
+        .intensity_stored_bytes = total_peaks * @sizeOf(f32),
+        .intensity_rans_used = false,
+        .intensity_estimated_rans_bytes = 0,
+        .intensity_mode = .raw_plain,
+        .payload_bytes = 0,
+    };
     {
         // Choose the m/z encoding strategy:
         //   lossless + all values are f32-exact → f32 bit-cast delta (bit-exact round-trip)
@@ -423,9 +501,14 @@ pub fn encodeBlock(allocator: Allocator, spectra: []const binary_reader.RawSpect
         const packed_mz = try bitpack.packForU64(allocator, mz_deltas);
         defer packed_mz.deinit(allocator);
         mz_bit_width = packed_mz.bit_width;
+        stats.mz_raw_bytes = packed_mz.payload.len;
         try appendIntLe(&payload, allocator, u64, packed_mz.base);
-        if (try maybeEncodeRansAlloc(allocator, packed_mz.payload)) |rans_payload| {
-            defer allocator.free(rans_payload);
+        const mz_candidate = try maybeEncodeRansAlloc(allocator, packed_mz.payload, options.entropy_min_gain_percent);
+        defer mz_candidate.deinit(allocator);
+        stats.mz_estimated_rans_bytes = mz_candidate.estimated_total_bytes;
+        stats.mz_stored_bytes = mz_candidate.storedBytes();
+        stats.mz_rans_used = mz_candidate.used();
+        if (mz_candidate.encoded) |rans_payload| {
             flags |= flag_rans_mz;
             try appendIntLe(&payload, allocator, u32, @intCast(rans_payload.len));
             try payload.appendSlice(allocator, rans_payload);
@@ -437,8 +520,8 @@ pub fn encodeBlock(allocator: Allocator, spectra: []const binary_reader.RawSpect
 
     var intensity_bit_width: u8 = 0;
     if (options.mode == .lossless) {
-        // Dry-run: choose the smallest exact lossless intensity representation among
-        // raw f32, raw f32+rANS, split exponent, and split exponent+rANS.
+        // Lossless intensity uses the best exact representation among raw f32,
+        // split-exponent, and split-exponent+rANS.
         const exp_values = try allocator.alloc(u64, total_peaks);
         defer allocator.free(exp_values);
         {
@@ -452,57 +535,39 @@ pub fn encodeBlock(allocator: Allocator, spectra: []const binary_reader.RawSpect
         }
         const packed_exp = try bitpack.packForU64(allocator, exp_values);
         defer packed_exp.deinit(allocator);
-        const raw_intensity = try flattenRawIntensityBytesAlloc(allocator, spectra, total_peaks);
-        defer allocator.free(raw_intensity);
-
         const split_plain_bytes: usize = 1 + 8 + 4 + packed_exp.payload.len + 3 * total_peaks;
-        const raw_plain_bytes: usize = raw_intensity.len;
+        const raw_plain_bytes: usize = total_peaks * @sizeOf(f32);
+        if (split_plain_bytes < raw_plain_bytes) {
+            const encoded_exp = try maybeEncodeRansAlloc(allocator, packed_exp.payload, options.entropy_min_gain_percent);
+            defer encoded_exp.deinit(allocator);
+            stats.intensity_raw_f32_bytes = raw_plain_bytes;
+            stats.intensity_base_bytes = split_plain_bytes;
+            stats.intensity_estimated_rans_bytes = if (encoded_exp.estimated_total_bytes == 0)
+                split_plain_bytes
+            else
+                1 + 8 + 4 + encoded_exp.estimated_total_bytes + 3 * total_peaks;
 
-        const encoded_raw_intensity = try maybeEncodeRansAlloc(allocator, raw_intensity);
-        defer if (encoded_raw_intensity) |buf| allocator.free(buf);
-        const encoded_exp = try maybeEncodeRansAlloc(allocator, packed_exp.payload);
-        defer if (encoded_exp) |buf| allocator.free(buf);
-
-        const IntensityEncoding = enum {
-            raw_plain,
-            raw_rans,
-            split_plain,
-            split_rans,
-        };
-
-        var best_encoding: IntensityEncoding = .raw_plain;
-        var best_size = raw_plain_bytes;
-
-        if (split_plain_bytes < best_size) {
-            best_encoding = .split_plain;
-            best_size = split_plain_bytes;
-        }
-        if (encoded_raw_intensity) |buf| {
-            const candidate = @sizeOf(u32) + buf.len;
-            if (candidate < best_size) {
-                best_encoding = .raw_rans;
-                best_size = candidate;
-            }
-        }
-        if (encoded_exp) |buf| {
-            const candidate = 1 + 8 + 4 + buf.len + 3 * total_peaks;
-            if (candidate < best_size) {
-                best_encoding = .split_rans;
-                best_size = candidate;
-            }
-        }
-
-        switch (best_encoding) {
-            .raw_plain => {
-                flags |= flag_lossless_intensity_raw;
-                try appendRawIntensityBytes(&payload, allocator, spectra);
-            },
-            .raw_rans => {
-                flags |= flag_lossless_intensity_raw | flag_rans_intensity;
-                try appendIntLe(&payload, allocator, u32, @intCast(encoded_raw_intensity.?.len));
-                try payload.appendSlice(allocator, encoded_raw_intensity.?);
-            },
-            .split_plain => {
+            if (encoded_exp.encoded) |buf| {
+                stats.intensity_mode = .split_rans;
+                stats.intensity_rans_used = true;
+                stats.intensity_stored_bytes = 1 + 8 + 4 + buf.len + 3 * total_peaks;
+                flags |= flag_split_exponent | flag_rans_intensity;
+                intensity_bit_width = packed_exp.bit_width;
+                try payload.append(allocator, packed_exp.bit_width);
+                try appendIntLe(&payload, allocator, u64, packed_exp.base);
+                try appendIntLe(&payload, allocator, u32, @intCast(buf.len));
+                try payload.appendSlice(allocator, buf);
+                for (spectra) |spectrum| {
+                    for (spectrum.intensity) |value| {
+                        const bits: u32 = @bitCast(value);
+                        try payload.append(allocator, @truncate(bits & 0xFF));
+                        try payload.append(allocator, @truncate((bits >> 8) & 0xFF));
+                        try payload.append(allocator, @truncate((bits >> 16) & 0xFF));
+                    }
+                }
+            } else {
+                stats.intensity_mode = .split_plain;
+                stats.intensity_stored_bytes = split_plain_bytes;
                 flags |= flag_split_exponent;
                 intensity_bit_width = packed_exp.bit_width;
                 try payload.append(allocator, packed_exp.bit_width);
@@ -517,23 +582,13 @@ pub fn encodeBlock(allocator: Allocator, spectra: []const binary_reader.RawSpect
                         try payload.append(allocator, @truncate((bits >> 16) & 0xFF));
                     }
                 }
-            },
-            .split_rans => {
-                flags |= flag_split_exponent | flag_rans_intensity;
-                intensity_bit_width = packed_exp.bit_width;
-                try payload.append(allocator, packed_exp.bit_width);
-                try appendIntLe(&payload, allocator, u64, packed_exp.base);
-                try appendIntLe(&payload, allocator, u32, @intCast(encoded_exp.?.len));
-                try payload.appendSlice(allocator, encoded_exp.?);
-                for (spectra) |spectrum| {
-                    for (spectrum.intensity) |value| {
-                        const bits: u32 = @bitCast(value);
-                        try payload.append(allocator, @truncate(bits & 0xFF));
-                        try payload.append(allocator, @truncate((bits >> 8) & 0xFF));
-                        try payload.append(allocator, @truncate((bits >> 16) & 0xFF));
-                    }
-                }
-            },
+            }
+        } else {
+            flags |= flag_lossless_intensity_raw;
+            stats.intensity_mode = .raw_plain;
+            stats.intensity_base_bytes = raw_plain_bytes;
+            stats.intensity_stored_bytes = raw_plain_bytes;
+            try appendRawIntensityBytes(&payload, allocator, spectra);
         }
     } else {
         const quantized_intensity = try flattenIntensityLossyToU64(
@@ -550,13 +605,25 @@ pub fn encodeBlock(allocator: Allocator, spectra: []const binary_reader.RawSpect
         if (packed_intensity.base > std.math.maxInt(u16)) return error.IntensityOverflow;
 
         intensity_bit_width = packed_intensity.bit_width;
+        stats.intensity_mode = .lossy_plain;
+        stats.intensity_raw_f32_bytes = total_peaks * @sizeOf(f32);
+        stats.intensity_base_bytes = packed_intensity.payload.len + @sizeOf(u16) + @sizeOf(u32);
         try appendIntLe(&payload, allocator, u16, @intCast(packed_intensity.base));
-        if (try maybeEncodeRansAlloc(allocator, packed_intensity.payload)) |rans_payload| {
-            defer allocator.free(rans_payload);
+        const intensity_candidate = try maybeEncodeRansAlloc(allocator, packed_intensity.payload, options.entropy_min_gain_percent);
+        defer intensity_candidate.deinit(allocator);
+        stats.intensity_estimated_rans_bytes = if (intensity_candidate.estimated_total_bytes == 0)
+            stats.intensity_base_bytes
+        else
+            @sizeOf(u16) + @sizeOf(u32) + intensity_candidate.estimated_total_bytes;
+        if (intensity_candidate.encoded) |rans_payload| {
             flags |= flag_rans_intensity;
+            stats.intensity_mode = .lossy_rans;
+            stats.intensity_rans_used = true;
+            stats.intensity_stored_bytes = @sizeOf(u16) + @sizeOf(u32) + rans_payload.len;
             try appendIntLe(&payload, allocator, u32, @intCast(rans_payload.len));
             try payload.appendSlice(allocator, rans_payload);
         } else {
+            stats.intensity_stored_bytes = stats.intensity_base_bytes;
             try appendIntLe(&payload, allocator, u32, @intCast(packed_intensity.payload.len));
             try payload.appendSlice(allocator, packed_intensity.payload);
         }
@@ -590,9 +657,18 @@ pub fn encodeBlock(allocator: Allocator, spectra: []const binary_reader.RawSpect
     errdefer block.deinit(allocator);
     try writeHeader(&block, allocator, header);
     try block.appendSlice(allocator, payload.items);
+    stats.payload_bytes = payload.items.len;
     payload.deinit(allocator);
 
-    return block.toOwnedSlice(allocator);
+    return .{
+        .bytes = try block.toOwnedSlice(allocator),
+        .stats = stats,
+    };
+}
+
+pub fn encodeBlock(allocator: Allocator, spectra: []const binary_reader.RawSpectrum, options: EncodeOptions) ![]u8 {
+    const detailed = try encodeBlockDetailed(allocator, spectra, options);
+    return detailed.bytes;
 }
 
 pub fn decodeBlock(allocator: Allocator, block_bytes: []const u8) ![]binary_reader.RawSpectrum {

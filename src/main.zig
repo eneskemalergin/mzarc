@@ -30,7 +30,7 @@ fn printUsage() void {
     std.debug.print(
         "Usage:\n" ++
             "  mzarc dump-inspect <input.bin>\n" ++
-            "  mzarc encode <input.bin> -o <output.mzarc> [--lossy] [--intensity-quant <levels>]\n" ++
+            "  mzarc encode <input.bin> -o <output.mzarc> [--lossy] [--intensity-quant <levels>] [--verbose-blocks]\n" ++
             "  mzarc decode <input.mzarc> -o <output.bin>\n" ++
             "  mzarc inspect <input.mzarc> [--json] [--blocks]\n" ++
             "  mzarc validate <original.bin> <decoded.bin> --mode=lossless|lossy\n" ++
@@ -104,6 +104,7 @@ fn commandEncode(allocator: std.mem.Allocator, args: []const [:0]const u8) !void
         .block_options = .{
             .mode = if (hasFlag(args[3..], "--lossy")) .lossy else .lossless,
             .intensity_quant = intensity_quant orelse 16384,
+            .verbose_blocks = hasFlag(args[3..], "--verbose-blocks"),
         },
     });
 

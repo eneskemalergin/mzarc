@@ -5,6 +5,14 @@ pub const Allocator = std.mem.Allocator;
 pub const precision_bits: u5 = 12;
 pub const precision: usize = 1 << precision_bits;
 
+pub const Analysis = struct {
+    counts: [256]u32,
+    len: usize,
+    entropy_bits_per_symbol: f64,
+    estimated_payload_bytes: usize,
+    estimated_total_bytes: usize,
+};
+
 const table_entry_count = 256;
 const freq_table_bytes = table_entry_count * @sizeOf(u16);
 const state_bytes = @sizeOf(u32);
@@ -24,6 +32,38 @@ fn countSymbols(symbols: []const u8) [table_entry_count]u32 {
     var counts = [_]u32{0} ** table_entry_count;
     for (symbols) |symbol| counts[symbol] += 1;
     return counts;
+}
+
+fn buildAnalysis(counts: [table_entry_count]u32, len: usize) Analysis {
+    if (len == 0) {
+        return .{
+            .counts = counts,
+            .len = 0,
+            .entropy_bits_per_symbol = 0.0,
+            .estimated_payload_bytes = 0,
+            .estimated_total_bytes = 0,
+        };
+    }
+
+    const len_f = @as(f64, @floatFromInt(len));
+    var entropy_bits_per_symbol: f64 = 0.0;
+    for (counts) |count| {
+        if (count == 0) continue;
+        const probability = @as(f64, @floatFromInt(count)) / len_f;
+        entropy_bits_per_symbol -= probability * std.math.log2(probability);
+    }
+
+    const total_bits = entropy_bits_per_symbol * len_f;
+    const estimated_payload_bytes = @as(usize, @intFromFloat(@ceil(total_bits / 8.0)));
+    const estimated_total_bytes = freq_table_bytes + state_bytes + estimated_payload_bytes;
+
+    return .{
+        .counts = counts,
+        .len = len,
+        .entropy_bits_per_symbol = entropy_bits_per_symbol,
+        .estimated_payload_bytes = estimated_payload_bytes,
+        .estimated_total_bytes = estimated_total_bytes,
+    };
 }
 
 fn bestIncrementIndex(counts: [table_entry_count]u32, remainders: [table_entry_count]u64) usize {
@@ -125,10 +165,13 @@ fn validateFreqTable(freqs: [table_entry_count]u16, expected_len: usize) !void {
     if (total != precision) return error.InvalidFrequencyTable;
 }
 
-pub fn encodeAlloc(allocator: Allocator, symbols: []const u8) ![]u8 {
+pub fn analyze(symbols: []const u8) Analysis {
+    return buildAnalysis(countSymbols(symbols), symbols.len);
+}
+
+fn encodeFromCountsAlloc(allocator: Allocator, symbols: []const u8, counts: [table_entry_count]u32) ![]u8 {
     if (symbols.len == 0) return allocator.alloc(u8, 0);
 
-    const counts = countSymbols(symbols);
     const freqs = normalizeCounts(counts);
     const starts = buildStarts(freqs);
 
@@ -167,6 +210,15 @@ pub fn encodeAlloc(allocator: Allocator, symbols: []const u8) ![]u8 {
     }
 
     return encoded.toOwnedSlice(allocator);
+}
+
+pub fn encodeAlloc(allocator: Allocator, symbols: []const u8) ![]u8 {
+    return encodeFromCountsAlloc(allocator, symbols, countSymbols(symbols));
+}
+
+pub fn encodeAnalyzedAlloc(allocator: Allocator, symbols: []const u8, analysis: Analysis) ![]u8 {
+    if (analysis.len != symbols.len) return error.InvalidAnalysis;
+    return encodeFromCountsAlloc(allocator, symbols, analysis.counts);
 }
 
 pub fn decodeAlloc(allocator: Allocator, encoded: []const u8, expected_len: usize) ![]u8 {

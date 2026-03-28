@@ -39,6 +39,47 @@ pub const BlockInfo = struct {
     byte_breakdown: block.BlockByteBreakdown,
 };
 
+fn percentGain(raw_bytes: usize, stored_bytes: usize) f64 {
+    if (raw_bytes == 0 or stored_bytes >= raw_bytes) return 0.0;
+    return (1.0 - (@as(f64, @floatFromInt(stored_bytes)) / @as(f64, @floatFromInt(raw_bytes)))) * 100.0;
+}
+
+fn intensityModeLabel(mode: block.IntensityEncodingMode) []const u8 {
+    return switch (mode) {
+        .raw_plain => "raw",
+        .split_plain => "split",
+        .split_rans => "split+rANS",
+        .lossy_plain => "lossy",
+        .lossy_rans => "lossy+rANS",
+    };
+}
+
+fn maybePrintBlockStats(block_index: u32, stats: block.BlockEncodeStats, options: EncodeOptions) void {
+    if (!options.block_options.verbose_blocks) return;
+    std.debug.print(
+        "[block {} ms{}] peaks={} nspec={} mz rans={s} raw={} stored={} gain={d:.2}% est={} intensity mode={s} rans={s} base={} stored={} raw_f32={} gain={d:.2}% est={} payload={}\n",
+        .{
+            block_index,
+            stats.ms_level,
+            stats.total_peaks,
+            stats.spectrum_count,
+            if (stats.mz_rans_used) "yes" else "no",
+            stats.mz_raw_bytes,
+            stats.mz_stored_bytes,
+            percentGain(stats.mz_raw_bytes, stats.mz_stored_bytes),
+            stats.mz_estimated_rans_bytes,
+            intensityModeLabel(stats.intensity_mode),
+            if (stats.intensity_rans_used) "yes" else "no",
+            stats.intensity_base_bytes,
+            stats.intensity_stored_bytes,
+            stats.intensity_raw_f32_bytes,
+            percentGain(stats.intensity_base_bytes, stats.intensity_stored_bytes),
+            stats.intensity_estimated_rans_bytes,
+            stats.payload_bytes,
+        },
+    );
+}
+
 pub const FileByteBreakdown = struct {
     file_header_bytes: usize,
     global_order_bytes: usize,
@@ -218,9 +259,10 @@ fn appendFilteredStreamBlocks(
             order_cursor.* += 1;
 
             if (used == block_capacity) {
-                const encoded = try block.encodeBlock(allocator, block_spectra[0..used], options.block_options);
-                defer allocator.free(encoded);
-                try file_bytes.appendSlice(allocator, encoded);
+                const encoded = try block.encodeBlockDetailed(allocator, block_spectra[0..used], options.block_options);
+                defer encoded.deinit(allocator);
+                maybePrintBlockStats(block_count.*, encoded.stats, options);
+                try file_bytes.appendSlice(allocator, encoded.bytes);
                 block_count.* += 1;
                 used = 0;
             }
@@ -228,9 +270,10 @@ fn appendFilteredStreamBlocks(
     }
 
     if (used != 0) {
-        const encoded = try block.encodeBlock(allocator, block_spectra[0..used], options.block_options);
-        defer allocator.free(encoded);
-        try file_bytes.appendSlice(allocator, encoded);
+        const encoded = try block.encodeBlockDetailed(allocator, block_spectra[0..used], options.block_options);
+        defer encoded.deinit(allocator);
+        maybePrintBlockStats(block_count.*, encoded.stats, options);
+        try file_bytes.appendSlice(allocator, encoded.bytes);
         block_count.* += 1;
     }
 
