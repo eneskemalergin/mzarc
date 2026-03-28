@@ -1,0 +1,69 @@
+========================================================================
+INTENSITY ENTROPY ANALYSIS — Part 2b.0 Measurement Gate
+Input: fixtures/frozen.bin
+========================================================================
+
+Total peaks analyzed : 202,806
+Negative intensities : 0 (0.00% — should be 0 for MS data)
+
+------------------------------------------------------------------------
+PER-BYTE SHANNON ENTROPY (f32 intensity, IEEE 754 layout)
+  Byte 0 (mantissa LSB) : 7.9988 bits  (expect ~8)
+  Byte 1 (mantissa mid) : 7.9991 bits  (expect ~8)
+  Byte 2 (mantissa+exp) : 7.9697 bits  (expect ~5-8)
+  Byte 3 (sign+exp MSB) : 2.7563 bits  ← H9 gate
+
+H9 gate threshold      : ≤5.0 bits
+H9 gate result         : PASS ✓ (byte-3 entropy = 2.7563 bits)
+DECISION               : PROCEED to Part 2b.1 (encoder implementation)
+
+------------------------------------------------------------------------
+EXPONENT FIELD ANALYSIS (8-bit field, bits 23..30 of f32)
+  Exponent range : 135 – 157 (span = 22 values)
+  FOR bit width  : 5 bits  (ceil(log2(22 + 1)))
+
+  Top-20 exponent values (by frequency):
+    Exp   Biased       Decoded       Count       %   Cumul%
+  -----  -------  ------------  ----------  ------  -------
+    144      +17          2^17      22,517   11.10%   11.10%
+    140      +13          2^13      21,124   10.42%   21.52%
+    145      +18          2^18      20,442   10.08%   31.60%
+    139      +12          2^12      18,105    8.93%   40.53%
+    143      +16          2^16      17,895    8.82%   49.35%
+    141      +14          2^14      17,660    8.71%   58.06%
+    138      +11          2^11      14,963    7.38%   65.43%
+    142      +15          2^15      14,560    7.18%   72.61%
+    137      +10          2^10      14,016    6.91%   79.53%
+    146      +19          2^19      13,217    6.52%   86.04%
+    136       +9           2^9      10,504    5.18%   91.22%
+    147      +20          2^20       8,305    4.10%   95.32%
+    148      +21          2^21       4,579    2.26%   97.57%
+    149      +22          2^22       2,137    1.05%   98.63%
+    150      +23          2^23       1,252    0.62%   99.25%
+    151      +24          2^24         698    0.34%   99.59%
+    152      +25          2^25         425    0.21%   99.80%
+    153      +26          2^26         201    0.10%   99.90%
+    154      +27          2^27         118    0.06%   99.96%
+    155      +28          2^28          46    0.02%   99.98%
+
+  Exponent values needed to cover:
+       50% of peaks :   6 distinct exponent values
+       80% of peaks :  10 distinct exponent values
+       90% of peaks :  11 distinct exponent values
+       95% of peaks :  12 distinct exponent values
+       99% of peaks :  15 distinct exponent values
+
+------------------------------------------------------------------------
+ESTIMATED SPLIT-EXPONENT PAYLOAD SAVINGS
+  Raw f32 intensity payload      :      811,224 bytes  (0.774 MiB)
+  Split-exponent payload         :      735,172 bytes  (0.701 MiB)
+    FOR-packed exponent stream   :      126,754 bytes  (5 bits × 202,806 peaks / 8)
+    Raw 3-byte mantissa stream   :      608,418 bytes  (3 bytes × 202,806 peaks)
+  Savings                        :       76,052 bytes  (9.4%)
+  Savings in MiB                 : 0.073 MiB
+
+  Note: Savings estimate is FOR-only (no rANS). Adding rANS on the
+  exponent stream will improve further (exponent entropy =
+  2.76 bits < FOR bits = 5).
+
+========================================================================

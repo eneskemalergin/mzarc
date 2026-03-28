@@ -53,6 +53,11 @@ pub const BlockByteBreakdown = struct {
 };
 
 pub const flag_lossless_intensity_raw: u8 = 0b0000_0001;
+/// Lossless intensity stored as split exponent + raw mantissa.
+/// The f32 exponent byte (bits 23..30) is FOR-packed; bytes 0..2 are stored raw.
+/// Mutually exclusive with flag_lossless_intensity_raw.
+/// Bit 2 (0b0000_0100) is used; bits 1, 6, 7 remain free.
+pub const flag_split_exponent: u8 = 0b0000_0100;
 /// m/z stored as f32 bit patterns, delta-encoded as u32.  Guarantees bit-exact
 /// round-trips for values that are already f32-precision (every real instrument
 /// produces f32 natively; mzML just widens to f64).
@@ -370,13 +375,49 @@ pub fn encodeBlock(allocator: Allocator, spectra: []const binary_reader.RawSpect
 
     var intensity_bit_width: u8 = 0;
     if (options.mode == .lossless) {
-        flags |= flag_lossless_intensity_raw;
-        for (spectra) |spectrum| {
-            if (builtin.cpu.arch.endian() == .little) {
-                try payload.appendSlice(allocator, std.mem.sliceAsBytes(spectrum.intensity));
-            } else {
+        // Dry-run: compare split-exponent layout vs raw f32 and use whichever is smaller.
+        // Split layout: [bw:1][base:8][payload_len:4][exp_payload][mantissa: 3*total_peaks]
+        const exp_values = try allocator.alloc(u64, total_peaks);
+        defer allocator.free(exp_values);
+        {
+            var i: usize = 0;
+            for (spectra) |spectrum| {
                 for (spectrum.intensity) |value| {
-                    try appendF32Le(&payload, allocator, value);
+                    exp_values[i] = (@as(u32, @bitCast(value)) >> 24) & 0xFF;
+                    i += 1;
+                }
+            }
+        }
+        const packed_exp = try bitpack.packForU64(allocator, exp_values);
+        defer packed_exp.deinit(allocator);
+        const split_bytes: usize = 1 + 8 + 4 + packed_exp.payload.len + 3 * total_peaks;
+        const raw_bytes: usize = 4 * total_peaks;
+        if (split_bytes < raw_bytes) {
+            // Split-exponent wins: FOR-pack the exponent stream, store mantissa raw.
+            flags |= flag_split_exponent;
+            intensity_bit_width = packed_exp.bit_width;
+            try payload.append(allocator, packed_exp.bit_width);
+            try appendIntLe(&payload, allocator, u64, packed_exp.base);
+            try appendIntLe(&payload, allocator, u32, @intCast(packed_exp.payload.len));
+            try payload.appendSlice(allocator, packed_exp.payload);
+            for (spectra) |spectrum| {
+                for (spectrum.intensity) |value| {
+                    const bits: u32 = @bitCast(value);
+                    try payload.append(allocator, @truncate(bits & 0xFF));
+                    try payload.append(allocator, @truncate((bits >> 8) & 0xFF));
+                    try payload.append(allocator, @truncate((bits >> 16) & 0xFF));
+                }
+            }
+        } else {
+            // Fall back to raw f32 (compat path, v0.1.1 behaviour).
+            flags |= flag_lossless_intensity_raw;
+            for (spectra) |spectrum| {
+                if (builtin.cpu.arch.endian() == .little) {
+                    try payload.appendSlice(allocator, std.mem.sliceAsBytes(spectrum.intensity));
+                } else {
+                    for (spectrum.intensity) |value| {
+                        try appendF32Le(&payload, allocator, value);
+                    }
                 }
             }
         }
@@ -583,6 +624,36 @@ pub fn decodeBlock(allocator: Allocator, block_bytes: []const u8) ![]binary_read
             }
         }
         offset += raw_len;
+    } else if ((header.flags & flag_split_exponent) != 0) {
+        // Split-exponent decode: reconstruct f32 from FOR-packed exponent + raw 3-byte mantissa.
+        if (payload.len - offset < 13) return error.UnexpectedEndOfStream;
+        const exp_bit_width = payload[offset];
+        offset += 1;
+        const exp_base = readIntLe(u64, payload[offset .. offset + 8]);
+        offset += 8;
+        const exp_payload_len = readIntLe(u32, payload[offset .. offset + 4]);
+        offset += 4;
+        if (payload.len - offset < exp_payload_len) return error.UnexpectedEndOfStream;
+        const exp_unpacked = try bitpack.unpackForU64(allocator, .{
+            .base = exp_base,
+            .bit_width = exp_bit_width,
+            .count = total_peaks,
+            .payload = payload[offset .. offset + exp_payload_len],
+        });
+        defer allocator.free(exp_unpacked);
+        offset += exp_payload_len;
+        const mantissa_len = total_peaks * 3;
+        if (payload.len - offset < mantissa_len) return error.UnexpectedEndOfStream;
+        for (flat_intensity, 0..) |*value, idx| {
+            const b0 = payload[offset + idx * 3];
+            const b1 = payload[offset + idx * 3 + 1];
+            const b2 = payload[offset + idx * 3 + 2];
+            const exp_byte: u8 = @truncate(exp_unpacked[idx]);
+            const bits: u32 = (@as(u32, exp_byte) << 24) |
+                (@as(u32, b2) << 16) | (@as(u32, b1) << 8) | b0;
+            value.* = @bitCast(bits);
+        }
+        offset += mantissa_len;
     } else {
         if (payload.len - offset < 6) return error.UnexpectedEndOfStream;
         const intensity_base = readIntLe(u16, payload[offset .. offset + 2]);
@@ -720,6 +791,19 @@ pub fn inspectBlockByteBreakdown(block_bytes: []const u8) !BlockByteBreakdown {
         intensity_payload_bytes = total_peaks * @sizeOf(f32);
         if (payload.len - offset < intensity_payload_bytes) return error.UnexpectedEndOfStream;
         offset += intensity_payload_bytes;
+    } else if ((header.flags & flag_split_exponent) != 0) {
+        if (payload.len - offset < 13) return error.UnexpectedEndOfStream;
+        offset += 1; // bit_width byte
+        offset += 8; // base u64
+        const exp_packed_len = readIntLe(u32, payload[offset .. offset + 4]);
+        offset += 4;
+        if (payload.len - offset < exp_packed_len) return error.UnexpectedEndOfStream;
+        offset += exp_packed_len;
+        const mantissa_len = total_peaks * 3;
+        if (payload.len - offset < mantissa_len) return error.UnexpectedEndOfStream;
+        offset += mantissa_len;
+        intensity_metadata_bytes = 1 + 8 + 4; // bw + base + payload_len field
+        intensity_payload_bytes = exp_packed_len + mantissa_len;
     } else {
         intensity_metadata_bytes = @sizeOf(u16) + @sizeOf(u32);
         if (payload.len - offset < intensity_metadata_bytes) return error.UnexpectedEndOfStream;

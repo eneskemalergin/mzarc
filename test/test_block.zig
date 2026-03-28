@@ -240,3 +240,69 @@ test "lossy block worst-case intensity error stays below 0.1%" {
         return error.TestExpectedLessThan;
     }
 }
+
+test "split-exponent: wide-range intensities activate split path and round-trip bit-exact" {
+    // 40 peaks cycling through 8 intensity values spanning ~6 decades (2^9..2^28).
+    // With 5-bit exponent FOR and the 13-byte overhead, split (158 bytes) < raw (160 bytes),
+    // so flag_split_exponent must be set and the round-trip must be bit-exact.
+    const intensity_levels = [8]f32{
+        512.0,       // 2^9,  biased exp = 136
+        4096.0,      // 2^12, biased exp = 139
+        32768.0,     // 2^15, biased exp = 142
+        262144.0,    // 2^18, biased exp = 145
+        2097152.0,   // 2^21, biased exp = 148
+        16777216.0,  // 2^24, biased exp = 151
+        134217728.0, // 2^27, biased exp = 154
+        268435456.0, // 2^28, biased exp = 155
+    };
+    var mz_buf: [40]f64 = undefined;
+    var int_buf: [40]f32 = undefined;
+    for (0..40) |i| {
+        mz_buf[i] = @as(f64, @floatFromInt(400 + i)); // 400.0 .. 439.0, all f32-exact integers
+        int_buf[i] = intensity_levels[i % 8];
+    }
+
+    const spectra = [_]binary_reader.RawSpectrum{
+        .{ .scan_id = 1, .rt_seconds = 1.0, .ms_level = 2, .precursor_mz = 500.0, .mz = mz_buf[0..], .intensity = int_buf[0..] },
+    };
+
+    const encoded = try block.encodeBlock(std.testing.allocator, &spectra, .{ .mode = .lossless });
+    defer std.testing.allocator.free(encoded);
+
+    const header = try block.parseHeader(encoded);
+    // Split-exponent flag must be set; raw flag must NOT be set.
+    try std.testing.expect((header.flags & block.flag_split_exponent) != 0);
+    try std.testing.expect((header.flags & block.flag_lossless_intensity_raw) == 0);
+
+    const decoded = try block.decodeBlock(std.testing.allocator, encoded);
+    defer binary_reader.freeSpectra(std.testing.allocator, decoded);
+
+    try std.testing.expectEqual(@as(usize, 1), decoded.len);
+    // Bit-exact round-trip: every intensity must match exactly.
+    try std.testing.expectEqualSlices(f32, int_buf[0..], decoded[0].intensity);
+}
+
+test "split-exponent: degenerate small spectrum falls back to raw f32" {
+    // 5 peaks all at the same intensity (exponent range = 0, bit_width = 0).
+    // split_bytes = 13 + 0 + 3*5 = 28 > raw_bytes = 4*5 = 20 → fallback to raw f32.
+    var mz_buf = [_]f64{ 100.0, 200.0, 300.0, 400.0, 500.0 };
+    var int_buf = [_]f32{ 1000.0, 1000.0, 1000.0, 1000.0, 1000.0 };
+
+    const spectra = [_]binary_reader.RawSpectrum{
+        .{ .scan_id = 1, .rt_seconds = 1.0, .ms_level = 2, .precursor_mz = 300.0, .mz = mz_buf[0..], .intensity = int_buf[0..] },
+    };
+
+    const encoded = try block.encodeBlock(std.testing.allocator, &spectra, .{ .mode = .lossless });
+    defer std.testing.allocator.free(encoded);
+
+    const header = try block.parseHeader(encoded);
+    // Dry-run gate must have chosen raw f32 — split flag must NOT be set.
+    try std.testing.expect((header.flags & block.flag_split_exponent) == 0);
+    try std.testing.expect((header.flags & block.flag_lossless_intensity_raw) != 0);
+
+    const decoded = try block.decodeBlock(std.testing.allocator, encoded);
+    defer binary_reader.freeSpectra(std.testing.allocator, decoded);
+
+    try std.testing.expectEqual(@as(usize, 1), decoded.len);
+    try std.testing.expectEqualSlices(f32, int_buf[0..], decoded[0].intensity);
+}

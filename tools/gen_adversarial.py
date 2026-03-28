@@ -200,6 +200,55 @@ def gen_random_block(rng: random.Random) -> list[Spectrum]:
     return spectra
 
 
+def gen_split_exp_narrow(rng: random.Random) -> list[Spectrum]:
+    """100 spectra, intensities all in [1e4, 9.9e4] (one decade).
+
+    Exponent range = 1 (biased exponents 143-144 only), FOR bit width = 1.
+    split_bytes = 13 + ceil(1*N/8) + 3*N vs raw_bytes = 4*N.
+    For N=20 peaks: split=13+3+60=76 vs raw=80 → split wins.
+    Tests that flag_split_exponent is set AND round-trip is bit-exact.
+    """
+    spectra = []
+    # Force exact f32 values whose biased exponent is 143 (2^16) or 144 (2^17)
+    # to guarantee exponent range = 1 deterministically (no rng drift).
+    low_vals  = [65536.0,  32768.0 * 1.5, 65536.0 * 1.25, 65536.0 * 1.75,
+                 32768.0 * 1.1, 65536.0 * 1.125, 32768.0 * 1.875, 65536.0 * 1.0625,
+                 32768.0 * 1.25, 65536.0 * 1.5,  # mix of exp 143 and 144
+                 32768.0 * 1.75, 65536.0 * 1.875, 32768.0 * 1.0625, 65536.0 * 1.125,
+                 32768.0 * 1.625, 65536.0 * 1.375, 32768.0 * 1.9375, 65536.0 * 1.3125,
+                 32768.0 * 1.5625, 65536.0 * 1.6875]
+    for i in range(100):
+        mz = sorted(200.0 + j * 10.0 for j in range(20))
+        intensity = [low_vals[j % len(low_vals)] for j in range(20)]
+        spectra.append(_ms2(scan_id=i + 1, rt=float(i) * 0.1, precursor_mz=500.0,
+                            mz=mz, intensity=intensity))
+    return spectra
+
+
+def gen_split_exp_degenerate(rng: random.Random) -> list[Spectrum]:
+    """100 spectra, all intensities identical (exponent range = 0, bit_width = 0).
+
+    Tests that the split-exponent encoder correctly writes a zero-length FOR
+    exponent payload (packed_exp.payload.len = 0, bit_width = 0) and that the
+    decoder reconstructs every f32 exactly from the base exponent alone.
+
+    With 500 total peaks: split=13+0+1500=1513 < raw=2000, so split-exponent
+    IS active (flag_split_exponent must be set, flag_lossless_intensity_raw=0).
+
+    The raw-f32 fallback path (when split_bytes >= raw_bytes) requires <=13 total
+    peaks per block; it is covered by the unit test:
+      "split-exponent: degenerate small spectrum falls back to raw f32"
+    in test/test_block.zig.
+    """
+    spectra = []
+    for i in range(100):
+        mz = sorted(100.0 + j * 50.0 for j in range(5))
+        intensity = [16384.0] * 5   # all identical → exponent range = 0, bit_width = 0
+        spectra.append(_ms2(scan_id=i + 1, rt=float(i) * 0.1, precursor_mz=300.0,
+                            mz=mz, intensity=intensity))
+    return spectra
+
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -216,6 +265,8 @@ CORPUS: list[tuple[str, object]] = [
     ("dense.bin", gen_dense),
     ("identical_block.bin", gen_identical_block),
     ("random_block.bin", gen_random_block),
+    ("split_exp_narrow.bin", gen_split_exp_narrow),
+    ("split_exp_degenerate.bin", gen_split_exp_degenerate),
 ]
 
 

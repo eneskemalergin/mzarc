@@ -24,12 +24,12 @@
       "path": "data/PXD075509/benchmarks/15HCD_1/15HCD_1.bin",
       "bytes": 32273524
     },
-    "mzv1 lossless": {
-      "path": "data/PXD075509/benchmarks/15HCD_1/15HCD_1.lossless.mzv1",
-      "bytes": 21213320
+    "mzarc lossless": {
+      "path": "data/PXD075509/benchmarks/15HCD_1/15HCD_1.lossless.mzarc",
+      "bytes": 19802353
     },
-    "mzv1 lossy": {
-      "path": "data/PXD075509/benchmarks/15HCD_1/15HCD_1.lossy.q16384.mzv1",
+    "mzarc lossy": {
+      "path": "data/PXD075509/benchmarks/15HCD_1/15HCD_1.lossy.q16384.mzarc",
       "bytes": 14461329
     },
     "gzip dump": {
@@ -90,7 +90,7 @@
     }
   },
   "codec_byte_breakdown": {
-    "mzv1 lossless": {
+    "mzarc lossless": {
       "file_header_bytes": 32,
       "global_order_bytes": 36004,
       "block_header_bytes": 2880,
@@ -100,11 +100,11 @@
       "peak_count_bytes": 36004,
       "mz_metadata_bytes": 864,
       "mz_payload_bytes": 10340312,
-      "intensity_metadata_bytes": 0,
-      "intensity_payload_bytes": 10673832,
-      "total_bytes": 21213320
+      "intensity_metadata_bytes": 936,
+      "intensity_payload_bytes": 9261929,
+      "total_bytes": 19802353
     },
-    "mzv1 lossy q=16384": {
+    "mzarc lossy q=16384": {
       "file_header_bytes": 32,
       "global_order_bytes": 36004,
       "block_header_bytes": 2880,
@@ -126,25 +126,25 @@
         "<python-callable>"
       ],
       "runs_seconds": [
-        4.598595684001339,
-        4.598255001998041,
-        4.637513287001639
+        4.640947006002534,
+        4.670818651000445,
+        4.591488938000111
       ],
-      "median_seconds": 4.598595684001339,
-      "mean_seconds": 4.611454657667006,
-      "min_seconds": 4.598255001998041,
-      "max_seconds": 4.637513287001639,
-      "throughput_mib_s": 16.38340403472225,
-      "throughput_input_mib_s": 16.38340403472225,
+      "median_seconds": 4.640947006002534,
+      "mean_seconds": 4.634418198334363,
+      "min_seconds": 4.591488938000111,
+      "max_seconds": 4.670818651000445,
+      "throughput_mib_s": 16.302224273051994,
+      "throughput_input_mib_s": 16.302224273051994,
       "throughput_output_mib_s": null,
       "throughput_basis": "input",
       "input_bytes": 79221306,
       "output_bytes": null,
       "repeats": 3,
-      "stdev_seconds": 0.02256807785693488,
-      "ci95_low_seconds": 4.5553879195586156,
-      "ci95_high_seconds": 4.667521395775397,
-      "ci95_half_width_seconds": 0.056066738108390655
+      "stdev_seconds": 0.04006581882795867,
+      "ci95_low_seconds": 4.53488115377232,
+      "ci95_high_seconds": 4.733955242896407,
+      "ci95_half_width_seconds": 0.09953704456204315
     },
     {
       "name": "dump -> gzip dump",
@@ -155,25 +155,25 @@
         "data/PXD075509/benchmarks/15HCD_1/15HCD_1.bin"
       ],
       "runs_seconds": [
-        1.637442908999219,
-        1.634573477000231,
-        1.642243818998395
+        1.6762471800029743,
+        1.656493947004492,
+        1.654284326999914
       ],
-      "median_seconds": 1.637442908999219,
-      "mean_seconds": 1.6380867349992816,
-      "min_seconds": 1.634573477000231,
-      "max_seconds": 1.642243818998395,
-      "throughput_mib_s": 18.789255953979875,
-      "throughput_input_mib_s": 18.789255953979875,
+      "median_seconds": 1.656493947004492,
+      "mean_seconds": 1.66234181800246,
+      "min_seconds": 1.654284326999914,
+      "max_seconds": 1.6762471800029743,
+      "throughput_mib_s": 18.515103575812923,
+      "throughput_input_mib_s": 18.515103575812923,
       "throughput_output_mib_s": null,
       "throughput_basis": "input",
       "input_bytes": 32273524,
       "output_bytes": null,
       "repeats": 3,
-      "stdev_seconds": 0.003875489714986658,
-      "ci95_low_seconds": 1.6284587078243775,
-      "ci95_high_seconds": 1.6477147621741857,
-      "ci95_half_width_seconds": 0.009628027174904012
+      "stdev_seconds": 0.012092970041109334,
+      "ci95_low_seconds": 1.6322987904772273,
+      "ci95_high_seconds": 1.6923848455276929,
+      "ci95_half_width_seconds": 0.03004302752523279
     },
     {
       "name": "gzip dump -> dump",
@@ -184,25 +184,25 @@
         "data/PXD075509/benchmarks/15HCD_1/15HCD_1.bin.gz"
       ],
       "runs_seconds": [
-        0.20512553599837702,
-        0.20579482899483992,
-        0.20421624199661892
+        0.20479679200070677,
+        0.20277779400203144,
+        0.21624746100133052
       ],
-      "median_seconds": 0.20512553599837702,
-      "mean_seconds": 0.20504553566327863,
-      "min_seconds": 0.20421624199661892,
-      "max_seconds": 0.20579482899483992,
-      "throughput_mib_s": 150.1053453280952,
-      "throughput_input_mib_s": 96.65250115130573,
-      "throughput_output_mib_s": 150.1053453280952,
+      "median_seconds": 0.20479679200070677,
+      "mean_seconds": 0.20794068233468957,
+      "min_seconds": 0.20277779400203144,
+      "max_seconds": 0.21624746100133052,
+      "throughput_mib_s": 148.01543686954668,
+      "throughput_input_mib_s": 95.30681369924015,
+      "throughput_output_mib_s": 148.01543686954668,
       "throughput_basis": "output",
       "input_bytes": 20780851,
       "output_bytes": 32273524,
       "repeats": 3,
-      "stdev_seconds": 0.0007923283839103507,
-      "ci95_low_seconds": 0.20307712398559136,
-      "ci95_high_seconds": 0.2070139473409659,
-      "ci95_half_width_seconds": 0.0019684116776872668
+      "stdev_seconds": 0.00726436625536492,
+      "ci95_low_seconds": 0.18989353968723452,
+      "ci95_high_seconds": 0.22598782498214462,
+      "ci95_half_width_seconds": 0.018047142647455054
     },
     {
       "name": "dump -> zstd dump",
@@ -213,25 +213,25 @@
         "data/PXD075509/benchmarks/15HCD_1/15HCD_1.bin"
       ],
       "runs_seconds": [
-        0.19431302899465663,
-        0.18704713899933267,
-        0.1820058980010799
+        0.18641025600663852,
+        0.18371616399963386,
+        0.18550625100033358
       ],
-      "median_seconds": 0.18704713899933267,
-      "mean_seconds": 0.18778868866502307,
-      "min_seconds": 0.1820058980010799,
-      "max_seconds": 0.19431302899465663,
-      "throughput_mib_s": 163.89928039607955,
-      "throughput_input_mib_s": 163.89928039607955,
+      "median_seconds": 0.18550625100033358,
+      "mean_seconds": 0.1852108903355353,
+      "min_seconds": 0.18371616399963386,
+      "max_seconds": 0.18641025600663852,
+      "throughput_mib_s": 166.18045992307088,
+      "throughput_input_mib_s": 166.18045992307088,
       "throughput_output_mib_s": null,
       "throughput_basis": "input",
       "input_bytes": 32273524,
       "output_bytes": null,
       "repeats": 3,
-      "stdev_seconds": 0.006186985554636307,
-      "ci95_low_seconds": 0.17241812405729787,
-      "ci95_high_seconds": 0.20315925327274828,
-      "ci95_half_width_seconds": 0.015370564607725198
+      "stdev_seconds": 0.0013711168357525719,
+      "ci95_low_seconds": 0.18180457239240033,
+      "ci95_high_seconds": 0.1886172082786703,
+      "ci95_half_width_seconds": 0.00340631794313499
     },
     {
       "name": "zstd dump -> dump",
@@ -243,25 +243,25 @@
         "data/PXD075509/benchmarks/15HCD_1/15HCD_1.bin.zst"
       ],
       "runs_seconds": [
-        0.05328797400579788,
-        0.05293207299837377,
-        0.053581405998556875
+        0.05402789700019639,
+        0.05467883000528673,
+        0.0535839760050294
       ],
-      "median_seconds": 0.05328797400579788,
-      "mean_seconds": 0.05326715100090951,
-      "min_seconds": 0.05293207299837377,
-      "max_seconds": 0.053581405998556875,
-      "throughput_mib_s": 577.8125985787221,
-      "throughput_input_mib_s": 335.16144038418037,
-      "throughput_output_mib_s": 577.8125985787221,
+      "median_seconds": 0.05402789700019639,
+      "mean_seconds": 0.05409690100350417,
+      "min_seconds": 0.0535839760050294,
+      "max_seconds": 0.05467883000528673,
+      "throughput_mib_s": 568.9499835993748,
+      "throughput_input_mib_s": 330.02066150646993,
+      "throughput_output_mib_s": 568.9499835993748,
       "throughput_basis": "output",
       "input_bytes": 18720327,
       "output_bytes": 32273524,
       "repeats": 3,
-      "stdev_seconds": 0.00032516693317607504,
-      "ci95_low_seconds": 0.052459326364736984,
-      "ci95_high_seconds": 0.05407497563708203,
-      "ci95_half_width_seconds": 0.0008078246361725218
+      "stdev_seconds": 0.0005506791123914577,
+      "ci95_low_seconds": 0.0527288278440647,
+      "ci95_high_seconds": 0.055464974162943645,
+      "ci95_half_width_seconds": 0.0013680731594394719
     },
     {
       "name": "dump -> bzip2 dump",
@@ -271,25 +271,25 @@
         "data/PXD075509/benchmarks/15HCD_1/15HCD_1.bin"
       ],
       "runs_seconds": [
-        2.6290178029958042,
-        2.6327940990013303,
-        2.632620898002642
+        2.739878360000148,
+        2.7072073509989423,
+        2.6923316990068997
       ],
-      "median_seconds": 2.632620898002642,
-      "mean_seconds": 2.6314775999999256,
-      "min_seconds": 2.6290178029958042,
-      "max_seconds": 2.6327940990013303,
-      "throughput_mib_s": 11.696254202856059,
-      "throughput_input_mib_s": 11.696254202856059,
+      "median_seconds": 2.7072073509989423,
+      "mean_seconds": 2.7131391366686635,
+      "min_seconds": 2.6923316990068997,
+      "max_seconds": 2.739878360000148,
+      "throughput_mib_s": 11.344213985469281,
+      "throughput_input_mib_s": 11.344213985469281,
       "throughput_output_mib_s": null,
       "throughput_basis": "input",
       "input_bytes": 32273524,
       "output_bytes": null,
       "repeats": 3,
-      "stdev_seconds": 0.002132006243564952,
-      "ci95_low_seconds": 2.626180975428654,
-      "ci95_high_seconds": 2.636774224571197,
-      "ci95_half_width_seconds": 0.005296624571271518
+      "stdev_seconds": 0.024322023020821048,
+      "ci95_low_seconds": 2.652715005574327,
+      "ci95_high_seconds": 2.773563267763,
+      "ci95_half_width_seconds": 0.06042413109433634
     },
     {
       "name": "bzip2 dump -> dump",
@@ -300,25 +300,25 @@
         "data/PXD075509/benchmarks/15HCD_1/15HCD_1.bin.bz2"
       ],
       "runs_seconds": [
-        1.4591158469993388,
-        1.4528283899999224,
-        1.4514870339990011
+        1.4683926340003381,
+        1.4836858280032175,
+        1.4607069720004802
       ],
-      "median_seconds": 1.4528283899999224,
-      "mean_seconds": 1.4544770903327542,
-      "min_seconds": 1.4514870339990011,
-      "max_seconds": 1.4591158469993388,
-      "throughput_mib_s": 21.161165853550322,
-      "throughput_input_mib_s": 12.929940385871038,
-      "throughput_output_mib_s": 21.161165853550322,
+      "median_seconds": 1.4683926340003381,
+      "mean_seconds": 1.4709284780013452,
+      "min_seconds": 1.4607069720004802,
+      "max_seconds": 1.4836858280032175,
+      "throughput_mib_s": 20.92449184241884,
+      "throughput_input_mib_s": 12.78532733023915,
+      "throughput_output_mib_s": 20.92449184241884,
       "throughput_basis": "output",
       "input_bytes": 19719837,
       "output_bytes": 32273524,
       "repeats": 3,
-      "stdev_seconds": 0.0040728806193086435,
-      "ci95_low_seconds": 1.4443586773922676,
-      "ci95_high_seconds": 1.4645955032732407,
-      "ci95_half_width_seconds": 0.010118412940486541
+      "stdev_seconds": 0.011697428537790554,
+      "ci95_low_seconds": 1.4418681093457848,
+      "ci95_high_seconds": 1.4999888466569056,
+      "ci95_half_width_seconds": 0.029060368655560442
     },
     {
       "name": "dump -> lz4 dump",
@@ -329,25 +329,25 @@
         "data/PXD075509/benchmarks/15HCD_1/15HCD_1.bin"
       ],
       "runs_seconds": [
-        0.07732603600015864,
-        0.07860524100397015,
-        0.07652084299479611
+        0.07850105100078508,
+        0.07874544100195635,
+        0.07882879200042225
       ],
-      "median_seconds": 0.07732603600015864,
-      "mean_seconds": 0.07748403999964164,
-      "min_seconds": 0.07652084299479611,
-      "max_seconds": 0.07860524100397015,
-      "throughput_mib_s": 397.22284665155627,
-      "throughput_input_mib_s": 397.22284665155627,
+      "median_seconds": 0.07874544100195635,
+      "mean_seconds": 0.07869176133438789,
+      "min_seconds": 0.07850105100078508,
+      "max_seconds": 0.07882879200042225,
+      "throughput_mib_s": 391.1264713968308,
+      "throughput_input_mib_s": 391.1264713968308,
       "throughput_output_mib_s": null,
       "throughput_basis": "input",
       "input_bytes": 32273524,
       "output_bytes": null,
       "repeats": 3,
-      "stdev_seconds": 0.0010511435263805032,
-      "ci95_low_seconds": 0.07487264397462322,
-      "ci95_high_seconds": 0.08009543602466006,
-      "ci95_half_width_seconds": 0.0026113960250184172
+      "stdev_seconds": 0.00017033693299894778,
+      "ci95_low_seconds": 0.07826858678345006,
+      "ci95_high_seconds": 0.07911493588532573,
+      "ci95_half_width_seconds": 0.00042317455093783394
     },
     {
       "name": "lz4 dump -> dump",
@@ -359,25 +359,25 @@
         "data/PXD075509/benchmarks/15HCD_1/15HCD_1.bin.lz4"
       ],
       "runs_seconds": [
-        0.05424939899967285,
-        0.05586697500257287,
-        0.054152459000761155
+        0.0560548959983862,
+        0.05485878099716501,
+        0.05458977999660419
       ],
-      "median_seconds": 0.05424939899967285,
-      "mean_seconds": 0.05475627766766896,
-      "min_seconds": 0.054152459000761155,
-      "max_seconds": 0.05586697500257287,
-      "throughput_mib_s": 562.0986715993286,
-      "throughput_input_mib_s": 453.5095305922501,
-      "throughput_output_mib_s": 562.0986715993286,
+      "median_seconds": 0.05485878099716501,
+      "mean_seconds": 0.05516781899738513,
+      "min_seconds": 0.05458977999660419,
+      "max_seconds": 0.0560548959983862,
+      "throughput_mib_s": 557.9055235114433,
+      "throughput_input_mib_s": 450.12643663184286,
+      "throughput_output_mib_s": 557.9055235114433,
       "throughput_basis": "output",
       "input_bytes": 26038757,
       "output_bytes": 32273524,
       "repeats": 3,
-      "stdev_seconds": 0.0009631125417983308,
-      "ci95_low_seconds": 0.05236358038116432,
-      "ci95_high_seconds": 0.0571489749541736,
-      "ci95_half_width_seconds": 0.002392697286504637
+      "stdev_seconds": 0.0007799163986315861,
+      "ci95_low_seconds": 0.05323024288896704,
+      "ci95_high_seconds": 0.057105395105803224,
+      "ci95_half_width_seconds": 0.00193757610841809
     },
     {
       "name": "dump -> xz dump",
@@ -387,25 +387,25 @@
         "data/PXD075509/benchmarks/15HCD_1/15HCD_1.bin"
       ],
       "runs_seconds": [
-        11.634157398999378,
-        11.686247689001902,
-        12.368193845999485
+        12.931673883998883,
+        12.887448706998839,
+        12.521783256997878
       ],
-      "median_seconds": 11.686247689001902,
-      "mean_seconds": 11.896199644666922,
-      "min_seconds": 11.634157398999378,
-      "max_seconds": 12.368193845999485,
-      "throughput_mib_s": 2.5872490255758867,
-      "throughput_input_mib_s": 2.5872490255758867,
+      "median_seconds": 12.887448706998839,
+      "mean_seconds": 12.780301949331866,
+      "min_seconds": 12.521783256997878,
+      "max_seconds": 12.931673883998883,
+      "throughput_mib_s": 2.4082710299602703,
+      "throughput_input_mib_s": 2.4082710299602703,
       "throughput_output_mib_s": null,
       "throughput_basis": "input",
       "input_bytes": 32273524,
       "output_bytes": null,
       "repeats": 3,
-      "stdev_seconds": 0.40958789550816826,
-      "ci95_low_seconds": 10.878644786189387,
-      "ci95_high_seconds": 12.913754503144457,
-      "ci95_half_width_seconds": 1.0175548584775345
+      "stdev_seconds": 0.2249731145820048,
+      "ci95_low_seconds": 12.221392644930372,
+      "ci95_high_seconds": 13.33921125373336,
+      "ci95_half_width_seconds": 0.5589093044014938
     },
     {
       "name": "xz dump -> dump",
@@ -416,25 +416,25 @@
         "data/PXD075509/benchmarks/15HCD_1/15HCD_1.bin.xz"
       ],
       "runs_seconds": [
-        0.48998246699920855,
-        0.49430750600004103,
-        0.4948925680000684
+        0.5140191450045677,
+        0.5019003540000995,
+        0.4998566750000464
       ],
-      "median_seconds": 0.49430750600004103,
-      "mean_seconds": 0.49306084699977265,
-      "min_seconds": 0.48998246699920855,
-      "max_seconds": 0.4948925680000684,
-      "throughput_mib_s": 62.42319000992365,
-      "throughput_input_mib_s": 31.98272251615448,
-      "throughput_output_mib_s": 62.42319000992365,
+      "median_seconds": 0.5019003540000995,
+      "mean_seconds": 0.5052587246682378,
+      "min_seconds": 0.4998566750000464,
+      "max_seconds": 0.5140191450045677,
+      "throughput_mib_s": 60.916179050506024,
+      "throughput_input_mib_s": 31.21060059582014,
+      "throughput_output_mib_s": 60.916179050506024,
       "throughput_basis": "output",
       "input_bytes": 16535444,
       "output_bytes": 32273524,
       "repeats": 3,
-      "stdev_seconds": 0.002681956740306199,
-      "ci95_low_seconds": 0.48639795939676067,
-      "ci95_high_seconds": 0.49972373460278463,
-      "ci95_half_width_seconds": 0.006662887603011988
+      "stdev_seconds": 0.0076552517473758245,
+      "ci95_low_seconds": 0.486240490257901,
+      "ci95_high_seconds": 0.5242769590785747,
+      "ci95_half_width_seconds": 0.019018234410336864
     },
     {
       "name": "mzML -> gzip mzML",
@@ -445,25 +445,25 @@
         "data/PXD075509/15HCD_1.mzML"
       ],
       "runs_seconds": [
-        1.5216122599958908,
-        1.5473993699997663,
-        1.527672326003085
+        1.5456020100027672,
+        1.5546437969969702,
+        1.5401427059987327
       ],
-      "median_seconds": 1.527672326003085,
-      "mean_seconds": 1.532227985332914,
-      "min_seconds": 1.5216122599958908,
-      "max_seconds": 1.5473993699997663,
-      "throughput_mib_s": 49.308148374502494,
-      "throughput_input_mib_s": 49.308148374502494,
+      "median_seconds": 1.5456020100027672,
+      "mean_seconds": 1.54679617099949,
+      "min_seconds": 1.5401427059987327,
+      "max_seconds": 1.5546437969969702,
+      "throughput_mib_s": 48.84374959083427,
+      "throughput_input_mib_s": 48.84374959083427,
       "throughput_output_mib_s": null,
       "throughput_basis": "input",
       "input_bytes": 79221306,
       "output_bytes": null,
       "repeats": 3,
-      "stdev_seconds": 0.013483667325141523,
-      "ci95_low_seconds": 1.498729995408749,
-      "ci95_high_seconds": 1.565725975257079,
-      "ci95_half_width_seconds": 0.033497989924164924
+      "stdev_seconds": 0.007323928276503097,
+      "ci95_low_seconds": 1.5286010561471564,
+      "ci95_high_seconds": 1.5649912858518236,
+      "ci95_half_width_seconds": 0.018195114852333567
     },
     {
       "name": "gzip mzML -> mzML",
@@ -474,25 +474,25 @@
         "data/PXD075509/benchmarks/15HCD_1/15HCD_1.mzML.gz"
       ],
       "runs_seconds": [
-        0.3537550730034127,
-        0.3536783320014365,
-        0.35346876100084046
+        0.3555876079990412,
+        0.35771319700143067,
+        0.3546880739959306
       ],
-      "median_seconds": 0.3536783320014365,
-      "mean_seconds": 0.3536340553352299,
-      "min_seconds": 0.35346876100084046,
-      "max_seconds": 0.3537550730034127,
-      "throughput_mib_s": 213.6426729963576,
-      "throughput_input_mib_s": 68.6746340957493,
-      "throughput_output_mib_s": 213.6426729963576,
+      "median_seconds": 0.3555876079990412,
+      "mean_seconds": 0.3559962929988008,
+      "min_seconds": 0.3546880739959306,
+      "max_seconds": 0.35771319700143067,
+      "throughput_mib_s": 212.22503247980407,
+      "throughput_input_mib_s": 68.21893888098626,
+      "throughput_output_mib_s": 212.22503247980407,
       "throughput_basis": "output",
       "input_bytes": 25465391,
       "output_bytes": 79221306,
       "repeats": 3,
-      "stdev_seconds": 0.00014820242265904264,
-      "ci95_low_seconds": 0.353265870394052,
-      "ci95_high_seconds": 0.3540022402764078,
-      "ci95_half_width_seconds": 0.00036818494117788804
+      "stdev_seconds": 0.00155341876883628,
+      "ci95_low_seconds": 0.3521370753978548,
+      "ci95_high_seconds": 0.3598555105997468,
+      "ci95_half_width_seconds": 0.003859217600945982
     },
     {
       "name": "mzML -> zstd mzML",
@@ -503,25 +503,25 @@
         "data/PXD075509/15HCD_1.mzML"
       ],
       "runs_seconds": [
-        0.16863101099443156,
-        0.1717048239952419,
-        0.1752516199994716
+        0.17091502900439082,
+        0.17329669000173453,
+        0.1711497709984542
       ],
-      "median_seconds": 0.1717048239952419,
-      "mean_seconds": 0.17186248499638168,
-      "min_seconds": 0.16863101099443156,
-      "max_seconds": 0.1752516199994716,
-      "throughput_mib_s": 439.6033540766676,
-      "throughput_input_mib_s": 439.6033540766676,
+      "median_seconds": 0.1711497709984542,
+      "mean_seconds": 0.17178716333485985,
+      "min_seconds": 0.17091502900439082,
+      "max_seconds": 0.17329669000173453,
+      "throughput_mib_s": 439.7961022098624,
+      "throughput_input_mib_s": 439.7961022098624,
       "throughput_output_mib_s": null,
       "throughput_basis": "input",
       "input_bytes": 79221306,
       "output_bytes": null,
       "repeats": 3,
-      "stdev_seconds": 0.003313119171244005,
-      "ci95_low_seconds": 0.1636315764505329,
-      "ci95_high_seconds": 0.18009339354223047,
-      "ci95_half_width_seconds": 0.008230908545848781
+      "stdev_seconds": 0.0013125467684804847,
+      "ci95_low_seconds": 0.16852635324771295,
+      "ci95_high_seconds": 0.17504797342200676,
+      "ci95_half_width_seconds": 0.003260810087146898
     },
     {
       "name": "zstd mzML -> mzML",
@@ -533,25 +533,25 @@
         "data/PXD075509/benchmarks/15HCD_1/15HCD_1.mzML.zst"
       ],
       "runs_seconds": [
-        0.05742607200227212,
-        0.057312901997647714,
-        0.05732243100646883
+        0.058702447000541724,
+        0.0627195130000473,
+        0.05948669099598192
       ],
-      "median_seconds": 0.05732243100646883,
-      "mean_seconds": 0.05735380166879622,
-      "min_seconds": 0.057312901997647714,
-      "max_seconds": 0.05742607200227212,
-      "throughput_mib_s": 1317.285387299176,
-      "throughput_input_mib_s": 411.8828261418978,
-      "throughput_output_mib_s": 1317.285387299176,
+      "median_seconds": 0.05948669099598192,
+      "mean_seconds": 0.060302883665523645,
+      "min_seconds": 0.058702447000541724,
+      "max_seconds": 0.0627195130000473,
+      "throughput_mib_s": 1252.864212322147,
+      "throughput_input_mib_s": 391.73990504920823,
+      "throughput_output_mib_s": 1252.864212322147,
       "throughput_basis": "output",
       "input_bytes": 24770559,
       "output_bytes": 79221306,
       "repeats": 3,
-      "stdev_seconds": 6.276903159852372e-05,
-      "ci95_low_seconds": 0.05719786216529658,
-      "ci95_high_seconds": 0.05750974117229587,
-      "ci95_half_width_seconds": 0.00015593950349964366
+      "stdev_seconds": 0.0021292798469097892,
+      "ci95_low_seconds": 0.05501303238563359,
+      "ci95_high_seconds": 0.06559273494541369,
+      "ci95_half_width_seconds": 0.005289851279890052
     },
     {
       "name": "mzML -> bzip2 mzML",
@@ -561,25 +561,25 @@
         "data/PXD075509/15HCD_1.mzML"
       ],
       "runs_seconds": [
-        6.92097997199744,
-        7.3319193060015095,
-        7.057793199004664
+        7.052424731999054,
+        7.057724114994926,
+        6.982776730001206
       ],
-      "median_seconds": 7.057793199004664,
-      "mean_seconds": 7.103564159001205,
-      "min_seconds": 6.92097997199744,
-      "max_seconds": 7.3319193060015095,
-      "throughput_mib_s": 10.635692611944148,
-      "throughput_input_mib_s": 10.635692611944148,
+      "median_seconds": 7.052424731999054,
+      "mean_seconds": 7.030975192331728,
+      "min_seconds": 6.982776730001206,
+      "max_seconds": 7.057724114994926,
+      "throughput_mib_s": 10.745497285605524,
+      "throughput_input_mib_s": 10.745497285605524,
       "throughput_output_mib_s": null,
       "throughput_basis": "input",
       "input_bytes": 79221306,
       "output_bytes": null,
       "repeats": 3,
-      "stdev_seconds": 0.20925826063068761,
-      "ci95_low_seconds": 6.583695866709183,
-      "ci95_high_seconds": 7.623432451293226,
-      "ci95_half_width_seconds": 0.5198682922920215
+      "stdev_seconds": 0.04182510840756248,
+      "ci95_low_seconds": 6.9270674774475705,
+      "ci95_high_seconds": 7.134882907215886,
+      "ci95_half_width_seconds": 0.10390771488415733
     },
     {
       "name": "bzip2 mzML -> mzML",
@@ -590,25 +590,25 @@
         "data/PXD075509/benchmarks/15HCD_1/15HCD_1.mzML.bz2"
       ],
       "runs_seconds": [
-        2.441673843000899,
-        2.4444242239987943,
-        2.4480707189941313
+        2.4719000100012636,
+        2.476120658997388,
+        2.4943760950045544
       ],
-      "median_seconds": 2.4444242239987943,
-      "mean_seconds": 2.4447229286646084,
-      "min_seconds": 2.441673843000899,
-      "max_seconds": 2.4480707189941313,
-      "throughput_mib_s": 30.90383943248288,
-      "throughput_input_mib_s": 9.643528451791312,
-      "throughput_output_mib_s": 30.90383943248288,
+      "median_seconds": 2.476120658997388,
+      "mean_seconds": 2.480798921334402,
+      "min_seconds": 2.4719000100012636,
+      "max_seconds": 2.4943760950045544,
+      "throughput_mib_s": 30.454433124197703,
+      "throughput_input_mib_s": 9.503291426232368,
+      "throughput_output_mib_s": 30.454433124197703,
       "throughput_basis": "output",
       "input_bytes": 24720971,
       "output_bytes": 79221306,
       "repeats": 3,
-      "stdev_seconds": 0.0032088820446117983,
-      "ci95_low_seconds": 2.436750980395178,
-      "ci95_high_seconds": 2.452694876934039,
-      "ci95_half_width_seconds": 0.00797194826943059
+      "stdev_seconds": 0.011946053873109335,
+      "ci95_low_seconds": 2.4511208832587523,
+      "ci95_high_seconds": 2.510476959410052,
+      "ci95_half_width_seconds": 0.02967803807565
     },
     {
       "name": "mzML -> lz4 mzML",
@@ -619,25 +619,25 @@
         "data/PXD075509/15HCD_1.mzML"
       ],
       "runs_seconds": [
-        0.09634233700489858,
-        0.09714294000150403,
-        0.09867309699620819
+        0.09949856899766019,
+        0.09912338799767895,
+        0.09840882400021655
       ],
-      "median_seconds": 0.09714294000150403,
-      "mean_seconds": 0.09738612466753693,
-      "min_seconds": 0.09634233700489858,
-      "max_seconds": 0.09867309699620819,
-      "throughput_mib_s": 775.7914703175875,
-      "throughput_input_mib_s": 775.7914703175875,
+      "median_seconds": 0.09912338799767895,
+      "mean_seconds": 0.0990102603318519,
+      "min_seconds": 0.09840882400021655,
+      "max_seconds": 0.09949856899766019,
+      "throughput_mib_s": 763.0656114945621,
+      "throughput_input_mib_s": 763.0656114945621,
       "throughput_output_mib_s": null,
       "throughput_basis": "input",
       "input_bytes": 79221306,
       "output_bytes": null,
       "repeats": 3,
-      "stdev_seconds": 0.001184256990951516,
-      "ci95_low_seconds": 0.0944440297764425,
-      "ci95_high_seconds": 0.10032821955863136,
-      "ci95_half_width_seconds": 0.002942094891094429
+      "stdev_seconds": 0.0005536103697050505,
+      "ci95_low_seconds": 0.09763490493786985,
+      "ci95_high_seconds": 0.10038561572583395,
+      "ci95_half_width_seconds": 0.0013753553939820564
     },
     {
       "name": "lz4 mzML -> mzML",
@@ -649,25 +649,25 @@
         "data/PXD075509/benchmarks/15HCD_1/15HCD_1.mzML.lz4"
       ],
       "runs_seconds": [
-        0.08624229400447803,
-        0.08693897700140951,
-        0.09257124100258807
+        0.0894418570023845,
+        0.0900850990001345,
+        0.08663154500391101
       ],
-      "median_seconds": 0.08693897700140951,
-      "mean_seconds": 0.08858417066949187,
-      "min_seconds": 0.08624229400447803,
-      "max_seconds": 0.09257124100258807,
-      "throughput_mib_s": 852.876132082817,
-      "throughput_input_mib_s": 374.9366947034957,
-      "throughput_output_mib_s": 852.876132082817,
+      "median_seconds": 0.0894418570023845,
+      "mean_seconds": 0.08871950033547667,
+      "min_seconds": 0.08663154500391101,
+      "max_seconds": 0.0900850990001345,
+      "throughput_mib_s": 851.5751842455915,
+      "throughput_input_mib_s": 374.3647792005025,
+      "throughput_output_mib_s": 851.5751842455915,
       "throughput_basis": "output",
       "input_bytes": 34826833,
       "output_bytes": 79221306,
       "repeats": 3,
-      "stdev_seconds": 0.00347043069090066,
-      "ci95_low_seconds": 0.07996244710475071,
-      "ci95_high_seconds": 0.09720589423423302,
-      "ci95_half_width_seconds": 0.008621723564741158
+      "stdev_seconds": 0.0018366023431536412,
+      "ci95_low_seconds": 0.0841567589608846,
+      "ci95_high_seconds": 0.09328224171006873,
+      "ci95_half_width_seconds": 0.004562741374592067
     },
     {
       "name": "mzML -> xz mzML",
@@ -677,25 +677,25 @@
         "data/PXD075509/15HCD_1.mzML"
       ],
       "runs_seconds": [
-        5.530065904000367,
-        5.131250430000364,
-        5.224065912996593
+        5.695722278993344,
+        5.688031275996764,
+        5.624382158006483
       ],
-      "median_seconds": 5.224065912996593,
-      "mean_seconds": 5.295127415665775,
-      "min_seconds": 5.131250430000364,
-      "max_seconds": 5.530065904000367,
-      "throughput_mib_s": 14.268084394124259,
-      "throughput_input_mib_s": 14.268084394124259,
+      "median_seconds": 5.688031275996764,
+      "mean_seconds": 5.669378570998863,
+      "min_seconds": 5.624382158006483,
+      "max_seconds": 5.695722278993344,
+      "throughput_mib_s": 13.326209195278574,
+      "throughput_input_mib_s": 13.326209195278574,
       "throughput_output_mib_s": null,
       "throughput_basis": "input",
       "input_bytes": 79221306,
       "output_bytes": null,
       "repeats": 3,
-      "stdev_seconds": 0.20868816077263044,
-      "ci95_low_seconds": 4.776675444233684,
-      "ci95_high_seconds": 5.813579387097866,
-      "ci95_half_width_seconds": 0.5184519714320905
+      "stdev_seconds": 0.039157320751157076,
+      "ci95_low_seconds": 5.572098542921206,
+      "ci95_high_seconds": 5.7666585990765205,
+      "ci95_half_width_seconds": 0.09728002807765702
     },
     {
       "name": "xz mzML -> mzML",
@@ -706,148 +706,148 @@
         "data/PXD075509/benchmarks/15HCD_1/15HCD_1.mzML.xz"
       ],
       "runs_seconds": [
-        0.359462126994913,
-        0.3591417560019181,
-        0.3616882960050134
+        0.3750274299964076,
+        0.365653230001044,
+        0.3599116260011215
       ],
-      "median_seconds": 0.359462126994913,
-      "mean_seconds": 0.36009739300061483,
-      "min_seconds": 0.3591417560019181,
-      "max_seconds": 0.3616882960050134,
-      "throughput_mib_s": 209.80803058530157,
-      "throughput_input_mib_s": 64.98321865977485,
-      "throughput_output_mib_s": 209.80803058530157,
+      "median_seconds": 0.365653230001044,
+      "mean_seconds": 0.3668640953328577,
+      "min_seconds": 0.3599116260011215,
+      "max_seconds": 0.3750274299964076,
+      "throughput_mib_s": 205.9381820284491,
+      "throughput_input_mib_s": 63.784621950923345,
+      "throughput_output_mib_s": 205.9381820284491,
       "throughput_basis": "output",
       "input_bytes": 24536980,
       "output_bytes": 79221306,
       "repeats": 3,
-      "stdev_seconds": 0.0013870431393224313,
-      "ci95_low_seconds": 0.3566515087330039,
-      "ci95_high_seconds": 0.3635432772682258,
-      "ci95_half_width_seconds": 0.0034458842676109423
+      "stdev_seconds": 0.007630303319319497,
+      "ci95_low_seconds": 0.3479078412555788,
+      "ci95_high_seconds": 0.3858203494101366,
+      "ci95_half_width_seconds": 0.018956254077278932
     },
     {
-      "name": "dump -> mzv1 lossless",
+      "name": "dump -> mzarc lossless",
       "command": [
         "zig-out/bin/mzarc",
-        "encode-v1",
+        "encode",
         "data/PXD075509/benchmarks/15HCD_1/15HCD_1.bin",
         "-o",
-        "data/PXD075509/benchmarks/15HCD_1/15HCD_1.lossless.mzv1"
+        "data/PXD075509/benchmarks/15HCD_1/15HCD_1.lossless.mzarc"
       ],
       "runs_seconds": [
-        0.19298963400069624,
-        0.1904244729958009,
-        0.19045568400179036
+        0.22586060100002214,
+        0.2260311010031728,
+        0.22351849200640572
       ],
-      "median_seconds": 0.19045568400179036,
-      "mean_seconds": 0.1912899303327625,
-      "min_seconds": 0.1904244729958009,
-      "max_seconds": 0.19298963400069624,
-      "throughput_mib_s": 160.89937868229353,
-      "throughput_input_mib_s": 160.89937868229353,
+      "median_seconds": 0.22586060100002214,
+      "mean_seconds": 0.22513673133653356,
+      "min_seconds": 0.22351849200640572,
+      "max_seconds": 0.2260311010031728,
+      "throughput_mib_s": 136.70994846555365,
+      "throughput_input_mib_s": 136.70994846555365,
       "throughput_output_mib_s": null,
       "throughput_basis": "input",
       "input_bytes": 32273524,
       "output_bytes": null,
       "repeats": 3,
-      "stdev_seconds": 0.0014720692751410448,
-      "ci95_low_seconds": 0.18763281238723134,
-      "ci95_high_seconds": 0.19494704827829368,
-      "ci95_half_width_seconds": 0.0036571179455311812
+      "stdev_seconds": 0.0014040268729436887,
+      "ci95_low_seconds": 0.22164865373056736,
+      "ci95_high_seconds": 0.22862480894249976,
+      "ci95_half_width_seconds": 0.0034880776059662117
     },
     {
-      "name": "mzv1 lossless -> dump",
+      "name": "mzarc lossless -> dump",
       "command": [
         "zig-out/bin/mzarc",
-        "decode-v1",
-        "data/PXD075509/benchmarks/15HCD_1/15HCD_1.lossless.mzv1",
+        "decode",
+        "data/PXD075509/benchmarks/15HCD_1/15HCD_1.lossless.mzarc",
         "-o",
         "data/PXD075509/benchmarks/15HCD_1/15HCD_1.lossless.roundtrip.bin"
       ],
       "runs_seconds": [
-        0.14910601900191978,
-        0.14982751200295752,
-        0.1506586960022105
+        0.1548685919988202,
+        0.15315929500502534,
+        0.15351235599518986
       ],
-      "median_seconds": 0.14982751200295752,
-      "mean_seconds": 0.14986407566902926,
-      "min_seconds": 0.14910601900191978,
-      "max_seconds": 0.1506586960022105,
-      "throughput_mib_s": 205.37564323750297,
-      "throughput_input_mib_s": 134.99298186968943,
-      "throughput_output_mib_s": 205.37564323750297,
+      "median_seconds": 0.15351235599518986,
+      "mean_seconds": 0.15384674766634512,
+      "min_seconds": 0.15315929500502534,
+      "max_seconds": 0.1548685919988202,
+      "throughput_mib_s": 200.0590289075943,
+      "throughput_input_mib_s": 122.75199669132465,
+      "throughput_output_mib_s": 200.0590289075943,
       "throughput_basis": "output",
-      "input_bytes": 21213320,
+      "input_bytes": 19802353,
       "output_bytes": 32273524,
       "repeats": 3,
-      "stdev_seconds": 0.0007769840043819416,
-      "ci95_low_seconds": 0.14793378461968743,
-      "ci95_high_seconds": 0.1517943667183711,
-      "ci95_half_width_seconds": 0.0019302910493418314
+      "stdev_seconds": 0.0009023787428527663,
+      "ci95_low_seconds": 0.15160493367709757,
+      "ci95_high_seconds": 0.15608856165559268,
+      "ci95_half_width_seconds": 0.0022418139892475663
     },
     {
-      "name": "dump -> mzv1 lossy q=16384",
+      "name": "dump -> mzarc lossy q=16384",
       "command": [
         "zig-out/bin/mzarc",
-        "encode-v1",
+        "encode",
         "data/PXD075509/benchmarks/15HCD_1/15HCD_1.bin",
         "-o",
-        "data/PXD075509/benchmarks/15HCD_1/15HCD_1.lossy.q16384.mzv1",
+        "data/PXD075509/benchmarks/15HCD_1/15HCD_1.lossy.q16384.mzarc",
         "--lossy",
         "--intensity-quant",
         "16384"
       ],
       "runs_seconds": [
-        0.2490161910027382,
-        0.24271927399968263,
-        0.24073375599982683
+        0.24494186100491788,
+        0.24395822799851885,
+        0.24265695200301707
       ],
-      "median_seconds": 0.24271927399968263,
-      "mean_seconds": 0.24415640700074923,
-      "min_seconds": 0.24073375599982683,
-      "max_seconds": 0.2490161910027382,
-      "throughput_mib_s": 126.06030419929245,
-      "throughput_input_mib_s": 126.06030419929245,
+      "median_seconds": 0.24395822799851885,
+      "mean_seconds": 0.24385234700215128,
+      "min_seconds": 0.24265695200301707,
+      "max_seconds": 0.24494186100491788,
+      "throughput_mib_s": 126.21748905475646,
+      "throughput_input_mib_s": 126.21748905475646,
       "throughput_output_mib_s": null,
       "throughput_basis": "input",
       "input_bytes": 32273524,
       "output_bytes": null,
       "repeats": 3,
-      "stdev_seconds": 0.0043241988670074906,
-      "ci95_low_seconds": 0.23341363453505568,
-      "ci95_high_seconds": 0.2548991794664428,
-      "ci95_half_width_seconds": 0.010742772465693561
+      "stdev_seconds": 0.0011461284290103305,
+      "ci95_low_seconds": 0.24100497635431575,
+      "ci95_high_seconds": 0.2466997176499868,
+      "ci95_half_width_seconds": 0.0028473706478355327
     },
     {
-      "name": "mzv1 lossy q=16384 -> dump",
+      "name": "mzarc lossy q=16384 -> dump",
       "command": [
         "zig-out/bin/mzarc",
-        "decode-v1",
-        "data/PXD075509/benchmarks/15HCD_1/15HCD_1.lossy.q16384.mzv1",
+        "decode",
+        "data/PXD075509/benchmarks/15HCD_1/15HCD_1.lossy.q16384.mzarc",
         "-o",
         "data/PXD075509/benchmarks/15HCD_1/15HCD_1.lossy.q16384.roundtrip.bin"
       ],
       "runs_seconds": [
-        0.18526275099429768,
-        0.2039711109973723,
-        0.18517454100219766
+        0.19422310800291598,
+        0.19438956899830373,
+        0.1987744180005393
       ],
-      "median_seconds": 0.18526275099429768,
-      "mean_seconds": 0.19146946766462256,
-      "min_seconds": 0.18517454100219766,
-      "max_seconds": 0.2039711109973723,
-      "throughput_mib_s": 160.7485063500157,
-      "throughput_input_mib_s": 72.02922855855984,
-      "throughput_output_mib_s": 160.7485063500157,
+      "median_seconds": 0.19438956899830373,
+      "mean_seconds": 0.19579569833391966,
+      "min_seconds": 0.19422310800291598,
+      "max_seconds": 0.1987744180005393,
+      "throughput_mib_s": 157.19666571136636,
+      "throughput_input_mib_s": 70.43769687360724,
+      "throughput_output_mib_s": 157.19666571136636,
       "throughput_basis": "output",
       "input_bytes": 14461329,
       "output_bytes": 32273524,
       "repeats": 3,
-      "stdev_seconds": 0.010826830550310718,
-      "ci95_low_seconds": 0.16457195885344733,
-      "ci95_high_seconds": 0.21836697647579778,
-      "ci95_half_width_seconds": 0.026897508811175214
+      "stdev_seconds": 0.0025809892396087765,
+      "ci95_low_seconds": 0.18938364815068914,
+      "ci95_high_seconds": 0.20220774851715018,
+      "ci95_half_width_seconds": 0.006412050183230507
     },
     {
       "name": "mzML -> mzMLb",
@@ -855,25 +855,25 @@
         "<python-callable>"
       ],
       "runs_seconds": [
-        23.39254696200078,
-        21.51487715999974,
-        21.30579352800123
+        24.032761727001343,
+        22.04936506300146,
+        22.246902516002592
       ],
-      "median_seconds": 21.51487715999974,
-      "mean_seconds": 22.071072550000583,
-      "min_seconds": 21.30579352800123,
-      "max_seconds": 23.39254696200078,
-      "throughput_mib_s": 3.4230925875126244,
-      "throughput_input_mib_s": 3.4230925875126244,
+      "median_seconds": 22.246902516002592,
+      "mean_seconds": 22.7763431020018,
+      "min_seconds": 22.04936506300146,
+      "max_seconds": 24.032761727001343,
+      "throughput_mib_s": 3.317096362045942,
+      "throughput_input_mib_s": 3.317096362045942,
       "throughput_output_mib_s": null,
       "throughput_basis": "input",
       "input_bytes": 79221306,
       "output_bytes": null,
       "repeats": 3,
-      "stdev_seconds": 1.1491953521794576,
-      "ci95_low_seconds": 19.216082627754,
-      "ci95_high_seconds": 24.926062472247168,
-      "ci95_half_width_seconds": 2.8549899222465864
+      "stdev_seconds": 1.0925639945874355,
+      "ci95_low_seconds": 20.062044625210273,
+      "ci95_high_seconds": 25.490641578793326,
+      "ci95_half_width_seconds": 2.7142984767915252
     },
     {
       "name": "mzMLb -> dump",
@@ -881,25 +881,25 @@
         "<python-callable>"
       ],
       "runs_seconds": [
-        4.84515680399636,
-        4.808756710001035,
-        4.782586959001492
+        4.947351896997134,
+        4.906797434996406,
+        4.9165001270012
       ],
-      "median_seconds": 4.808756710001035,
-      "mean_seconds": 4.812166824332962,
-      "min_seconds": 4.782586959001492,
-      "max_seconds": 4.84515680399636,
-      "throughput_mib_s": 6.395960917873426,
-      "throughput_input_mib_s": 3.3766229123219023,
-      "throughput_output_mib_s": 6.395960917873426,
+      "median_seconds": 4.9165001270012,
+      "mean_seconds": 4.923549819664913,
+      "min_seconds": 4.906797434996406,
+      "max_seconds": 4.947351896997134,
+      "throughput_mib_s": 6.251268305601388,
+      "throughput_input_mib_s": 3.3002352676638242,
+      "throughput_output_mib_s": 6.251268305601388,
       "throughput_basis": "output",
       "input_bytes": 17038178,
       "output_bytes": 32273524,
       "repeats": 3,
-      "stdev_seconds": 0.031424004128819814,
-      "ci95_low_seconds": 4.734098970217237,
-      "ci95_high_seconds": 4.890234678448688,
-      "ci95_half_width_seconds": 0.0780678541157255
+      "stdev_seconds": 0.021176395397511028,
+      "ci95_low_seconds": 4.870940491464322,
+      "ci95_high_seconds": 4.976159147865505,
+      "ci95_half_width_seconds": 0.05260932820059112
     },
     {
       "name": "mzML -> MS-Numpress in mzML",
@@ -907,25 +907,25 @@
         "<python-callable>"
       ],
       "runs_seconds": [
-        22.033595918001083,
-        22.076229568003328,
-        22.588344730000244
+        22.913119471995742,
+        23.317317059001653,
+        23.376209863999975
       ],
-      "median_seconds": 22.076229568003328,
-      "mean_seconds": 22.232723405334884,
-      "min_seconds": 22.033595918001083,
-      "max_seconds": 22.588344730000244,
-      "throughput_mib_s": 3.398203785786825,
-      "throughput_input_mib_s": 3.398203785786825,
+      "median_seconds": 23.317317059001653,
+      "mean_seconds": 23.202215464999124,
+      "min_seconds": 22.913119471995742,
+      "max_seconds": 23.376209863999975,
+      "throughput_mib_s": 3.256211673334842,
+      "throughput_input_mib_s": 3.256211673334842,
       "throughput_output_mib_s": null,
       "throughput_basis": "input",
       "input_bytes": 79221306,
       "output_bytes": null,
       "repeats": 3,
-      "stdev_seconds": 0.3087139484145269,
-      "ci95_low_seconds": 21.46577354784643,
-      "ci95_high_seconds": 22.999673262823336,
-      "ci95_half_width_seconds": 0.7669498574884522
+      "stdev_seconds": 0.2520901832640471,
+      "ci95_low_seconds": 22.575938190773115,
+      "ci95_high_seconds": 23.828492739225133,
+      "ci95_half_width_seconds": 0.6262772742260093
     },
     {
       "name": "MS-Numpress in mzML -> dump",
@@ -933,25 +933,25 @@
         "<python-callable>"
       ],
       "runs_seconds": [
-        6.203852086000552,
-        6.250549692995264,
-        6.242623120000644
+        6.358684391998395,
+        6.359359376001521,
+        6.343387116998201
       ],
-      "median_seconds": 6.242623120000644,
-      "mean_seconds": 6.23234163299882,
-      "min_seconds": 6.203852086000552,
-      "max_seconds": 6.250549692995264,
-      "throughput_mib_s": 4.938501890807135,
-      "throughput_input_mib_s": 10.696925930228604,
-      "throughput_output_mib_s": 4.938501890807135,
+      "median_seconds": 6.358684391998395,
+      "mean_seconds": 6.353810294999373,
+      "min_seconds": 6.343387116998201,
+      "max_seconds": 6.359359376001521,
+      "throughput_mib_s": 4.844090318992399,
+      "throughput_input_mib_s": 10.492427964451045,
+      "throughput_output_mib_s": 4.844090318992399,
       "throughput_basis": "output",
       "input_bytes": 69905308,
       "output_bytes": 32273524,
       "repeats": 3,
-      "stdev_seconds": 0.024988964684129217,
-      "ci95_low_seconds": 6.170260593247605,
-      "ci95_high_seconds": 6.294422672750036,
-      "ci95_half_width_seconds": 0.0620810397512153
+      "stdev_seconds": 0.009033043816133764,
+      "ci95_low_seconds": 6.331369159109496,
+      "ci95_high_seconds": 6.3762514308892495,
+      "ci95_half_width_seconds": 0.02244113588987655
     },
     {
       "name": "mzML -> MScompress",
@@ -959,25 +959,25 @@
         "<python-callable>"
       ],
       "runs_seconds": [
-        0.7228086999966763,
-        0.7152226780017372,
-        0.7085496700019576
+        0.7084980049985461,
+        0.7088073859995347,
+        0.7019504880008753
       ],
-      "median_seconds": 0.7152226780017372,
-      "mean_seconds": 0.7155270160001237,
-      "min_seconds": 0.7085496700019576,
-      "max_seconds": 0.7228086999966763,
-      "throughput_mib_s": 105.58836096322503,
-      "throughput_input_mib_s": 105.58836096322503,
+      "median_seconds": 0.7084980049985461,
+      "mean_seconds": 0.7064186263329854,
+      "min_seconds": 0.7019504880008753,
+      "max_seconds": 0.7088073859995347,
+      "throughput_mib_s": 106.94979156558598,
+      "throughput_input_mib_s": 106.94979156558598,
       "throughput_output_mib_s": null,
       "throughput_basis": "input",
       "input_bytes": 79221306,
       "output_bytes": null,
       "repeats": 3,
-      "stdev_seconds": 0.0071343850688422,
-      "ci95_low_seconds": 0.6978027905807102,
-      "ci95_high_seconds": 0.7332512414195372,
-      "ci95_half_width_seconds": 0.017724225419413507
+      "stdev_seconds": 0.0038726120728904147,
+      "ci95_low_seconds": 0.696797748194291,
+      "ci95_high_seconds": 0.7160395044716797,
+      "ci95_half_width_seconds": 0.009620878138694436
     },
     {
       "name": "MScompress -> dump",
@@ -985,25 +985,25 @@
         "<python-callable>"
       ],
       "runs_seconds": [
-        7.1761010289992555,
-        7.234674416002235,
-        7.511677114998747
+        7.181805449996318,
+        7.237450893997448,
+        7.586184784006036
       ],
-      "median_seconds": 7.234674416002235,
-      "mean_seconds": 7.307484186666746,
-      "min_seconds": 7.1761010289992555,
-      "max_seconds": 7.511677114998747,
-      "throughput_mib_s": 4.211905240230161,
-      "throughput_input_mib_s": 2.9598384963550695,
-      "throughput_output_mib_s": 4.211905240230161,
+      "median_seconds": 7.237450893997448,
+      "mean_seconds": 7.335147042666601,
+      "min_seconds": 7.181805449996318,
+      "max_seconds": 7.586184784006036,
+      "throughput_mib_s": 4.196020987676286,
+      "throughput_input_mib_s": 2.9486761316974506,
+      "throughput_output_mib_s": 4.196020987676286,
       "throughput_basis": "output",
       "input_bytes": 22679622,
       "output_bytes": 32273524,
       "repeats": 3,
-      "stdev_seconds": 0.17924501220912264,
-      "ci95_low_seconds": 6.862178954184307,
-      "ci95_high_seconds": 7.752789419149185,
-      "ci95_half_width_seconds": 0.4453052324824388
+      "stdev_seconds": 0.21917815708259972,
+      "ci95_low_seconds": 6.790634372596487,
+      "ci95_high_seconds": 7.879659712736715,
+      "ci95_half_width_seconds": 0.544512670070114
     },
     {
       "name": "mzML -> MScompress threaded",
@@ -1011,25 +1011,25 @@
         "<python-callable>"
       ],
       "runs_seconds": [
-        0.13260204999824055,
-        0.12982691800425528,
-        0.12653035399853252
+        0.12621396099712,
+        0.12561344899586402,
+        0.13085219099593814
       ],
-      "median_seconds": 0.12982691800425528,
-      "mean_seconds": 0.1296531073336761,
-      "min_seconds": 0.12653035399853252,
-      "max_seconds": 0.13260204999824055,
-      "throughput_mib_s": 582.7189675440709,
-      "throughput_input_mib_s": 582.7189675440709,
+      "median_seconds": 0.12621396099712,
+      "mean_seconds": 0.1275598669963074,
+      "min_seconds": 0.12561344899586402,
+      "max_seconds": 0.13085219099593814,
+      "throughput_mib_s": 592.2813077764295,
+      "throughput_input_mib_s": 592.2813077764295,
       "throughput_output_mib_s": null,
       "throughput_basis": "input",
       "input_bytes": 79221306,
       "output_bytes": null,
       "repeats": 3,
-      "stdev_seconds": 0.0030395773867633305,
-      "ci95_low_seconds": 0.1221017690945855,
-      "ci95_high_seconds": 0.1372044455727667,
-      "ci95_half_width_seconds": 0.007551338239090597
+      "stdev_seconds": 0.0028670022069788503,
+      "ci95_low_seconds": 0.12043726387016358,
+      "ci95_high_seconds": 0.13468247012245121,
+      "ci95_half_width_seconds": 0.007122603126143809
     },
     {
       "name": "MScompress threaded -> dump",
@@ -1037,30 +1037,30 @@
         "<python-callable>"
       ],
       "runs_seconds": [
-        5.169871723999677,
-        5.186576184998557,
-        5.171505211001204
+        5.229053222006769,
+        5.271942962994217,
+        5.283639042005234
       ],
-      "median_seconds": 5.171505211001204,
-      "mean_seconds": 5.175984373333146,
-      "min_seconds": 5.169871723999677,
-      "max_seconds": 5.186576184998557,
-      "throughput_mib_s": 5.946391781492283,
-      "throughput_input_mib_s": 4.1602527835183,
-      "throughput_output_mib_s": 5.946391781492283,
+      "median_seconds": 5.271942962994217,
+      "mean_seconds": 5.26154507566874,
+      "min_seconds": 5.229053222006769,
+      "max_seconds": 5.283639042005234,
+      "throughput_mib_s": 5.849694433114551,
+      "throughput_input_mib_s": 4.09260076401979,
+      "throughput_output_mib_s": 5.849694433114551,
       "throughput_basis": "output",
       "input_bytes": 22579410,
       "output_bytes": 32273524,
       "repeats": 3,
-      "stdev_seconds": 0.009209067581069135,
-      "ci95_low_seconds": 5.153105934878468,
-      "ci95_high_seconds": 5.198862811787825,
-      "ci95_half_width_seconds": 0.022878438454678348
+      "stdev_seconds": 0.02874004143788231,
+      "ci95_low_seconds": 5.190145092615824,
+      "ci95_high_seconds": 5.332945058721656,
+      "ci95_half_width_seconds": 0.07139998305291616
     }
   ],
   "fidelity": {
-    "mzv1_lossless": {
-      "name": "mzv1_lossless",
+    "mzarc_lossless": {
+      "name": "mzarc_lossless",
       "matched_spectra": 9001,
       "matched_peaks": 2668458,
       "global_order_preserved": true,
@@ -1161,8 +1161,8 @@
         }
       }
     },
-    "mzv1_lossy": {
-      "name": "mzv1_lossy",
+    "mzarc_lossy": {
+      "name": "mzarc_lossy",
       "matched_spectra": 9001,
       "matched_peaks": 2668458,
       "global_order_preserved": true,
@@ -1791,9 +1791,9 @@
       }
     },
     {
-      "artifact": "mzv1 lossless",
+      "artifact": "mzarc lossless",
       "data": {
-        "name": "mzv1_lossless",
+        "name": "mzarc_lossless",
         "matched_spectra": 9001,
         "matched_peaks": 2668458,
         "global_order_preserved": true,
@@ -1896,9 +1896,9 @@
       }
     },
     {
-      "artifact": "mzv1 lossy q=16384",
+      "artifact": "mzarc lossy q=16384",
       "data": {
-        "name": "mzv1_lossy",
+        "name": "mzarc_lossy",
         "matched_spectra": 9001,
         "matched_peaks": 2668458,
         "global_order_preserved": true,
@@ -2513,7 +2513,7 @@
       "notes": null
     },
     {
-      "artifact": "mzv1 lossless",
+      "artifact": "mzarc lossless",
       "status": "measured",
       "global_order_preserved": true,
       "ms1_relative_order_preserved": true,
@@ -2531,7 +2531,7 @@
       "notes": null
     },
     {
-      "artifact": "mzv1 lossy q=16384",
+      "artifact": "mzarc lossy q=16384",
       "status": "measured",
       "global_order_preserved": true,
       "ms1_relative_order_preserved": true,
@@ -2628,11 +2628,11 @@
       "operation": "dump -> gzip dump",
       "source_format": "dump",
       "status": "measured",
-      "throughput_mib_s": 18.789255953979875,
-      "throughput_input_mib_s": 18.789255953979875,
+      "throughput_mib_s": 18.515103575812923,
+      "throughput_input_mib_s": 18.515103575812923,
       "throughput_output_mib_s": null,
       "throughput_basis": "input",
-      "mean_seconds": 1.6380867349992816,
+      "mean_seconds": 1.66234181800246,
       "notes": null
     },
     {
@@ -2641,11 +2641,11 @@
       "operation": "gzip dump -> dump",
       "source_format": "gzip dump",
       "status": "measured",
-      "throughput_mib_s": 150.1053453280952,
-      "throughput_input_mib_s": 96.65250115130573,
-      "throughput_output_mib_s": 150.1053453280952,
+      "throughput_mib_s": 148.01543686954668,
+      "throughput_input_mib_s": 95.30681369924015,
+      "throughput_output_mib_s": 148.01543686954668,
       "throughput_basis": "output",
-      "mean_seconds": 0.20504553566327863,
+      "mean_seconds": 0.20794068233468957,
       "notes": null
     },
     {
@@ -2654,11 +2654,11 @@
       "operation": "dump -> zstd dump",
       "source_format": "dump",
       "status": "measured",
-      "throughput_mib_s": 163.89928039607955,
-      "throughput_input_mib_s": 163.89928039607955,
+      "throughput_mib_s": 166.18045992307088,
+      "throughput_input_mib_s": 166.18045992307088,
       "throughput_output_mib_s": null,
       "throughput_basis": "input",
-      "mean_seconds": 0.18778868866502307,
+      "mean_seconds": 0.1852108903355353,
       "notes": null
     },
     {
@@ -2667,11 +2667,11 @@
       "operation": "zstd dump -> dump",
       "source_format": "zstd dump",
       "status": "measured",
-      "throughput_mib_s": 577.8125985787221,
-      "throughput_input_mib_s": 335.16144038418037,
-      "throughput_output_mib_s": 577.8125985787221,
+      "throughput_mib_s": 568.9499835993748,
+      "throughput_input_mib_s": 330.02066150646993,
+      "throughput_output_mib_s": 568.9499835993748,
       "throughput_basis": "output",
-      "mean_seconds": 0.05326715100090951,
+      "mean_seconds": 0.05409690100350417,
       "notes": null
     },
     {
@@ -2680,11 +2680,11 @@
       "operation": "dump -> bzip2 dump",
       "source_format": "dump",
       "status": "measured",
-      "throughput_mib_s": 11.696254202856059,
-      "throughput_input_mib_s": 11.696254202856059,
+      "throughput_mib_s": 11.344213985469281,
+      "throughput_input_mib_s": 11.344213985469281,
       "throughput_output_mib_s": null,
       "throughput_basis": "input",
-      "mean_seconds": 2.6314775999999256,
+      "mean_seconds": 2.7131391366686635,
       "notes": null
     },
     {
@@ -2693,11 +2693,11 @@
       "operation": "bzip2 dump -> dump",
       "source_format": "bzip2 dump",
       "status": "measured",
-      "throughput_mib_s": 21.161165853550322,
-      "throughput_input_mib_s": 12.929940385871038,
-      "throughput_output_mib_s": 21.161165853550322,
+      "throughput_mib_s": 20.92449184241884,
+      "throughput_input_mib_s": 12.78532733023915,
+      "throughput_output_mib_s": 20.92449184241884,
       "throughput_basis": "output",
-      "mean_seconds": 1.4544770903327542,
+      "mean_seconds": 1.4709284780013452,
       "notes": null
     },
     {
@@ -2706,11 +2706,11 @@
       "operation": "dump -> lz4 dump",
       "source_format": "dump",
       "status": "measured",
-      "throughput_mib_s": 397.22284665155627,
-      "throughput_input_mib_s": 397.22284665155627,
+      "throughput_mib_s": 391.1264713968308,
+      "throughput_input_mib_s": 391.1264713968308,
       "throughput_output_mib_s": null,
       "throughput_basis": "input",
-      "mean_seconds": 0.07748403999964164,
+      "mean_seconds": 0.07869176133438789,
       "notes": null
     },
     {
@@ -2719,11 +2719,11 @@
       "operation": "lz4 dump -> dump",
       "source_format": "lz4 dump",
       "status": "measured",
-      "throughput_mib_s": 562.0986715993286,
-      "throughput_input_mib_s": 453.5095305922501,
-      "throughput_output_mib_s": 562.0986715993286,
+      "throughput_mib_s": 557.9055235114433,
+      "throughput_input_mib_s": 450.12643663184286,
+      "throughput_output_mib_s": 557.9055235114433,
       "throughput_basis": "output",
-      "mean_seconds": 0.05475627766766896,
+      "mean_seconds": 0.05516781899738513,
       "notes": null
     },
     {
@@ -2732,11 +2732,11 @@
       "operation": "dump -> xz dump",
       "source_format": "dump",
       "status": "measured",
-      "throughput_mib_s": 2.5872490255758867,
-      "throughput_input_mib_s": 2.5872490255758867,
+      "throughput_mib_s": 2.4082710299602703,
+      "throughput_input_mib_s": 2.4082710299602703,
       "throughput_output_mib_s": null,
       "throughput_basis": "input",
-      "mean_seconds": 11.896199644666922,
+      "mean_seconds": 12.780301949331866,
       "notes": null
     },
     {
@@ -2745,11 +2745,11 @@
       "operation": "xz dump -> dump",
       "source_format": "xz dump",
       "status": "measured",
-      "throughput_mib_s": 62.42319000992365,
-      "throughput_input_mib_s": 31.98272251615448,
-      "throughput_output_mib_s": 62.42319000992365,
+      "throughput_mib_s": 60.916179050506024,
+      "throughput_input_mib_s": 31.21060059582014,
+      "throughput_output_mib_s": 60.916179050506024,
       "throughput_basis": "output",
-      "mean_seconds": 0.49306084699977265,
+      "mean_seconds": 0.5052587246682378,
       "notes": null
     },
     {
@@ -2758,11 +2758,11 @@
       "operation": "mzML -> gzip mzML",
       "source_format": "mzML",
       "status": "measured",
-      "throughput_mib_s": 49.308148374502494,
-      "throughput_input_mib_s": 49.308148374502494,
+      "throughput_mib_s": 48.84374959083427,
+      "throughput_input_mib_s": 48.84374959083427,
       "throughput_output_mib_s": null,
       "throughput_basis": "input",
-      "mean_seconds": 1.532227985332914,
+      "mean_seconds": 1.54679617099949,
       "notes": null
     },
     {
@@ -2771,11 +2771,11 @@
       "operation": "gzip mzML -> mzML",
       "source_format": "gzip mzML",
       "status": "measured",
-      "throughput_mib_s": 213.6426729963576,
-      "throughput_input_mib_s": 68.6746340957493,
-      "throughput_output_mib_s": 213.6426729963576,
+      "throughput_mib_s": 212.22503247980407,
+      "throughput_input_mib_s": 68.21893888098626,
+      "throughput_output_mib_s": 212.22503247980407,
       "throughput_basis": "output",
-      "mean_seconds": 0.3536340553352299,
+      "mean_seconds": 0.3559962929988008,
       "notes": null
     },
     {
@@ -2784,11 +2784,11 @@
       "operation": "mzML -> zstd mzML",
       "source_format": "mzML",
       "status": "measured",
-      "throughput_mib_s": 439.6033540766676,
-      "throughput_input_mib_s": 439.6033540766676,
+      "throughput_mib_s": 439.7961022098624,
+      "throughput_input_mib_s": 439.7961022098624,
       "throughput_output_mib_s": null,
       "throughput_basis": "input",
-      "mean_seconds": 0.17186248499638168,
+      "mean_seconds": 0.17178716333485985,
       "notes": null
     },
     {
@@ -2797,11 +2797,11 @@
       "operation": "zstd mzML -> mzML",
       "source_format": "zstd mzML",
       "status": "measured",
-      "throughput_mib_s": 1317.285387299176,
-      "throughput_input_mib_s": 411.8828261418978,
-      "throughput_output_mib_s": 1317.285387299176,
+      "throughput_mib_s": 1252.864212322147,
+      "throughput_input_mib_s": 391.73990504920823,
+      "throughput_output_mib_s": 1252.864212322147,
       "throughput_basis": "output",
-      "mean_seconds": 0.05735380166879622,
+      "mean_seconds": 0.060302883665523645,
       "notes": null
     },
     {
@@ -2810,11 +2810,11 @@
       "operation": "mzML -> bzip2 mzML",
       "source_format": "mzML",
       "status": "measured",
-      "throughput_mib_s": 10.635692611944148,
-      "throughput_input_mib_s": 10.635692611944148,
+      "throughput_mib_s": 10.745497285605524,
+      "throughput_input_mib_s": 10.745497285605524,
       "throughput_output_mib_s": null,
       "throughput_basis": "input",
-      "mean_seconds": 7.103564159001205,
+      "mean_seconds": 7.030975192331728,
       "notes": null
     },
     {
@@ -2823,11 +2823,11 @@
       "operation": "bzip2 mzML -> mzML",
       "source_format": "bzip2 mzML",
       "status": "measured",
-      "throughput_mib_s": 30.90383943248288,
-      "throughput_input_mib_s": 9.643528451791312,
-      "throughput_output_mib_s": 30.90383943248288,
+      "throughput_mib_s": 30.454433124197703,
+      "throughput_input_mib_s": 9.503291426232368,
+      "throughput_output_mib_s": 30.454433124197703,
       "throughput_basis": "output",
-      "mean_seconds": 2.4447229286646084,
+      "mean_seconds": 2.480798921334402,
       "notes": null
     },
     {
@@ -2836,11 +2836,11 @@
       "operation": "mzML -> lz4 mzML",
       "source_format": "mzML",
       "status": "measured",
-      "throughput_mib_s": 775.7914703175875,
-      "throughput_input_mib_s": 775.7914703175875,
+      "throughput_mib_s": 763.0656114945621,
+      "throughput_input_mib_s": 763.0656114945621,
       "throughput_output_mib_s": null,
       "throughput_basis": "input",
-      "mean_seconds": 0.09738612466753693,
+      "mean_seconds": 0.0990102603318519,
       "notes": null
     },
     {
@@ -2849,11 +2849,11 @@
       "operation": "lz4 mzML -> mzML",
       "source_format": "lz4 mzML",
       "status": "measured",
-      "throughput_mib_s": 852.876132082817,
-      "throughput_input_mib_s": 374.9366947034957,
-      "throughput_output_mib_s": 852.876132082817,
+      "throughput_mib_s": 851.5751842455915,
+      "throughput_input_mib_s": 374.3647792005025,
+      "throughput_output_mib_s": 851.5751842455915,
       "throughput_basis": "output",
-      "mean_seconds": 0.08858417066949187,
+      "mean_seconds": 0.08871950033547667,
       "notes": null
     },
     {
@@ -2862,11 +2862,11 @@
       "operation": "mzML -> xz mzML",
       "source_format": "mzML",
       "status": "measured",
-      "throughput_mib_s": 14.268084394124259,
-      "throughput_input_mib_s": 14.268084394124259,
+      "throughput_mib_s": 13.326209195278574,
+      "throughput_input_mib_s": 13.326209195278574,
       "throughput_output_mib_s": null,
       "throughput_basis": "input",
-      "mean_seconds": 5.295127415665775,
+      "mean_seconds": 5.669378570998863,
       "notes": null
     },
     {
@@ -2875,63 +2875,63 @@
       "operation": "xz mzML -> mzML",
       "source_format": "xz mzML",
       "status": "measured",
-      "throughput_mib_s": 209.80803058530157,
-      "throughput_input_mib_s": 64.98321865977485,
-      "throughput_output_mib_s": 209.80803058530157,
+      "throughput_mib_s": 205.9381820284491,
+      "throughput_input_mib_s": 63.784621950923345,
+      "throughput_output_mib_s": 205.9381820284491,
       "throughput_basis": "output",
-      "mean_seconds": 0.36009739300061483,
+      "mean_seconds": 0.3668640953328577,
       "notes": null
     },
     {
-      "artifact": "mzv1 lossless",
+      "artifact": "mzarc lossless",
       "direction": "compression",
-      "operation": "dump -> mzv1 lossless",
+      "operation": "dump -> mzarc lossless",
       "source_format": "dump",
       "status": "measured",
-      "throughput_mib_s": 160.89937868229353,
-      "throughput_input_mib_s": 160.89937868229353,
+      "throughput_mib_s": 136.70994846555365,
+      "throughput_input_mib_s": 136.70994846555365,
       "throughput_output_mib_s": null,
       "throughput_basis": "input",
-      "mean_seconds": 0.1912899303327625,
+      "mean_seconds": 0.22513673133653356,
       "notes": null
     },
     {
-      "artifact": "mzv1 lossless",
+      "artifact": "mzarc lossless",
       "direction": "decompression",
-      "operation": "mzv1 lossless -> dump",
-      "source_format": "mzv1 lossless",
+      "operation": "mzarc lossless -> dump",
+      "source_format": "mzarc lossless",
       "status": "measured",
-      "throughput_mib_s": 205.37564323750297,
-      "throughput_input_mib_s": 134.99298186968943,
-      "throughput_output_mib_s": 205.37564323750297,
+      "throughput_mib_s": 200.0590289075943,
+      "throughput_input_mib_s": 122.75199669132465,
+      "throughput_output_mib_s": 200.0590289075943,
       "throughput_basis": "output",
-      "mean_seconds": 0.14986407566902926,
+      "mean_seconds": 0.15384674766634512,
       "notes": null
     },
     {
-      "artifact": "mzv1 lossy q=16384",
+      "artifact": "mzarc lossy q=16384",
       "direction": "compression",
-      "operation": "dump -> mzv1 lossy q=16384",
+      "operation": "dump -> mzarc lossy q=16384",
       "source_format": "dump",
       "status": "measured",
-      "throughput_mib_s": 126.06030419929245,
-      "throughput_input_mib_s": 126.06030419929245,
+      "throughput_mib_s": 126.21748905475646,
+      "throughput_input_mib_s": 126.21748905475646,
       "throughput_output_mib_s": null,
       "throughput_basis": "input",
-      "mean_seconds": 0.24415640700074923,
+      "mean_seconds": 0.24385234700215128,
       "notes": null
     },
     {
-      "artifact": "mzv1 lossy q=16384",
+      "artifact": "mzarc lossy q=16384",
       "direction": "decompression",
-      "operation": "mzv1 lossy q=16384 -> dump",
-      "source_format": "mzv1 lossy q=16384",
+      "operation": "mzarc lossy q=16384 -> dump",
+      "source_format": "mzarc lossy q=16384",
       "status": "measured",
-      "throughput_mib_s": 160.7485063500157,
-      "throughput_input_mib_s": 72.02922855855984,
-      "throughput_output_mib_s": 160.7485063500157,
+      "throughput_mib_s": 157.19666571136636,
+      "throughput_input_mib_s": 70.43769687360724,
+      "throughput_output_mib_s": 157.19666571136636,
       "throughput_basis": "output",
-      "mean_seconds": 0.19146946766462256,
+      "mean_seconds": 0.19579569833391966,
       "notes": null
     },
     {
@@ -2940,11 +2940,11 @@
       "operation": "mzML -> mzMLb",
       "source_format": "mzML",
       "status": "measured",
-      "throughput_mib_s": 3.4230925875126244,
-      "throughput_input_mib_s": 3.4230925875126244,
+      "throughput_mib_s": 3.317096362045942,
+      "throughput_input_mib_s": 3.317096362045942,
       "throughput_output_mib_s": null,
       "throughput_basis": "input",
-      "mean_seconds": 22.071072550000583,
+      "mean_seconds": 22.7763431020018,
       "notes": null
     },
     {
@@ -2953,11 +2953,11 @@
       "operation": "mzMLb -> dump",
       "source_format": "mzMLb",
       "status": "measured",
-      "throughput_mib_s": 6.395960917873426,
-      "throughput_input_mib_s": 3.3766229123219023,
-      "throughput_output_mib_s": 6.395960917873426,
+      "throughput_mib_s": 6.251268305601388,
+      "throughput_input_mib_s": 3.3002352676638242,
+      "throughput_output_mib_s": 6.251268305601388,
       "throughput_basis": "output",
-      "mean_seconds": 4.812166824332962,
+      "mean_seconds": 4.923549819664913,
       "notes": null
     },
     {
@@ -2966,11 +2966,11 @@
       "operation": "mzML -> MS-Numpress in mzML",
       "source_format": "mzML",
       "status": "measured",
-      "throughput_mib_s": 3.398203785786825,
-      "throughput_input_mib_s": 3.398203785786825,
+      "throughput_mib_s": 3.256211673334842,
+      "throughput_input_mib_s": 3.256211673334842,
       "throughput_output_mib_s": null,
       "throughput_basis": "input",
-      "mean_seconds": 22.232723405334884,
+      "mean_seconds": 23.202215464999124,
       "notes": null
     },
     {
@@ -2979,11 +2979,11 @@
       "operation": "MS-Numpress in mzML -> dump",
       "source_format": "MS-Numpress in mzML",
       "status": "measured",
-      "throughput_mib_s": 4.938501890807135,
-      "throughput_input_mib_s": 10.696925930228604,
-      "throughput_output_mib_s": 4.938501890807135,
+      "throughput_mib_s": 4.844090318992399,
+      "throughput_input_mib_s": 10.492427964451045,
+      "throughput_output_mib_s": 4.844090318992399,
       "throughput_basis": "output",
-      "mean_seconds": 6.23234163299882,
+      "mean_seconds": 6.353810294999373,
       "notes": null
     },
     {
@@ -2992,11 +2992,11 @@
       "operation": "mzML -> MScompress",
       "source_format": "mzML",
       "status": "measured",
-      "throughput_mib_s": 105.58836096322503,
-      "throughput_input_mib_s": 105.58836096322503,
+      "throughput_mib_s": 106.94979156558598,
+      "throughput_input_mib_s": 106.94979156558598,
       "throughput_output_mib_s": null,
       "throughput_basis": "input",
-      "mean_seconds": 0.7155270160001237,
+      "mean_seconds": 0.7064186263329854,
       "notes": null
     },
     {
@@ -3005,11 +3005,11 @@
       "operation": "MScompress -> dump",
       "source_format": "MScompress",
       "status": "measured",
-      "throughput_mib_s": 4.211905240230161,
-      "throughput_input_mib_s": 2.9598384963550695,
-      "throughput_output_mib_s": 4.211905240230161,
+      "throughput_mib_s": 4.196020987676286,
+      "throughput_input_mib_s": 2.9486761316974506,
+      "throughput_output_mib_s": 4.196020987676286,
       "throughput_basis": "output",
-      "mean_seconds": 7.307484186666746,
+      "mean_seconds": 7.335147042666601,
       "notes": null
     },
     {
@@ -3018,11 +3018,11 @@
       "operation": "mzML -> MScompress threaded",
       "source_format": "mzML",
       "status": "measured",
-      "throughput_mib_s": 582.7189675440709,
-      "throughput_input_mib_s": 582.7189675440709,
+      "throughput_mib_s": 592.2813077764295,
+      "throughput_input_mib_s": 592.2813077764295,
       "throughput_output_mib_s": null,
       "throughput_basis": "input",
-      "mean_seconds": 0.1296531073336761,
+      "mean_seconds": 0.1275598669963074,
       "notes": null
     },
     {
@@ -3031,11 +3031,11 @@
       "operation": "MScompress threaded -> dump",
       "source_format": "MScompress threaded",
       "status": "measured",
-      "throughput_mib_s": 5.946391781492283,
-      "throughput_input_mib_s": 4.1602527835183,
-      "throughput_output_mib_s": 5.946391781492283,
+      "throughput_mib_s": 5.849694433114551,
+      "throughput_input_mib_s": 4.09260076401979,
+      "throughput_output_mib_s": 5.849694433114551,
       "throughput_basis": "output",
-      "mean_seconds": 5.175984373333146,
+      "mean_seconds": 5.26154507566874,
       "notes": null
     }
   ],
@@ -3131,7 +3131,7 @@
       "source": null
     },
     {
-      "artifact": "mzv1 lossless",
+      "artifact": "mzarc lossless",
       "status": "not-measured",
       "peptide_identification_difference": null,
       "peptide_identification_pct_change": null,
@@ -3140,7 +3140,7 @@
       "source": null
     },
     {
-      "artifact": "mzv1 lossy q=16384",
+      "artifact": "mzarc lossy q=16384",
       "status": "not-measured",
       "peptide_identification_difference": null,
       "peptide_identification_pct_change": null,
@@ -3188,11 +3188,11 @@
   "lossy_sweep": [
     {
       "intensity_quant": 256,
-      "path": "data/PXD075509/benchmarks/15HCD_1/15HCD_1.lossy.q256.mzv1",
+      "path": "data/PXD075509/benchmarks/15HCD_1/15HCD_1.lossy.q256.mzarc",
       "bytes": 12459954,
       "size_mib": 11.88273811340332,
       "fidelity": {
-        "name": "mzv1_lossy_q256",
+        "name": "mzarc_lossy_q256",
         "matched_spectra": 9001,
         "matched_peaks": 2668458,
         "global_order_preserved": true,
@@ -3299,11 +3299,11 @@
     },
     {
       "intensity_quant": 1024,
-      "path": "data/PXD075509/benchmarks/15HCD_1/15HCD_1.lossy.q1024.mzv1",
+      "path": "data/PXD075509/benchmarks/15HCD_1/15HCD_1.lossy.q1024.mzarc",
       "bytes": 13127097,
       "size_mib": 12.518975257873535,
       "fidelity": {
-        "name": "mzv1_lossy_q1024",
+        "name": "mzarc_lossy_q1024",
         "matched_spectra": 9001,
         "matched_peaks": 2668458,
         "global_order_preserved": true,
@@ -3410,11 +3410,11 @@
     },
     {
       "intensity_quant": 4096,
-      "path": "data/PXD075509/benchmarks/15HCD_1/15HCD_1.lossy.q4096.mzv1",
+      "path": "data/PXD075509/benchmarks/15HCD_1/15HCD_1.lossy.q4096.mzarc",
       "bytes": 13794206,
       "size_mib": 13.155179977416992,
       "fidelity": {
-        "name": "mzv1_lossy_q4096",
+        "name": "mzarc_lossy_q4096",
         "matched_spectra": 9001,
         "matched_peaks": 2668458,
         "global_order_preserved": true,
@@ -3521,11 +3521,11 @@
     },
     {
       "intensity_quant": 16384,
-      "path": "data/PXD075509/benchmarks/15HCD_1/15HCD_1.lossy.q16384.mzv1",
+      "path": "data/PXD075509/benchmarks/15HCD_1/15HCD_1.lossy.q16384.mzarc",
       "bytes": 14461329,
       "size_mib": 13.791398048400879,
       "fidelity": {
-        "name": "mzv1_lossy",
+        "name": "mzarc_lossy",
         "matched_spectra": 9001,
         "matched_peaks": 2668458,
         "global_order_preserved": true,
@@ -3642,11 +3642,11 @@
         "size_mib": 30.778430938720703
       },
       {
-        "artifact": "mzv1 lossless",
-        "size_mib": 20.23059844970703
+        "artifact": "mzarc lossless",
+        "size_mib": 18.884995460510254
       },
       {
-        "artifact": "mzv1 lossy",
+        "artifact": "mzarc lossy",
         "size_mib": 13.791398048400879
       },
       {
@@ -3713,11 +3713,11 @@
         "operation": "dump -> gzip dump",
         "source_format": "dump",
         "status": "measured",
-        "throughput_mib_s": 18.789255953979875,
-        "throughput_input_mib_s": 18.789255953979875,
+        "throughput_mib_s": 18.515103575812923,
+        "throughput_input_mib_s": 18.515103575812923,
         "throughput_output_mib_s": null,
         "throughput_basis": "input",
-        "mean_seconds": 1.6380867349992816,
+        "mean_seconds": 1.66234181800246,
         "notes": null
       },
       {
@@ -3726,11 +3726,11 @@
         "operation": "gzip dump -> dump",
         "source_format": "gzip dump",
         "status": "measured",
-        "throughput_mib_s": 150.1053453280952,
-        "throughput_input_mib_s": 96.65250115130573,
-        "throughput_output_mib_s": 150.1053453280952,
+        "throughput_mib_s": 148.01543686954668,
+        "throughput_input_mib_s": 95.30681369924015,
+        "throughput_output_mib_s": 148.01543686954668,
         "throughput_basis": "output",
-        "mean_seconds": 0.20504553566327863,
+        "mean_seconds": 0.20794068233468957,
         "notes": null
       },
       {
@@ -3739,11 +3739,11 @@
         "operation": "dump -> zstd dump",
         "source_format": "dump",
         "status": "measured",
-        "throughput_mib_s": 163.89928039607955,
-        "throughput_input_mib_s": 163.89928039607955,
+        "throughput_mib_s": 166.18045992307088,
+        "throughput_input_mib_s": 166.18045992307088,
         "throughput_output_mib_s": null,
         "throughput_basis": "input",
-        "mean_seconds": 0.18778868866502307,
+        "mean_seconds": 0.1852108903355353,
         "notes": null
       },
       {
@@ -3752,11 +3752,11 @@
         "operation": "zstd dump -> dump",
         "source_format": "zstd dump",
         "status": "measured",
-        "throughput_mib_s": 577.8125985787221,
-        "throughput_input_mib_s": 335.16144038418037,
-        "throughput_output_mib_s": 577.8125985787221,
+        "throughput_mib_s": 568.9499835993748,
+        "throughput_input_mib_s": 330.02066150646993,
+        "throughput_output_mib_s": 568.9499835993748,
         "throughput_basis": "output",
-        "mean_seconds": 0.05326715100090951,
+        "mean_seconds": 0.05409690100350417,
         "notes": null
       },
       {
@@ -3765,11 +3765,11 @@
         "operation": "dump -> bzip2 dump",
         "source_format": "dump",
         "status": "measured",
-        "throughput_mib_s": 11.696254202856059,
-        "throughput_input_mib_s": 11.696254202856059,
+        "throughput_mib_s": 11.344213985469281,
+        "throughput_input_mib_s": 11.344213985469281,
         "throughput_output_mib_s": null,
         "throughput_basis": "input",
-        "mean_seconds": 2.6314775999999256,
+        "mean_seconds": 2.7131391366686635,
         "notes": null
       },
       {
@@ -3778,11 +3778,11 @@
         "operation": "bzip2 dump -> dump",
         "source_format": "bzip2 dump",
         "status": "measured",
-        "throughput_mib_s": 21.161165853550322,
-        "throughput_input_mib_s": 12.929940385871038,
-        "throughput_output_mib_s": 21.161165853550322,
+        "throughput_mib_s": 20.92449184241884,
+        "throughput_input_mib_s": 12.78532733023915,
+        "throughput_output_mib_s": 20.92449184241884,
         "throughput_basis": "output",
-        "mean_seconds": 1.4544770903327542,
+        "mean_seconds": 1.4709284780013452,
         "notes": null
       },
       {
@@ -3791,11 +3791,11 @@
         "operation": "dump -> lz4 dump",
         "source_format": "dump",
         "status": "measured",
-        "throughput_mib_s": 397.22284665155627,
-        "throughput_input_mib_s": 397.22284665155627,
+        "throughput_mib_s": 391.1264713968308,
+        "throughput_input_mib_s": 391.1264713968308,
         "throughput_output_mib_s": null,
         "throughput_basis": "input",
-        "mean_seconds": 0.07748403999964164,
+        "mean_seconds": 0.07869176133438789,
         "notes": null
       },
       {
@@ -3804,11 +3804,11 @@
         "operation": "lz4 dump -> dump",
         "source_format": "lz4 dump",
         "status": "measured",
-        "throughput_mib_s": 562.0986715993286,
-        "throughput_input_mib_s": 453.5095305922501,
-        "throughput_output_mib_s": 562.0986715993286,
+        "throughput_mib_s": 557.9055235114433,
+        "throughput_input_mib_s": 450.12643663184286,
+        "throughput_output_mib_s": 557.9055235114433,
         "throughput_basis": "output",
-        "mean_seconds": 0.05475627766766896,
+        "mean_seconds": 0.05516781899738513,
         "notes": null
       },
       {
@@ -3817,11 +3817,11 @@
         "operation": "dump -> xz dump",
         "source_format": "dump",
         "status": "measured",
-        "throughput_mib_s": 2.5872490255758867,
-        "throughput_input_mib_s": 2.5872490255758867,
+        "throughput_mib_s": 2.4082710299602703,
+        "throughput_input_mib_s": 2.4082710299602703,
         "throughput_output_mib_s": null,
         "throughput_basis": "input",
-        "mean_seconds": 11.896199644666922,
+        "mean_seconds": 12.780301949331866,
         "notes": null
       },
       {
@@ -3830,11 +3830,11 @@
         "operation": "xz dump -> dump",
         "source_format": "xz dump",
         "status": "measured",
-        "throughput_mib_s": 62.42319000992365,
-        "throughput_input_mib_s": 31.98272251615448,
-        "throughput_output_mib_s": 62.42319000992365,
+        "throughput_mib_s": 60.916179050506024,
+        "throughput_input_mib_s": 31.21060059582014,
+        "throughput_output_mib_s": 60.916179050506024,
         "throughput_basis": "output",
-        "mean_seconds": 0.49306084699977265,
+        "mean_seconds": 0.5052587246682378,
         "notes": null
       },
       {
@@ -3843,11 +3843,11 @@
         "operation": "mzML -> gzip mzML",
         "source_format": "mzML",
         "status": "measured",
-        "throughput_mib_s": 49.308148374502494,
-        "throughput_input_mib_s": 49.308148374502494,
+        "throughput_mib_s": 48.84374959083427,
+        "throughput_input_mib_s": 48.84374959083427,
         "throughput_output_mib_s": null,
         "throughput_basis": "input",
-        "mean_seconds": 1.532227985332914,
+        "mean_seconds": 1.54679617099949,
         "notes": null
       },
       {
@@ -3856,11 +3856,11 @@
         "operation": "gzip mzML -> mzML",
         "source_format": "gzip mzML",
         "status": "measured",
-        "throughput_mib_s": 213.6426729963576,
-        "throughput_input_mib_s": 68.6746340957493,
-        "throughput_output_mib_s": 213.6426729963576,
+        "throughput_mib_s": 212.22503247980407,
+        "throughput_input_mib_s": 68.21893888098626,
+        "throughput_output_mib_s": 212.22503247980407,
         "throughput_basis": "output",
-        "mean_seconds": 0.3536340553352299,
+        "mean_seconds": 0.3559962929988008,
         "notes": null
       },
       {
@@ -3869,11 +3869,11 @@
         "operation": "mzML -> zstd mzML",
         "source_format": "mzML",
         "status": "measured",
-        "throughput_mib_s": 439.6033540766676,
-        "throughput_input_mib_s": 439.6033540766676,
+        "throughput_mib_s": 439.7961022098624,
+        "throughput_input_mib_s": 439.7961022098624,
         "throughput_output_mib_s": null,
         "throughput_basis": "input",
-        "mean_seconds": 0.17186248499638168,
+        "mean_seconds": 0.17178716333485985,
         "notes": null
       },
       {
@@ -3882,11 +3882,11 @@
         "operation": "zstd mzML -> mzML",
         "source_format": "zstd mzML",
         "status": "measured",
-        "throughput_mib_s": 1317.285387299176,
-        "throughput_input_mib_s": 411.8828261418978,
-        "throughput_output_mib_s": 1317.285387299176,
+        "throughput_mib_s": 1252.864212322147,
+        "throughput_input_mib_s": 391.73990504920823,
+        "throughput_output_mib_s": 1252.864212322147,
         "throughput_basis": "output",
-        "mean_seconds": 0.05735380166879622,
+        "mean_seconds": 0.060302883665523645,
         "notes": null
       },
       {
@@ -3895,11 +3895,11 @@
         "operation": "mzML -> bzip2 mzML",
         "source_format": "mzML",
         "status": "measured",
-        "throughput_mib_s": 10.635692611944148,
-        "throughput_input_mib_s": 10.635692611944148,
+        "throughput_mib_s": 10.745497285605524,
+        "throughput_input_mib_s": 10.745497285605524,
         "throughput_output_mib_s": null,
         "throughput_basis": "input",
-        "mean_seconds": 7.103564159001205,
+        "mean_seconds": 7.030975192331728,
         "notes": null
       },
       {
@@ -3908,11 +3908,11 @@
         "operation": "bzip2 mzML -> mzML",
         "source_format": "bzip2 mzML",
         "status": "measured",
-        "throughput_mib_s": 30.90383943248288,
-        "throughput_input_mib_s": 9.643528451791312,
-        "throughput_output_mib_s": 30.90383943248288,
+        "throughput_mib_s": 30.454433124197703,
+        "throughput_input_mib_s": 9.503291426232368,
+        "throughput_output_mib_s": 30.454433124197703,
         "throughput_basis": "output",
-        "mean_seconds": 2.4447229286646084,
+        "mean_seconds": 2.480798921334402,
         "notes": null
       },
       {
@@ -3921,11 +3921,11 @@
         "operation": "mzML -> lz4 mzML",
         "source_format": "mzML",
         "status": "measured",
-        "throughput_mib_s": 775.7914703175875,
-        "throughput_input_mib_s": 775.7914703175875,
+        "throughput_mib_s": 763.0656114945621,
+        "throughput_input_mib_s": 763.0656114945621,
         "throughput_output_mib_s": null,
         "throughput_basis": "input",
-        "mean_seconds": 0.09738612466753693,
+        "mean_seconds": 0.0990102603318519,
         "notes": null
       },
       {
@@ -3934,11 +3934,11 @@
         "operation": "lz4 mzML -> mzML",
         "source_format": "lz4 mzML",
         "status": "measured",
-        "throughput_mib_s": 852.876132082817,
-        "throughput_input_mib_s": 374.9366947034957,
-        "throughput_output_mib_s": 852.876132082817,
+        "throughput_mib_s": 851.5751842455915,
+        "throughput_input_mib_s": 374.3647792005025,
+        "throughput_output_mib_s": 851.5751842455915,
         "throughput_basis": "output",
-        "mean_seconds": 0.08858417066949187,
+        "mean_seconds": 0.08871950033547667,
         "notes": null
       },
       {
@@ -3947,11 +3947,11 @@
         "operation": "mzML -> xz mzML",
         "source_format": "mzML",
         "status": "measured",
-        "throughput_mib_s": 14.268084394124259,
-        "throughput_input_mib_s": 14.268084394124259,
+        "throughput_mib_s": 13.326209195278574,
+        "throughput_input_mib_s": 13.326209195278574,
         "throughput_output_mib_s": null,
         "throughput_basis": "input",
-        "mean_seconds": 5.295127415665775,
+        "mean_seconds": 5.669378570998863,
         "notes": null
       },
       {
@@ -3960,63 +3960,63 @@
         "operation": "xz mzML -> mzML",
         "source_format": "xz mzML",
         "status": "measured",
-        "throughput_mib_s": 209.80803058530157,
-        "throughput_input_mib_s": 64.98321865977485,
-        "throughput_output_mib_s": 209.80803058530157,
+        "throughput_mib_s": 205.9381820284491,
+        "throughput_input_mib_s": 63.784621950923345,
+        "throughput_output_mib_s": 205.9381820284491,
         "throughput_basis": "output",
-        "mean_seconds": 0.36009739300061483,
+        "mean_seconds": 0.3668640953328577,
         "notes": null
       },
       {
-        "artifact": "mzv1 lossless",
+        "artifact": "mzarc lossless",
         "direction": "compression",
-        "operation": "dump -> mzv1 lossless",
+        "operation": "dump -> mzarc lossless",
         "source_format": "dump",
         "status": "measured",
-        "throughput_mib_s": 160.89937868229353,
-        "throughput_input_mib_s": 160.89937868229353,
+        "throughput_mib_s": 136.70994846555365,
+        "throughput_input_mib_s": 136.70994846555365,
         "throughput_output_mib_s": null,
         "throughput_basis": "input",
-        "mean_seconds": 0.1912899303327625,
+        "mean_seconds": 0.22513673133653356,
         "notes": null
       },
       {
-        "artifact": "mzv1 lossless",
+        "artifact": "mzarc lossless",
         "direction": "decompression",
-        "operation": "mzv1 lossless -> dump",
-        "source_format": "mzv1 lossless",
+        "operation": "mzarc lossless -> dump",
+        "source_format": "mzarc lossless",
         "status": "measured",
-        "throughput_mib_s": 205.37564323750297,
-        "throughput_input_mib_s": 134.99298186968943,
-        "throughput_output_mib_s": 205.37564323750297,
+        "throughput_mib_s": 200.0590289075943,
+        "throughput_input_mib_s": 122.75199669132465,
+        "throughput_output_mib_s": 200.0590289075943,
         "throughput_basis": "output",
-        "mean_seconds": 0.14986407566902926,
+        "mean_seconds": 0.15384674766634512,
         "notes": null
       },
       {
-        "artifact": "mzv1 lossy q=16384",
+        "artifact": "mzarc lossy q=16384",
         "direction": "compression",
-        "operation": "dump -> mzv1 lossy q=16384",
+        "operation": "dump -> mzarc lossy q=16384",
         "source_format": "dump",
         "status": "measured",
-        "throughput_mib_s": 126.06030419929245,
-        "throughput_input_mib_s": 126.06030419929245,
+        "throughput_mib_s": 126.21748905475646,
+        "throughput_input_mib_s": 126.21748905475646,
         "throughput_output_mib_s": null,
         "throughput_basis": "input",
-        "mean_seconds": 0.24415640700074923,
+        "mean_seconds": 0.24385234700215128,
         "notes": null
       },
       {
-        "artifact": "mzv1 lossy q=16384",
+        "artifact": "mzarc lossy q=16384",
         "direction": "decompression",
-        "operation": "mzv1 lossy q=16384 -> dump",
-        "source_format": "mzv1 lossy q=16384",
+        "operation": "mzarc lossy q=16384 -> dump",
+        "source_format": "mzarc lossy q=16384",
         "status": "measured",
-        "throughput_mib_s": 160.7485063500157,
-        "throughput_input_mib_s": 72.02922855855984,
-        "throughput_output_mib_s": 160.7485063500157,
+        "throughput_mib_s": 157.19666571136636,
+        "throughput_input_mib_s": 70.43769687360724,
+        "throughput_output_mib_s": 157.19666571136636,
         "throughput_basis": "output",
-        "mean_seconds": 0.19146946766462256,
+        "mean_seconds": 0.19579569833391966,
         "notes": null
       },
       {
@@ -4025,11 +4025,11 @@
         "operation": "mzML -> mzMLb",
         "source_format": "mzML",
         "status": "measured",
-        "throughput_mib_s": 3.4230925875126244,
-        "throughput_input_mib_s": 3.4230925875126244,
+        "throughput_mib_s": 3.317096362045942,
+        "throughput_input_mib_s": 3.317096362045942,
         "throughput_output_mib_s": null,
         "throughput_basis": "input",
-        "mean_seconds": 22.071072550000583,
+        "mean_seconds": 22.7763431020018,
         "notes": null
       },
       {
@@ -4038,11 +4038,11 @@
         "operation": "mzMLb -> dump",
         "source_format": "mzMLb",
         "status": "measured",
-        "throughput_mib_s": 6.395960917873426,
-        "throughput_input_mib_s": 3.3766229123219023,
-        "throughput_output_mib_s": 6.395960917873426,
+        "throughput_mib_s": 6.251268305601388,
+        "throughput_input_mib_s": 3.3002352676638242,
+        "throughput_output_mib_s": 6.251268305601388,
         "throughput_basis": "output",
-        "mean_seconds": 4.812166824332962,
+        "mean_seconds": 4.923549819664913,
         "notes": null
       },
       {
@@ -4051,11 +4051,11 @@
         "operation": "mzML -> MS-Numpress in mzML",
         "source_format": "mzML",
         "status": "measured",
-        "throughput_mib_s": 3.398203785786825,
-        "throughput_input_mib_s": 3.398203785786825,
+        "throughput_mib_s": 3.256211673334842,
+        "throughput_input_mib_s": 3.256211673334842,
         "throughput_output_mib_s": null,
         "throughput_basis": "input",
-        "mean_seconds": 22.232723405334884,
+        "mean_seconds": 23.202215464999124,
         "notes": null
       },
       {
@@ -4064,11 +4064,11 @@
         "operation": "MS-Numpress in mzML -> dump",
         "source_format": "MS-Numpress in mzML",
         "status": "measured",
-        "throughput_mib_s": 4.938501890807135,
-        "throughput_input_mib_s": 10.696925930228604,
-        "throughput_output_mib_s": 4.938501890807135,
+        "throughput_mib_s": 4.844090318992399,
+        "throughput_input_mib_s": 10.492427964451045,
+        "throughput_output_mib_s": 4.844090318992399,
         "throughput_basis": "output",
-        "mean_seconds": 6.23234163299882,
+        "mean_seconds": 6.353810294999373,
         "notes": null
       },
       {
@@ -4077,11 +4077,11 @@
         "operation": "mzML -> MScompress",
         "source_format": "mzML",
         "status": "measured",
-        "throughput_mib_s": 105.58836096322503,
-        "throughput_input_mib_s": 105.58836096322503,
+        "throughput_mib_s": 106.94979156558598,
+        "throughput_input_mib_s": 106.94979156558598,
         "throughput_output_mib_s": null,
         "throughput_basis": "input",
-        "mean_seconds": 0.7155270160001237,
+        "mean_seconds": 0.7064186263329854,
         "notes": null
       },
       {
@@ -4090,11 +4090,11 @@
         "operation": "MScompress -> dump",
         "source_format": "MScompress",
         "status": "measured",
-        "throughput_mib_s": 4.211905240230161,
-        "throughput_input_mib_s": 2.9598384963550695,
-        "throughput_output_mib_s": 4.211905240230161,
+        "throughput_mib_s": 4.196020987676286,
+        "throughput_input_mib_s": 2.9486761316974506,
+        "throughput_output_mib_s": 4.196020987676286,
         "throughput_basis": "output",
-        "mean_seconds": 7.307484186666746,
+        "mean_seconds": 7.335147042666601,
         "notes": null
       },
       {
@@ -4103,11 +4103,11 @@
         "operation": "mzML -> MScompress threaded",
         "source_format": "mzML",
         "status": "measured",
-        "throughput_mib_s": 582.7189675440709,
-        "throughput_input_mib_s": 582.7189675440709,
+        "throughput_mib_s": 592.2813077764295,
+        "throughput_input_mib_s": 592.2813077764295,
         "throughput_output_mib_s": null,
         "throughput_basis": "input",
-        "mean_seconds": 0.1296531073336761,
+        "mean_seconds": 0.1275598669963074,
         "notes": null
       },
       {
@@ -4116,11 +4116,11 @@
         "operation": "MScompress threaded -> dump",
         "source_format": "MScompress threaded",
         "status": "measured",
-        "throughput_mib_s": 5.946391781492283,
-        "throughput_input_mib_s": 4.1602527835183,
-        "throughput_output_mib_s": 5.946391781492283,
+        "throughput_mib_s": 5.849694433114551,
+        "throughput_input_mib_s": 4.09260076401979,
+        "throughput_output_mib_s": 5.849694433114551,
         "throughput_basis": "output",
-        "mean_seconds": 5.175984373333146,
+        "mean_seconds": 5.26154507566874,
         "notes": null
       }
     ],
@@ -4216,7 +4216,7 @@
         "notes": null
       },
       {
-        "artifact": "mzv1 lossless",
+        "artifact": "mzarc lossless",
         "status": "measured",
         "global_order_preserved": true,
         "ms1_relative_order_preserved": true,
@@ -4234,7 +4234,7 @@
         "notes": null
       },
       {
-        "artifact": "mzv1 lossy q=16384",
+        "artifact": "mzarc lossy q=16384",
         "status": "measured",
         "global_order_preserved": true,
         "ms1_relative_order_preserved": true,
