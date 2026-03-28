@@ -1,5 +1,6 @@
 const std = @import("std");
 const binary_reader = @import("binary_reader");
+const block = @import("block");
 const codec = @import("codec");
 
 /// Assert every decoded m/z is within 0.001 ppm of the original.
@@ -329,6 +330,49 @@ test "codec inspect accepts prior minor version files" {
     try std.testing.expectEqual(@as(u16, 0), inspection.header.version_minor);
 
     const decoded = try codec.decodeFileAlloc(std.testing.allocator, old_minor);
+    defer binary_reader.freeSpectra(std.testing.allocator, decoded);
+    try expectLosslessRoundTrip(&input, decoded);
+}
+
+test "codec lossless round-trip preserves per-spectrum m/z width blocks" {
+    const peak_count = 256;
+    const mz_a = try std.testing.allocator.alloc(f64, peak_count);
+    defer std.testing.allocator.free(mz_a);
+    const mz_b = try std.testing.allocator.alloc(f64, peak_count);
+    defer std.testing.allocator.free(mz_b);
+    const intensity_a = try std.testing.allocator.alloc(f32, peak_count);
+    defer std.testing.allocator.free(intensity_a);
+    const intensity_b = try std.testing.allocator.alloc(f32, peak_count);
+    defer std.testing.allocator.free(intensity_b);
+
+    var current_a: f64 = 100.000000001;
+    var current_b: f64 = 1900.000000001;
+    for (0..peak_count) |idx| {
+        current_a += if ((idx & 1) == 0) 0.000000001 else 0.000000002;
+        current_b += if ((idx & 1) == 0) 0.000000041 else 0.000000059;
+        mz_a[idx] = current_a;
+        mz_b[idx] = current_b;
+        intensity_a[idx] = @floatFromInt(10 + idx);
+        intensity_b[idx] = @floatFromInt(20 + idx);
+    }
+
+    const input = [_]binary_reader.RawSpectrum{
+        .{ .scan_id = 1, .rt_seconds = 1.0, .ms_level = 2, .precursor_mz = 600.0, .mz = mz_a, .intensity = intensity_a },
+        .{ .scan_id = 2, .rt_seconds = 1.1, .ms_level = 2, .precursor_mz = 601.0, .mz = mz_b, .intensity = intensity_b },
+    };
+
+    const encoded = try codec.encodeFileAlloc(std.testing.allocator, &input, .{ .block_options = .{ .mode = .lossless, .mz_rans_min_gain_percent = 99 }, .block_size = 2 });
+    defer std.testing.allocator.free(encoded);
+
+    const inspection = try codec.inspectAlloc(std.testing.allocator, encoded);
+    defer codec.freeInspection(std.testing.allocator, inspection);
+
+    try std.testing.expectEqual(@as(u16, codec.version_minor), inspection.header.version_minor);
+    try std.testing.expectEqual(@as(usize, 1), inspection.blocks.len);
+    try std.testing.expect((inspection.blocks[0].header.flags & block.flag_mz_per_spectrum_bit_widths) != 0);
+    try expectByteBreakdownSums(inspection, encoded.len);
+
+    const decoded = try codec.decodeFileAlloc(std.testing.allocator, encoded);
     defer binary_reader.freeSpectra(std.testing.allocator, decoded);
     try expectLosslessRoundTrip(&input, decoded);
 }

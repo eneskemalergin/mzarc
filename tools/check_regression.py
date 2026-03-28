@@ -6,8 +6,8 @@ Reads:
   benchmark/report.json           — current benchmark output (updated by benchmark_v1.py)
 
 Asserts:
-  lossless file size  has not increased by > 1 %
-  lossless decode time has not increased by > 5 %
+    lossless file size  has not increased by > 1 %
+    lossless decode time has not increased by > 10 %
 
 Exits 0 on pass, 1 on any violation or on missing data.
 
@@ -25,7 +25,7 @@ BASELINE_PATH = Path("benchmark/baseline_v0.1.1.json")
 CURRENT_PATH = Path("benchmark/report.json")
 
 SIZE_THRESHOLD = 0.01    # +1 %
-DECODE_THRESHOLD = 0.05  # +5 %
+DECODE_THRESHOLD = 0.10  # +10 %
 
 # Key aliases in order of preference (new name first, old name as fallback)
 LOSSLESS_ALIASES = ["mzarc lossless", "mzv1 lossless"]

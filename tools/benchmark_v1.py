@@ -229,6 +229,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Path to the zig compiler executable, used only with --build "
              "(default: auto-detect inside repo zig-x86_64-* directory)",
     )
+    parser.add_argument(
+        "--mzarc-only",
+        action="store_true",
+        help="Reuse unchanged non-mzarc results from the existing public report and rerun only mzarc benchmarks. "
+             "Requires the same input file, repeat count, and selected lossy quantization as the cached report.",
+    )
     return parser
 
 
@@ -292,6 +298,59 @@ def build_release(zig_compiler: Path | None) -> None:
     sys.stderr.write("Build complete.\n")
 
 
+def load_existing_report(public_dir: Path) -> dict[str, object]:
+    report_path = public_dir / "report.json"
+    if not report_path.exists():
+        raise FileNotFoundError(
+            f"--mzarc-only requires an existing report at {repo_relative_path(report_path)}"
+        )
+    return json.loads(report_path.read_text(encoding="utf-8"))
+
+
+def validate_mzarc_only_inputs(
+    existing_report: dict[str, object],
+    *,
+    input_path: Path,
+    repeats: int,
+    selected_quant: int,
+) -> None:
+    existing_input = str(existing_report.get("paths", {}).get("mzml", ""))
+    requested_input = repo_relative_path(input_path)
+    if existing_input != requested_input:
+        raise ValueError(
+            "--mzarc-only can only reuse a cached report for the same input file: "
+            f"cached={existing_input!r}, requested={requested_input!r}"
+        )
+
+    existing_repeats = int(existing_report.get("repeats", -1))
+    if existing_repeats != repeats:
+        raise ValueError(
+            "--mzarc-only can only reuse a cached report for the same repeat count: "
+            f"cached={existing_repeats}, requested={repeats}"
+        )
+
+    existing_quant = int(existing_report.get("selected_lossy_intensity_quant", -1))
+    if existing_quant != selected_quant:
+        raise ValueError(
+            "--mzarc-only can only reuse a cached report for the same selected lossy quantization: "
+            f"cached={existing_quant}, requested={selected_quant}"
+        )
+
+
+def ensure_reference_dump(input_path: Path, dump_path: Path) -> None:
+    if dump_path.exists():
+        return
+    run_dump_mzml_quietly(input_path, dump_path)
+
+
+def without_artifacts(rows: list[dict[str, object]], artifacts: set[str]) -> list[dict[str, object]]:
+    return [row for row in rows if str(row.get("artifact")) not in artifacts]
+
+
+def without_timing_names(rows: list[dict[str, object]], names: set[str]) -> list[dict[str, object]]:
+    return [row for row in rows if str(row.get("name")) not in names]
+
+
 def main() -> None:
     args = build_parser().parse_args()
 
@@ -307,11 +366,12 @@ def main() -> None:
     if args.repeats <= 0:
         raise ValueError("--repeats must be positive")
 
-    require_tool("gzip")
-    require_tool("zstd")
-    require_tool("bzip2")
-    require_tool("xz")
-    require_tool("lz4")
+    if not args.mzarc_only:
+        require_tool("gzip")
+        require_tool("zstd")
+        require_tool("bzip2")
+        require_tool("xz")
+        require_tool("lz4")
 
     selected_quant = int(args.lossy_intensity_quant)
     lossy_sweep = parse_lossy_sweep(args.lossy_sweep, selected_quant)
@@ -319,6 +379,15 @@ def main() -> None:
     private_workdir = resolve_private_workdir(input_path, args.private_workdir.resolve() if args.private_workdir else None)
     public_dir = args.public_dir.resolve()
     plot_dir = public_dir / "plots"
+    existing_report = load_existing_report(public_dir) if args.mzarc_only else None
+
+    if existing_report is not None:
+        validate_mzarc_only_inputs(
+            existing_report,
+            input_path=input_path,
+            repeats=args.repeats,
+            selected_quant=selected_quant,
+        )
 
     private_workdir.mkdir(parents=True, exist_ok=True)
     plot_dir.mkdir(parents=True, exist_ok=True)
@@ -354,7 +423,7 @@ def main() -> None:
     }
 
     extra_sweep_levels = [level for level in lossy_sweep if level != selected_quant]
-    external_steps = estimate_external_steps(
+    external_steps = 0 if args.mzarc_only else estimate_external_steps(
         requested_external,
         args.repeats,
         numpress_command_template=args.ms_numpress_command_template,
@@ -363,20 +432,29 @@ def main() -> None:
         mscompress_to_dump_command_template=args.mscompress_to_dump_command_template,
         mscompress_benchmark_threaded=args.mscompress_benchmark_threaded,
     )
-    total_steps = (args.repeats * 25) + (2 * len(extra_sweep_levels)) + external_steps + 16
+    total_steps = (
+        (args.repeats * 4) + (2 * len(extra_sweep_levels)) + 8
+        if args.mzarc_only
+        else (args.repeats * 25) + (2 * len(extra_sweep_levels)) + external_steps + 16
+    )
     progress = ProgressBar(total_steps, enabled=not args.no_progress)
 
     try:
         mzml_bytes = input_path.stat().st_size
         search_impact_data = load_search_impact(args.search_impact_json.resolve() if args.search_impact_json else None)
 
-        timing_dump = run_timed_callable(
-            "mzML -> dump",
-            lambda: run_dump_mzml_quietly(input_path, paths["dump"]),
-            repeats=args.repeats,
-            input_bytes=mzml_bytes,
-            progress_callback=progress.callback("mzML -> dump"),
-        )
+        timing_dump = None
+        if args.mzarc_only:
+            ensure_reference_dump(input_path, paths["dump"])
+            progress.step("reuse cached non-mzarc benchmark rows")
+        else:
+            timing_dump = run_timed_callable(
+                "mzML -> dump",
+                lambda: run_dump_mzml_quietly(input_path, paths["dump"]),
+                repeats=args.repeats,
+                input_bytes=mzml_bytes,
+                progress_callback=progress.callback("mzML -> dump"),
+            )
 
         reference_dump = read_dump(paths["dump"])
         dataset = asdict(collect_file_stats(paths["dump"], reference_dump))
@@ -392,69 +470,75 @@ def main() -> None:
         lossy_path_rel = rp("mzarc_lossy")
         lossy_roundtrip_rel = rp("roundtrip_lossy")
 
-        # --- dump-level compressors (5 tools, encode+decode each) ---
-        _DUMP_CODECS = [
-            ("gzip",  "gzip_dump",  ["gzip", "-n", "-c"],  ["gzip", "-d", "-c"]),
-            ("zstd",  "zstd_dump",  ["zstd", "-q", "-c"],  ["zstd", "-q", "-d", "-c"]),
-            ("bzip2", "bzip2_dump", ["bzip2", "-c"],        ["bzip2", "-d", "-c"]),
-            ("lz4",   "lz4_dump",   ["lz4", "-q", "-c"],   ["lz4", "-q", "-d", "-c"]),
-            ("xz",    "xz_dump",    ["xz", "-c"],           ["xz", "-d", "-c"]),
-        ]
         dump_results: dict[str, dict] = {}
-        for _c, _key, _enc, _dec in _DUMP_CODECS:
-            _label = f"{_c} dump"
-            dump_results[_c] = benchmark_roundtrip(
-                artifact=_label,
-                fidelity_name=f"{_c}_dump",
-                encode_name=f"dump -> {_label}",
-                encode_command=_enc + [dump_rel],
-                encode_progress=f"dump -> {_label}",
-                encode_path=paths[_key],
-                decode_name=f"{_label} -> dump",
-                decode_command=_dec + [rp(_key)],
-                decode_progress=f"{_label} -> dump",
-                decode_path=paths[f"{_key}_roundtrip"],
-                reference_dump=reference_dump,
-                repeats=args.repeats,
-                progress=progress,
-                encode_input_bytes=dump_bytes,
-                decode_output_bytes=dump_bytes,
-            )
-
-        # --- mzML-level compressors: raw inflate/deflate speed on the interchange format ---
-        # Decompression reflects raw bytes speed; mzML parsing is still required
-        # before spectra are accessible.
-        _MZML_CODECS = [
-            ("gzip",  "gzip_mzml",  ["gzip", "-n", "-c"],  ["gzip", "-d", "-c"]),
-            ("zstd",  "zstd_mzml",  ["zstd", "-q", "-c"],  ["zstd", "-q", "-d", "-c"]),
-            ("bzip2", "bzip2_mzml", ["bzip2", "-c"],        ["bzip2", "-d", "-c"]),
-            ("lz4",   "lz4_mzml",   ["lz4", "-q", "-c"],   ["lz4", "-q", "-d", "-c"]),
-            ("xz",    "xz_mzml",    ["xz", "-c"],           ["xz", "-d", "-c"]),
-        ]
         mzml_encode_timings: dict[str, object] = {}
         mzml_decode_timings: dict[str, object] = {}
-        for _c, _key, _enc, _dec in _MZML_CODECS:
-            _label = f"{_c} mzML"
-            mzml_encode_timings[_c] = timed_command(
-                f"mzML -> {_label}",
-                _enc + [mzml_rel],
-                repeats=args.repeats,
-                progress=progress,
-                progress_label=f"mzML -> {_label}",
-                input_bytes=mzml_bytes,
-                stdout_path=paths[_key],
-            )
-            mzml_decode_timings[_c] = timed_command(
-                f"{_label} -> mzML",
-                _dec + [rp(_key)],
-                repeats=args.repeats,
-                progress=progress,
-                progress_label=f"{_label} -> mzML",
-                input_bytes=paths[_key].stat().st_size,
-                output_bytes=mzml_bytes,
-                stdout_path=paths[f"{_key}_roundtrip"],
-            )
-        progress.step("record gzip/zstd/bzip2/lz4/xz mzML sizes")
+
+        if not args.mzarc_only:
+            require_tool("gzip")
+            require_tool("zstd")
+            require_tool("bzip2")
+            require_tool("xz")
+            require_tool("lz4")
+
+            # --- dump-level compressors (5 tools, encode+decode each) ---
+            _DUMP_CODECS = [
+                ("gzip",  "gzip_dump",  ["gzip", "-n", "-c"],  ["gzip", "-d", "-c"]),
+                ("zstd",  "zstd_dump",  ["zstd", "-q", "-c"],  ["zstd", "-q", "-d", "-c"]),
+                ("bzip2", "bzip2_dump", ["bzip2", "-c"],        ["bzip2", "-d", "-c"]),
+                ("lz4",   "lz4_dump",   ["lz4", "-q", "-c"],   ["lz4", "-q", "-d", "-c"]),
+                ("xz",    "xz_dump",    ["xz", "-c"],           ["xz", "-d", "-c"]),
+            ]
+            for _c, _key, _enc, _dec in _DUMP_CODECS:
+                _label = f"{_c} dump"
+                dump_results[_c] = benchmark_roundtrip(
+                    artifact=_label,
+                    fidelity_name=f"{_c}_dump",
+                    encode_name=f"dump -> {_label}",
+                    encode_command=_enc + [dump_rel],
+                    encode_progress=f"dump -> {_label}",
+                    encode_path=paths[_key],
+                    decode_name=f"{_label} -> dump",
+                    decode_command=_dec + [rp(_key)],
+                    decode_progress=f"{_label} -> dump",
+                    decode_path=paths[f"{_key}_roundtrip"],
+                    reference_dump=reference_dump,
+                    repeats=args.repeats,
+                    progress=progress,
+                    encode_input_bytes=dump_bytes,
+                    decode_output_bytes=dump_bytes,
+                )
+
+            # --- mzML-level compressors: raw inflate/deflate speed on the interchange format ---
+            _MZML_CODECS = [
+                ("gzip",  "gzip_mzml",  ["gzip", "-n", "-c"],  ["gzip", "-d", "-c"]),
+                ("zstd",  "zstd_mzml",  ["zstd", "-q", "-c"],  ["zstd", "-q", "-d", "-c"]),
+                ("bzip2", "bzip2_mzml", ["bzip2", "-c"],        ["bzip2", "-d", "-c"]),
+                ("lz4",   "lz4_mzml",   ["lz4", "-q", "-c"],   ["lz4", "-q", "-d", "-c"]),
+                ("xz",    "xz_mzml",    ["xz", "-c"],           ["xz", "-d", "-c"]),
+            ]
+            for _c, _key, _enc, _dec in _MZML_CODECS:
+                _label = f"{_c} mzML"
+                mzml_encode_timings[_c] = timed_command(
+                    f"mzML -> {_label}",
+                    _enc + [mzml_rel],
+                    repeats=args.repeats,
+                    progress=progress,
+                    progress_label=f"mzML -> {_label}",
+                    input_bytes=mzml_bytes,
+                    stdout_path=paths[_key],
+                )
+                mzml_decode_timings[_c] = timed_command(
+                    f"{_label} -> mzML",
+                    _dec + [rp(_key)],
+                    repeats=args.repeats,
+                    progress=progress,
+                    progress_label=f"{_label} -> mzML",
+                    input_bytes=paths[_key].stat().st_size,
+                    output_bytes=mzml_bytes,
+                    stdout_path=paths[f"{_key}_roundtrip"],
+                )
+            progress.step("record gzip/zstd/bzip2/lz4/xz mzML sizes")
 
         lossless_result = benchmark_roundtrip(
             artifact="mzarc lossless",
@@ -503,41 +587,55 @@ def main() -> None:
         lossy_layout = inspect_codec_artifact(zig_bin, paths["mzarc_lossy"])
         progress.step("inspect mzarc lossy layout")
 
-        sizes = {
-            "mzML": {"path": repo_relative_path(input_path), "bytes": mzml_bytes},
-            "dump": {"path": dump_rel, "bytes": dump_bytes},
-            "mzarc lossless": {"path": lossless_path_rel, "bytes": paths["mzarc_lossless"].stat().st_size},
-            "mzarc lossy": {"path": lossy_path_rel, "bytes": paths["mzarc_lossy"].stat().st_size},
-            "gzip dump": {"path": rp("gzip_dump"), "bytes": paths["gzip_dump"].stat().st_size},
-            "zstd dump": {"path": rp("zstd_dump"), "bytes": paths["zstd_dump"].stat().st_size},
-            "gzip mzML": {"path": rp("gzip_mzml"), "bytes": paths["gzip_mzml"].stat().st_size},
-            "zstd mzML": {"path": rp("zstd_mzml"), "bytes": paths["zstd_mzml"].stat().st_size},
-            "bzip2 dump": {"path": rp("bzip2_dump"), "bytes": paths["bzip2_dump"].stat().st_size},
-            "lz4 dump": {"path": rp("lz4_dump"), "bytes": paths["lz4_dump"].stat().st_size},
-            "xz dump": {"path": rp("xz_dump"), "bytes": paths["xz_dump"].stat().st_size},
-            "bzip2 mzML": {"path": rp("bzip2_mzml"), "bytes": paths["bzip2_mzml"].stat().st_size},
-            "lz4 mzML": {"path": rp("lz4_mzml"), "bytes": paths["lz4_mzml"].stat().st_size},
-            "xz mzML": {"path": rp("xz_mzml"), "bytes": paths["xz_mzml"].stat().st_size},
-        }
+        if args.mzarc_only:
+            sizes = dict(existing_report["sizes"])
+            sizes["mzarc lossless"] = {"path": lossless_path_rel, "bytes": paths["mzarc_lossless"].stat().st_size}
+            sizes["mzarc lossy"] = {"path": lossy_path_rel, "bytes": paths["mzarc_lossy"].stat().st_size}
+            external_results = {
+                "records": list(existing_report.get("external_baselines", [])),
+                "sizes": {
+                    name: item
+                    for name, item in existing_report["sizes"].items()
+                    if name not in {"mzML", "dump", "mzarc lossless", "mzarc lossy"}
+                },
+                "timings": [],
+            }
+        else:
+            sizes = {
+                "mzML": {"path": repo_relative_path(input_path), "bytes": mzml_bytes},
+                "dump": {"path": dump_rel, "bytes": dump_bytes},
+                "mzarc lossless": {"path": lossless_path_rel, "bytes": paths["mzarc_lossless"].stat().st_size},
+                "mzarc lossy": {"path": lossy_path_rel, "bytes": paths["mzarc_lossy"].stat().st_size},
+                "gzip dump": {"path": rp("gzip_dump"), "bytes": paths["gzip_dump"].stat().st_size},
+                "zstd dump": {"path": rp("zstd_dump"), "bytes": paths["zstd_dump"].stat().st_size},
+                "gzip mzML": {"path": rp("gzip_mzml"), "bytes": paths["gzip_mzml"].stat().st_size},
+                "zstd mzML": {"path": rp("zstd_mzml"), "bytes": paths["zstd_mzml"].stat().st_size},
+                "bzip2 dump": {"path": rp("bzip2_dump"), "bytes": paths["bzip2_dump"].stat().st_size},
+                "lz4 dump": {"path": rp("lz4_dump"), "bytes": paths["lz4_dump"].stat().st_size},
+                "xz dump": {"path": rp("xz_dump"), "bytes": paths["xz_dump"].stat().st_size},
+                "bzip2 mzML": {"path": rp("bzip2_mzml"), "bytes": paths["bzip2_mzml"].stat().st_size},
+                "lz4 mzML": {"path": rp("lz4_mzml"), "bytes": paths["lz4_mzml"].stat().st_size},
+                "xz mzML": {"path": rp("xz_mzml"), "bytes": paths["xz_mzml"].stat().st_size},
+            }
 
-        external_results = run_external_baselines(
-            requested=requested_external,
-            input_path=input_path,
-            sample_name=sample_name,
-            private_workdir=private_workdir,
-            reference_dump=reference_dump,
-            dump_bytes=dump_bytes,
-            repeats=args.repeats,
-            mzmlb_compression=args.mzmlb_compression,
-            progress=progress,
-            numpress_command_template=args.ms_numpress_command_template,
-            numpress_to_dump_command_template=args.ms_numpress_to_dump_command_template,
-            mscompress_command_template=args.mscompress_command_template,
-            mscompress_to_dump_command_template=args.mscompress_to_dump_command_template,
-            mscompress_benchmark_threaded=args.mscompress_benchmark_threaded,
-            mscompress_thread_count=args.mscompress_thread_count,
-        )
-        sizes.update(external_results["sizes"])
+            external_results = run_external_baselines(
+                requested=requested_external,
+                input_path=input_path,
+                sample_name=sample_name,
+                private_workdir=private_workdir,
+                reference_dump=reference_dump,
+                dump_bytes=dump_bytes,
+                repeats=args.repeats,
+                mzmlb_compression=args.mzmlb_compression,
+                progress=progress,
+                numpress_command_template=args.ms_numpress_command_template,
+                numpress_to_dump_command_template=args.ms_numpress_to_dump_command_template,
+                mscompress_command_template=args.mscompress_command_template,
+                mscompress_to_dump_command_template=args.mscompress_to_dump_command_template,
+                mscompress_benchmark_threaded=args.mscompress_benchmark_threaded,
+                mscompress_thread_count=args.mscompress_thread_count,
+            )
+            sizes.update(external_results["sizes"])
 
         lossy_sweep_rows: list[dict[str, object]] = []
         selected_sweep_row = lossy_sweep_row(
@@ -584,31 +682,53 @@ def main() -> None:
 
         lossy_sweep_rows.sort(key=lambda row: int(row["intensity_quant"]))
 
-        fidelity_rows = [
-            {"artifact": f"{_c} dump", "data": dump_results[_c]["fidelity"]}
-            for _c in ["gzip", "zstd", "bzip2", "lz4", "xz"]
-        ] + [
-            {"artifact": "mzarc lossless", "data": lossless_fidelity},
-            {"artifact": f"mzarc lossy q={selected_quant}", "data": lossy_fidelity},
-        ]
-        for item in external_results["records"]:
-            if item["fidelity"] is not None:
-                fidelity_rows.append({"artifact": item["name"], "data": item["fidelity"]})
+        if args.mzarc_only:
+            mzarc_artifacts = {"mzarc lossless", f"mzarc lossy q={selected_quant}"}
+            fidelity_rows = without_artifacts(list(existing_report.get("fidelity_rows", [])), mzarc_artifacts)
+            fidelity_rows += [
+                {"artifact": "mzarc lossless", "data": lossless_fidelity},
+                {"artifact": f"mzarc lossy q={selected_quant}", "data": lossy_fidelity},
+            ]
 
-        serialized_timings = [serialize_timing_result(timing_dump)]
-        for _c in ["gzip", "zstd", "bzip2", "lz4", "xz"]:
-            serialized_timings.append(serialize_timing_result(dump_results[_c]["encode_timing"]))
-            serialized_timings.append(serialize_timing_result(dump_results[_c]["decode_timing"]))
-        for _c in ["gzip", "zstd", "bzip2", "lz4", "xz"]:
-            serialized_timings.append(serialize_timing_result(mzml_encode_timings[_c]))
-            serialized_timings.append(serialize_timing_result(mzml_decode_timings[_c]))
-        serialized_timings += [
-            serialize_timing_result(lossless_result["encode_timing"]),
-            serialize_timing_result(lossless_result["decode_timing"]),
-            serialize_timing_result(lossy_result["encode_timing"]),
-            serialize_timing_result(lossy_result["decode_timing"]),
-        ]
-        serialized_timings.extend(serialize_timing_result(item) for item in external_results["timings"])
+            mzarc_timing_names = {
+                "dump -> mzarc lossless",
+                "mzarc lossless -> dump",
+                f"dump -> mzarc lossy q={selected_quant}",
+                f"mzarc lossy q={selected_quant} -> dump",
+            }
+            serialized_timings = without_timing_names(list(existing_report.get("timings", [])), mzarc_timing_names)
+            serialized_timings += [
+                serialize_timing_result(lossless_result["encode_timing"]),
+                serialize_timing_result(lossless_result["decode_timing"]),
+                serialize_timing_result(lossy_result["encode_timing"]),
+                serialize_timing_result(lossy_result["decode_timing"]),
+            ]
+        else:
+            fidelity_rows = [
+                {"artifact": f"{_c} dump", "data": dump_results[_c]["fidelity"]}
+                for _c in ["gzip", "zstd", "bzip2", "lz4", "xz"]
+            ] + [
+                {"artifact": "mzarc lossless", "data": lossless_fidelity},
+                {"artifact": f"mzarc lossy q={selected_quant}", "data": lossy_fidelity},
+            ]
+            for item in external_results["records"]:
+                if item["fidelity"] is not None:
+                    fidelity_rows.append({"artifact": item["name"], "data": item["fidelity"]})
+
+            serialized_timings = [serialize_timing_result(timing_dump)]
+            for _c in ["gzip", "zstd", "bzip2", "lz4", "xz"]:
+                serialized_timings.append(serialize_timing_result(dump_results[_c]["encode_timing"]))
+                serialized_timings.append(serialize_timing_result(dump_results[_c]["decode_timing"]))
+            for _c in ["gzip", "zstd", "bzip2", "lz4", "xz"]:
+                serialized_timings.append(serialize_timing_result(mzml_encode_timings[_c]))
+                serialized_timings.append(serialize_timing_result(mzml_decode_timings[_c]))
+            serialized_timings += [
+                serialize_timing_result(lossless_result["encode_timing"]),
+                serialize_timing_result(lossless_result["decode_timing"]),
+                serialize_timing_result(lossy_result["encode_timing"]),
+                serialize_timing_result(lossy_result["decode_timing"]),
+            ]
+            serialized_timings.extend(serialize_timing_result(item) for item in external_results["timings"])
 
         performance_rows = build_performance_rows(
             serialized_timings,
@@ -651,6 +771,7 @@ def main() -> None:
         report = {
             "sample_name": sample_name,
             "repeats": args.repeats,
+            "run_mode": "mzarc-only" if args.mzarc_only else "full",
             "selected_lossy_intensity_quant": selected_quant,
             "paths": {
                 "mzml": repo_relative_path(input_path),

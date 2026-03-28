@@ -380,3 +380,49 @@ test "block accepts separate mz and intensity rans thresholds" {
     try checkMzPpm(mz, decoded[0].mz);
     try std.testing.expectEqualSlices(f32, intensity, decoded[0].intensity);
 }
+
+test "block uses per-spectrum m/z widths when they shrink the payload" {
+    const peak_count = 256;
+    const mz_a = try std.testing.allocator.alloc(f64, peak_count);
+    defer std.testing.allocator.free(mz_a);
+    const mz_b = try std.testing.allocator.alloc(f64, peak_count);
+    defer std.testing.allocator.free(mz_b);
+    const intensity_a = try std.testing.allocator.alloc(f32, peak_count);
+    defer std.testing.allocator.free(intensity_a);
+    const intensity_b = try std.testing.allocator.alloc(f32, peak_count);
+    defer std.testing.allocator.free(intensity_b);
+
+    var current_a: f64 = 100.000000001;
+    var current_b: f64 = 1800.000000001;
+    for (0..peak_count) |idx| {
+        current_a += if ((idx & 1) == 0) 0.000000001 else 0.000000002;
+        current_b += if ((idx & 1) == 0) 0.000000041 else 0.000000059;
+        mz_a[idx] = current_a;
+        mz_b[idx] = current_b;
+        intensity_a[idx] = @floatFromInt(100 + idx);
+        intensity_b[idx] = @floatFromInt(1000 + idx);
+    }
+
+    const spectra = [_]binary_reader.RawSpectrum{
+        .{ .scan_id = 1, .rt_seconds = 1.0, .ms_level = 2, .precursor_mz = 500.0, .mz = mz_a, .intensity = intensity_a },
+        .{ .scan_id = 2, .rt_seconds = 1.1, .ms_level = 2, .precursor_mz = 501.0, .mz = mz_b, .intensity = intensity_b },
+    };
+
+    const encoded = try block.encodeBlock(std.testing.allocator, &spectra, .{ .mode = .lossless, .mz_rans_min_gain_percent = 99 });
+    defer std.testing.allocator.free(encoded);
+
+    const header = try block.parseHeader(encoded);
+    try std.testing.expect((header.flags & block.flag_mz_per_spectrum_bit_widths) != 0);
+
+    const breakdown = try block.inspectBlockByteBreakdown(encoded);
+    try std.testing.expect(breakdown.mz_payload_bytes > spectra.len);
+
+    const decoded = try block.decodeBlock(std.testing.allocator, encoded);
+    defer binary_reader.freeSpectra(std.testing.allocator, decoded);
+
+    try std.testing.expectEqual(@as(usize, spectra.len), decoded.len);
+    try checkMzPpm(mz_a, decoded[0].mz);
+    try checkMzPpm(mz_b, decoded[1].mz);
+    try std.testing.expectEqualSlices(f32, intensity_a, decoded[0].intensity);
+    try std.testing.expectEqualSlices(f32, intensity_b, decoded[1].intensity);
+}

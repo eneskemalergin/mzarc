@@ -579,6 +579,16 @@ fn packedByteLen(bit_width: u8, count: usize) usize {
     return ((@as(usize, bit_width) * count) + 7) / 8;
 }
 
+fn perSpectrumPackedByteLen(bit_widths: []const u8, peak_counts: []const u32) !usize {
+    if (bit_widths.len != peak_counts.len) return error.InvalidPeakCount;
+
+    var total: usize = 0;
+    for (peak_counts, 0..) |peak_count, idx| {
+        total += packedByteLen(bit_widths[idx], peak_count);
+    }
+    return total;
+}
+
 fn collectRansSections(
     allocator: std.mem.Allocator,
     block_bytes: []const u8,
@@ -608,14 +618,29 @@ fn collectRansSections(
     }
 
     offset += spectrum_count * @sizeOf(f64);
+    const peak_counts = try allocator.alloc(u32, spectrum_count);
+    defer allocator.free(peak_counts);
+    for (peak_counts, 0..) |*value, idx| {
+        const start = offset + (idx * @sizeOf(u32));
+        value.* = readIntLe(u32, payload[start .. start + @sizeOf(u32)]);
+    }
     offset += spectrum_count * @sizeOf(u32);
 
     offset += @sizeOf(u64);
     const mz_payload_len = readIntLe(u32, payload[offset .. offset + 4]);
     offset += 4;
+    const mz_widths = if ((header.flags & block.flag_mz_per_spectrum_bit_widths) != 0) blk: {
+        const widths = payload[offset .. offset + spectrum_count];
+        offset += spectrum_count;
+        break :blk widths;
+    } else null;
     if ((header.flags & block.flag_rans_mz) != 0) {
         const encoded = payload[offset .. offset + mz_payload_len];
-        const raw = try rans.decodeAlloc(allocator, encoded, packedByteLen(header.mz_bit_width, total_peaks));
+        const raw_len = if (mz_widths) |widths|
+            try perSpectrumPackedByteLen(widths, peak_counts)
+        else
+            packedByteLen(header.mz_bit_width, total_peaks);
+        const raw = try rans.decodeAlloc(allocator, encoded, raw_len);
         try mz_sections.append(allocator, .{ .encoded = encoded, .raw = raw });
     }
     offset += mz_payload_len;

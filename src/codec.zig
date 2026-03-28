@@ -8,7 +8,7 @@ const io = std.Io.Threaded.global_single_threaded.io();
 pub const magic = "MZAR".*;
 pub const header_len = 32;
 pub const version_major: u16 = 1;
-pub const version_minor: u16 = 1;
+pub const version_minor: u16 = 2;
 
 pub const flag_lossless: u32 = 0b0000_0001;
 pub const flag_contains_ms1: u32 = 0b0000_0010;
@@ -54,15 +54,20 @@ fn intensityModeLabel(mode: block.IntensityEncodingMode) []const u8 {
     };
 }
 
+fn mzLayoutLabel(stats: block.BlockEncodeStats) []const u8 {
+    return if (stats.mz_per_spectrum_widths) "per-spectrum" else "block";
+}
+
 fn maybePrintBlockStats(block_index: u32, stats: block.BlockEncodeStats, options: EncodeOptions) void {
     if (!options.block_options.verbose_blocks) return;
     std.debug.print(
-        "[block {} ms{}] peaks={} nspec={} mz rans={s} raw={} stored={} gain={d:.2}% est={} intensity mode={s} rans={s} base={} stored={} raw_f32={} gain={d:.2}% est={} payload={}\n",
+        "[block {} ms{}] peaks={} nspec={} mz layout={s} rans={s} raw={} stored={} gain={d:.2}% est={} intensity mode={s} rans={s} base={} stored={} raw_f32={} gain={d:.2}% est={} payload={}\n",
         .{
             block_index,
             stats.ms_level,
             stats.total_peaks,
             stats.spectrum_count,
+            mzLayoutLabel(stats),
             if (stats.mz_rans_used) "yes" else "no",
             stats.mz_raw_bytes,
             stats.mz_stored_bytes,
