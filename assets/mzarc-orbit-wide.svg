@@ -1,0 +1,234 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   width="1800"
+   height="820"
+   viewBox="0 0 1800 820"
+   version="1.1"
+   id="svg16"
+   sodipodi:docname="mzarc-orbit-wide.svg"
+   inkscape:version="1.4.3 (0d15f75042, 2025-12-25)"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+   xmlns:cc="http://creativecommons.org/ns#"
+   xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <sodipodi:namedview
+     id="namedview16"
+     pagecolor="#ffffff"
+     bordercolor="#000000"
+     borderopacity="0.25"
+     inkscape:showpageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1"
+     inkscape:zoom="1.1155556"
+     inkscape:cx="900"
+     inkscape:cy="409.66135"
+     inkscape:window-width="3840"
+     inkscape:window-height="2089"
+     inkscape:window-x="2160"
+     inkscape:window-y="34"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="svg16" />
+  <title
+     id="title1">mzarc orbit wide</title>
+  <desc
+     id="desc1">Wide horizontal lockup for the mzarc orbit logo.</desc>
+  <defs
+     id="defs6">
+    <linearGradient
+       id="ringGrad"
+       x1="227"
+       y1="103"
+       x2="797"
+       y2="673"
+       gradientUnits="userSpaceOnUse">
+      <stop
+         offset="0%"
+         stop-color="#67addd"
+         id="stop1" />
+      <stop
+         offset="100%"
+         stop-color="#255c88"
+         id="stop2" />
+    </linearGradient>
+    <linearGradient
+       id="discGrad"
+       x1="318"
+       y1="194"
+       x2="706"
+       y2="582"
+       gradientUnits="userSpaceOnUse">
+      <stop
+         offset="0%"
+         stop-color="#173753"
+         id="stop3" />
+      <stop
+         offset="100%"
+         stop-color="#2f79ad"
+         id="stop4" />
+    </linearGradient>
+    <linearGradient
+       id="accentGrad"
+       x1="814"
+       y1="300"
+       x2="862"
+       y2="300"
+       gradientUnits="userSpaceOnUse">
+      <stop
+         offset="0%"
+         stop-color="#ffb453"
+         id="stop5" />
+      <stop
+         offset="100%"
+         stop-color="#ff7b30"
+         id="stop6" />
+    </linearGradient>
+  </defs>
+  <g
+     id="orbit-symbol"
+     transform="matrix(0.82,0,0,0.82,-76,55.35)">
+    <ellipse
+       cx="512"
+       cy="704"
+       rx="292"
+       ry="58"
+       fill="#173753"
+       opacity="0.08"
+       id="ellipse6" />
+    <circle
+       cx="512"
+       cy="400"
+       r="266"
+       fill="#173753"
+       opacity="0.06"
+       id="circle6" />
+    <circle
+       cx="512"
+       cy="388"
+       r="266"
+       fill="none"
+       stroke="url(#ringGrad)"
+       stroke-width="38"
+       id="circle7"
+       style="stroke:url(#ringGrad)" />
+    <ellipse
+       cx="512"
+       cy="388"
+       rx="368"
+       ry="146"
+       fill="none"
+       stroke="#7fb7df"
+       stroke-width="18"
+       opacity="0.82"
+       id="ellipse7" />
+    <ellipse
+       cx="512"
+       cy="388"
+       rx="368"
+       ry="146"
+       fill="none"
+       stroke="#2e638f"
+       stroke-width="18"
+       opacity="0.22"
+       transform="rotate(-18,512,388)"
+       id="ellipse8" />
+    <circle
+       cx="838"
+       cy="324"
+       r="24"
+       fill="url(#accentGrad)"
+       id="circle8"
+       style="fill:url(#accentGrad)" />
+    <circle
+       cx="205.17072"
+       cy="468.19513"
+       r="20"
+       fill="#ffffff"
+       stroke="#2f76aa"
+       stroke-width="10"
+       id="circle9" />
+    <circle
+       cx="512"
+       cy="388"
+       r="194"
+       fill="url(#discGrad)"
+       id="circle10"
+       style="fill:url(#discGrad)" />
+    <circle
+       cx="512"
+       cy="388"
+       r="194"
+       fill="none"
+       stroke="#9fcaea"
+       stroke-width="10"
+       opacity="0.16"
+       id="circle11" />
+    <g
+       stroke="#ffffff"
+       stroke-width="18"
+       stroke-linecap="round"
+       fill="none"
+       id="g12">
+      <path
+         d="m 338,426 h 54 l 36,-134 68,212 72,-264 66,186 h 40"
+         id="path11" />
+      <path
+         d="M 346,476 H 666"
+         opacity="0.28"
+         id="path12" />
+    </g>
+    <g
+       fill="#ffffff"
+       transform="translate(0,28)"
+       id="g15">
+      <path
+         d="M 512,476 646,534 512,592 378,534 Z"
+         opacity="0.96"
+         id="path13" />
+      <path
+         d="M 512,556 630,606 512,656 394,606 Z"
+         opacity="0.72"
+         id="path14" />
+      <path
+         d="m 512,626 98,42 -98,42 -98,-42 z"
+         opacity="0.45"
+         id="path15" />
+    </g>
+  </g>
+  <g
+     id="wide-wordmark"
+     transform="translate(-38,56.928711)">
+    <text
+       x="1140"
+       y="410"
+       text-anchor="middle"
+       font-family="'Avenir Next', Montserrat, Poppins, 'DejaVu Sans', sans-serif"
+       font-size="262px"
+       font-weight="700"
+       letter-spacing="-14"
+       fill="#173753"
+       id="text15">mzarc</text>
+    <text
+       x="1140"
+       y="510"
+       text-anchor="middle"
+       font-family="'Avenir Next', Montserrat, Poppins, 'DejaVu Sans', sans-serif"
+       font-size="62px"
+       font-weight="600"
+       letter-spacing="10"
+       fill="#4b7ea8"
+       id="text16">MASS SPECTRA ARCHIVE CODEC</text>
+  </g>
+  <metadata
+     id="metadata16">
+    <rdf:RDF>
+      <cc:Work
+         rdf:about="">
+        <dc:title>mzarc orbit wide</dc:title>
+      </cc:Work>
+    </rdf:RDF>
+  </metadata>
+</svg>

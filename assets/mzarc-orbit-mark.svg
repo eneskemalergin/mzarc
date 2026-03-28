@@ -1,0 +1,204 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   width="1024"
+   height="1024"
+   viewBox="0 0 1024 1024"
+   version="1.1"
+   id="svg15"
+   sodipodi:docname="mzarc-orbit-mark.svg"
+   inkscape:version="1.4.3 (0d15f75042, 2025-12-25)"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+   xmlns:cc="http://creativecommons.org/ns#"
+   xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <sodipodi:namedview
+     id="namedview15"
+     pagecolor="#ffffff"
+     bordercolor="#000000"
+     borderopacity="0.25"
+     inkscape:showpageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1"
+     inkscape:zoom="1.8632812"
+     inkscape:cx="512"
+     inkscape:cy="512"
+     inkscape:window-width="3840"
+     inkscape:window-height="2089"
+     inkscape:window-x="2160"
+     inkscape:window-y="34"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="svg15" />
+  <title
+     id="title1">mzarc orbit mark</title>
+  <desc
+     id="desc1">Icon-only version of the mzarc orbit logo.</desc>
+  <defs
+     id="defs6">
+    <linearGradient
+       id="ringGrad"
+       x1="0%"
+       y1="0%"
+       x2="100%"
+       y2="100%">
+      <stop
+         offset="0%"
+         stop-color="#67addd"
+         id="stop1" />
+      <stop
+         offset="100%"
+         stop-color="#255c88"
+         id="stop2" />
+    </linearGradient>
+    <linearGradient
+       id="discGrad"
+       x1="0%"
+       y1="0%"
+       x2="100%"
+       y2="100%">
+      <stop
+         offset="0%"
+         stop-color="#173753"
+         id="stop3" />
+      <stop
+         offset="100%"
+         stop-color="#2f79ad"
+         id="stop4" />
+    </linearGradient>
+    <linearGradient
+       id="accentGrad"
+       x1="0%"
+       y1="0%"
+       x2="100%"
+       y2="0%">
+      <stop
+         offset="0%"
+         stop-color="#ffb453"
+         id="stop5" />
+      <stop
+         offset="100%"
+         stop-color="#ff7b30"
+         id="stop6" />
+    </linearGradient>
+  </defs>
+  <g
+     id="orbit-mark"
+     transform="translate(0,8)">
+    <ellipse
+       cx="512"
+       cy="704"
+       rx="292"
+       ry="58"
+       fill="#173753"
+       opacity="0.08"
+       id="ellipse6" />
+    <circle
+       cx="512"
+       cy="400"
+       r="266"
+       fill="#173753"
+       opacity="0.06"
+       id="circle6" />
+    <circle
+       cx="512"
+       cy="388"
+       r="266"
+       fill="none"
+       stroke="url(#ringGrad)"
+       stroke-width="38"
+       id="circle7" />
+    <ellipse
+       cx="512"
+       cy="388"
+       rx="368"
+       ry="146"
+       fill="none"
+       stroke="#7fb7df"
+       stroke-width="18"
+       opacity="0.82"
+       id="ellipse7" />
+    <ellipse
+       cx="512"
+       cy="388"
+       rx="368"
+       ry="146"
+       fill="none"
+       stroke="#2e638f"
+       stroke-width="18"
+       opacity="0.22"
+       transform="rotate(-18 512 388)"
+       id="ellipse8" />
+    <circle
+       cx="838"
+       cy="324"
+       r="24"
+       fill="url(#accentGrad)"
+       id="circle8" />
+    <circle
+       cx="208"
+       cy="468"
+       r="20"
+       fill="#ffffff"
+       stroke="#2f76aa"
+       stroke-width="10"
+       id="circle9" />
+    <circle
+       cx="512"
+       cy="388"
+       r="194"
+       fill="url(#discGrad)"
+       id="circle10" />
+    <circle
+       cx="512"
+       cy="388"
+       r="194"
+       fill="none"
+       stroke="#9fcaea"
+       stroke-width="10"
+       opacity="0.16"
+       id="circle11" />
+    <g
+       id="wave-bars"
+       stroke="#ffffff"
+       stroke-width="18"
+       stroke-linecap="round"
+       fill="none">
+      <path
+         d="M338,426 L392,426 L428,292 L496,504 L568,240 L634,426 L674,426"
+         id="path11" />
+      <path
+         d="M346,476 H666"
+         opacity="0.28"
+         id="path12" />
+    </g>
+    <g
+       id="archive-layers"
+       fill="#ffffff"
+       transform="translate(0,28)">
+      <path
+         d="M512,476 L646,534 L512,592 L378,534 Z"
+         opacity="0.96"
+         id="path13" />
+      <path
+         d="M512,556 L630,606 L512,656 L394,606 Z"
+         opacity="0.72"
+         id="path14" />
+      <path
+         d="M512,626 L610,668 L512,710 L414,668 Z"
+         opacity="0.45"
+         id="path15" />
+    </g>
+  </g>
+  <metadata
+     id="metadata15">
+    <rdf:RDF>
+      <cc:Work
+         rdf:about="">
+        <dc:title>mzarc orbit mark</dc:title>
+      </cc:Work>
+    </rdf:RDF>
+  </metadata>
+</svg>

@@ -1,9 +1,7 @@
 <!-- markdownlint-disable MD033 MD041 -->
 <p align="center">
-    <img src="assets/Spectrum-Archive-rect.png" alt="mzarc logo" width="120" />
+    <img src="assets/mzarc-readme-header.svg" alt="mzarc header logo" width="860" />
 </p>
-
-<h1 align="center">mzarc</h1>
 
 <p align="center">
     Feasibility-first compression prototype for mzML-derived mass spectrometry spectra.
