@@ -1,6 +1,6 @@
 ========================================================================
 INTENSITY ENTROPY ANALYSIS — Part 2b.0 Measurement Gate
-Input: fixtures/frozen.bin
+Input: test/fixtures/frozen.bin
 ========================================================================
 
 Total peaks analyzed : 202,806

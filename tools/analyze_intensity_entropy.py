@@ -18,7 +18,7 @@ Output:
 
 Usage:
     uv run python tools/analyze_intensity_entropy.py \\
-        [--input fixtures/frozen.bin] \\
+        [--input test/fixtures/frozen.bin] \\
         [--output benchmark/intensity_entropy_analysis.txt]
 
 Exit codes:
@@ -246,8 +246,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--input",
         type=Path,
-        default=Path("fixtures/frozen.bin"),
-        help="Flat binary dump to analyze (default: fixtures/frozen.bin)",
+        default=Path("test/fixtures/frozen.bin"),
+        help="Flat binary dump to analyze (default: test/fixtures/frozen.bin)",
     )
     p.add_argument(
         "--output",

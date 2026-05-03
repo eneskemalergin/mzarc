@@ -107,16 +107,16 @@ pub fn build(b: *std.Build) void {
         test_step.dependOn(&run_unit_test.step);
     }
 
-    // check-fixture: SHA-256 integrity check for fixtures/frozen.bin
-    const check_fixture_step = b.step("check-fixture", "Verify SHA-256 of fixtures/frozen.bin");
+    // check-fixture: SHA-256 integrity check for test/fixtures/frozen.bin
+    const check_fixture_step = b.step("check-fixture", "Verify SHA-256 of test/fixtures/frozen.bin");
     const check_fixture_cmd = b.addSystemCommand(&.{
         "sh", "-c",
-        "actual=$(sha256sum fixtures/frozen.bin | cut -d' ' -f1); " ++
+        "actual=$(sha256sum test/fixtures/frozen.bin | cut -d' ' -f1); " ++
             "expected=9d5a10167356db7afaa4e6c43832a7ea75a53e84dc74e679a881d5d8cf7cb2c6; " ++
             "if [ \"$actual\" = \"$expected\" ]; then " ++
-            "  echo 'PASS fixtures/frozen.bin sha256 ok'; " ++
+            "  echo 'PASS test/fixtures/frozen.bin sha256 ok'; " ++
             "else " ++
-            "  echo \"FAIL fixtures/frozen.bin expected=$expected got=$actual\"; exit 1; " ++
+            "  echo \"FAIL test/fixtures/frozen.bin expected=$expected got=$actual\"; exit 1; " ++
             "fi",
     });
     check_fixture_step.dependOn(&check_fixture_cmd.step);
@@ -133,7 +133,7 @@ pub fn build(b: *std.Build) void {
 
     // Stage 4: lossless round-trip on frozen fixture
     const ci_enc_ls = b.addSystemCommand(&.{
-        "./zig-out/bin/mzarc", "encode",                     "fixtures/frozen.bin",
+        "./zig-out/bin/mzarc", "encode",                     "test/fixtures/frozen.bin",
         "-o",                  "/tmp/mzarc_ci_frozen.mzarc",
     });
     ci_enc_ls.step.dependOn(b.getInstallStep());
@@ -148,14 +148,14 @@ pub fn build(b: *std.Build) void {
 
     const ci_val_ls = b.addSystemCommand(&.{
         "./zig-out/bin/mzarc", "validate",
-        "fixtures/frozen.bin", "/tmp/mzarc_ci_frozen_rt.bin",
+        "test/fixtures/frozen.bin", "/tmp/mzarc_ci_frozen_rt.bin",
         "--mode=lossless",
     });
     ci_val_ls.step.dependOn(&ci_dec_ls.step);
 
     // Stage 5: lossy round-trip on frozen fixture
     const ci_enc_ly = b.addSystemCommand(&.{
-        "./zig-out/bin/mzarc", "encode",                           "fixtures/frozen.bin",
+        "./zig-out/bin/mzarc", "encode",                           "test/fixtures/frozen.bin",
         "-o",                  "/tmp/mzarc_ci_frozen_lossy.mzarc", "--lossy",
     });
     ci_enc_ly.step.dependOn(&ci_val_ls.step);
@@ -168,7 +168,7 @@ pub fn build(b: *std.Build) void {
 
     const ci_val_ly = b.addSystemCommand(&.{
         "./zig-out/bin/mzarc", "validate",
-        "fixtures/frozen.bin", "/tmp/mzarc_ci_frozen_lossy_rt.bin",
+        "test/fixtures/frozen.bin", "/tmp/mzarc_ci_frozen_lossy_rt.bin",
         "--mode=lossy",
     });
     ci_val_ly.step.dependOn(&ci_dec_ly.step);

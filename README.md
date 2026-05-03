@@ -178,10 +178,9 @@ At the moment that command is expected to fail on the decode-regression threshol
 mzarc/
 ├── benchmark/              public benchmark artifacts and plots
 ├── data/                   local datasets and generated benchmark workdirs
-├── fixtures/               frozen validation fixtures
 ├── plan/                   project plans and milestone notes
 ├── src/                    Zig codec implementation
-├── test/                   Zig tests and adversarial inputs
+├── test/                   Zig tests, fixtures, and adversarial inputs
 ├── tools/                  Python ingest, benchmark, and analysis scripts
 ├── build.zig
 ├── build.zig.zon
@@ -204,7 +203,8 @@ The next substantive work is already clear from the current results:
 - [benchmark/report.md](benchmark/report.md)
 - [benchmark/report.json](benchmark/report.json)
 - [benchmark/entropy_analysis.txt](benchmark/entropy_analysis.txt)
-- [plan/v0.2.0-plan.md](plan/v0.2.0-plan.md)
+- [benchmark/cross_spectrum_analysis.txt](benchmark/cross_spectrum_analysis.txt)
+- [benchmark/intensity_entropy_analysis.txt](benchmark/intensity_entropy_analysis.txt)
 
 ---
 
@@ -213,7 +213,7 @@ The next substantive work is already clear from the current results:
 <p align="center">
     <em>
         Ions drift to ground<br />
-        Folded into bit-packed frames—<br />
+        Folded into bit-packed frames -<br />
         The machine breathes light.
     </em>
 </p>

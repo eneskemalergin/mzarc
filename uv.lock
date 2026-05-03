@@ -486,7 +486,7 @@ wheels = [
 
 [[package]]
 name = "mzarc"
-version = "0.1.0"
+version = "0.1.5"
 source = { virtual = "." }
 dependencies = [
     { name = "cython" },

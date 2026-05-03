@@ -426,3 +426,108 @@ test "block uses per-spectrum m/z widths when they shrink the payload" {
     try std.testing.expectEqualSlices(f32, intensity_a, decoded[0].intensity);
     try std.testing.expectEqualSlices(f32, intensity_b, decoded[1].intensity);
 }
+
+test "split-exponent: zero FOR bit-width still activates split when block is large enough" {
+    // 20 peaks all at the same intensity (exponent range = 0, bit_width = 0).
+    // split_bytes = 13 + 0 + 3*20 = 73 < raw_bytes = 4*20 = 80 → split wins.
+    // The zero-length FOR exponent payload exercises the empty-payload code path
+    // in both encoder and decoder. This mirrors split_exp_degenerate.bin.
+    var mz_buf: [20]f64 = undefined;
+    var int_buf: [20]f32 = undefined;
+    for (0..20) |i| {
+        mz_buf[i] = @as(f64, @floatFromInt(500 + i));
+        // All same intensity → biased exponent = 140 (2^13)
+        int_buf[i] = 8192.0;
+    }
+
+    const spectra = [_]binary_reader.RawSpectrum{
+        .{ .scan_id = 1, .rt_seconds = 1.0, .ms_level = 2, .precursor_mz = 300.0, .mz = mz_buf[0..], .intensity = int_buf[0..] },
+    };
+
+    const encoded = try block.encodeBlock(std.testing.allocator, &spectra, .{ .mode = .lossless });
+    defer std.testing.allocator.free(encoded);
+
+    const header = try block.parseHeader(encoded);
+    // Split must activate (20 peaks pushes it over the edge).
+    try std.testing.expect((header.flags & block.flag_split_exponent) != 0);
+    try std.testing.expect((header.flags & block.flag_lossless_intensity_raw) == 0);
+    // Zero range → zero-length FOR payload, so rANS on exponent stream
+    // is never attempted (raw.len == 0 short-circuits in maybeEncodeRansAlloc).
+    try std.testing.expect((header.flags & block.flag_rans_intensity) == 0);
+
+    const decoded = try block.decodeBlock(std.testing.allocator, encoded);
+    defer binary_reader.freeSpectra(std.testing.allocator, decoded);
+
+    try std.testing.expectEqual(@as(usize, 1), decoded.len);
+    // Every intensity must reconstruct exactly from base exponent alone.
+    try std.testing.expectEqualSlices(f32, int_buf[0..], decoded[0].intensity);
+}
+
+test "split-exponent: narrow range with 2 exponent levels activates split and round-trips" {
+    // 40 peaks with biased exponents 143 (2^16) and 144 (2^17) only.
+    // FOR bit_width = 1; split_bytes = 13 + ceil(1*40/8) + 3*40 = 13 + 5 + 120 = 138.
+    // raw_bytes = 4*40 = 160 → split wins by 22 bytes. Mirrors split_exp_narrow.bin.
+    var mz_buf: [40]f64 = undefined;
+    var int_buf: [40]f32 = undefined;
+    for (0..40) |i| {
+        mz_buf[i] = @as(f64, @floatFromInt(400 + i));
+        // Alternate between biased exponent 143 (65536.0) and 144 (131072.0).
+        int_buf[i] = if (i % 2 == 0) @as(f32, 65536.0) else @as(f32, 131072.0);
+    }
+
+    const spectra = [_]binary_reader.RawSpectrum{
+        .{ .scan_id = 1, .rt_seconds = 1.0, .ms_level = 2, .precursor_mz = 500.0, .mz = mz_buf[0..], .intensity = int_buf[0..] },
+    };
+
+    const encoded = try block.encodeBlock(std.testing.allocator, &spectra, .{ .mode = .lossless });
+    defer std.testing.allocator.free(encoded);
+
+    const header = try block.parseHeader(encoded);
+    try std.testing.expect((header.flags & block.flag_split_exponent) != 0);
+    try std.testing.expect((header.flags & block.flag_lossless_intensity_raw) == 0);
+
+    const decoded = try block.decodeBlock(std.testing.allocator, encoded);
+    defer binary_reader.freeSpectra(std.testing.allocator, decoded);
+
+    try std.testing.expectEqual(@as(usize, 1), decoded.len);
+    try std.testing.expectEqualSlices(f32, int_buf[0..], decoded[0].intensity);
+}
+
+test "split-exponent: split_plain mode activates when rANS gain is below threshold" {
+    // 32 peaks with moderate intensity range (3 exponent levels).
+    // Split wins but rANS is suppressed via min_gain_percent = 99.
+    // Assert flag_split_exponent is set, flag_rans_intensity is NOT set.
+    var mz_buf: [32]f64 = undefined;
+    var int_buf: [32]f32 = undefined;
+    for (0..32) |i| {
+        mz_buf[i] = @as(f64, @floatFromInt(300 + i));
+        // Three exponent levels: 2^14 (16384), 2^15 (32768), 2^16 (65536).
+        int_buf[i] = switch (i % 3) {
+            0 => @as(f32, 16384.0),
+            1 => @as(f32, 32768.0),
+            else => @as(f32, 65536.0),
+        };
+    }
+
+    const spectra = [_]binary_reader.RawSpectrum{
+        .{ .scan_id = 1, .rt_seconds = 1.0, .ms_level = 2, .precursor_mz = 500.0, .mz = mz_buf[0..], .intensity = int_buf[0..] },
+    };
+
+    const encoded = try block.encodeBlock(std.testing.allocator, &spectra, .{
+        .mode = .lossless,
+        .intensity_rans_min_gain_percent = 99,
+    });
+    defer std.testing.allocator.free(encoded);
+
+    const header = try block.parseHeader(encoded);
+    try std.testing.expect((header.flags & block.flag_split_exponent) != 0);
+    try std.testing.expect((header.flags & block.flag_lossless_intensity_raw) == 0);
+    // rANS must NOT activate because the gain threshold is too high.
+    try std.testing.expect((header.flags & block.flag_rans_intensity) == 0);
+
+    const decoded = try block.decodeBlock(std.testing.allocator, encoded);
+    defer binary_reader.freeSpectra(std.testing.allocator, decoded);
+
+    try std.testing.expectEqual(@as(usize, 1), decoded.len);
+    try std.testing.expectEqualSlices(f32, int_buf[0..], decoded[0].intensity);
+}

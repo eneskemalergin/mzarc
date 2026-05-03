@@ -1,8 +1,28 @@
-# ignore folders
-plan/
-zig-x86_64-linux-0.16.0-dev.2905+5d71e3051/
-data/
-.venv/
-.zig-cache/
+# Zig build artifacts
 zig-out/
+zig-cache/
+.zig-cache/
+
+# Local Zig installation (download separately)
+zig-*/
+
+# Local zig wrapper (uses project-local zig installation)
+/zig
+
+# Editor
+.vscode/
+*.swp
+*~
+
+# Python
+.venv/
 __pycache__/
+*.pyc
+*.pyo
+
+
+# Ignored folders (dev only)
+data/
+plan/
+# assets/
+experiments/
