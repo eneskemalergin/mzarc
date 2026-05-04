@@ -1,8 +1,8 @@
 .{
     .name = .mzarc,
-    .version = "0.1.5",
+    .version = "0.1.6",
     .fingerprint = 0x23a58e985cd2488f,
-    .minimum_zig_version = "0.16.0-dev.2905+5d71e3051",
+    .minimum_zig_version = "0.16.0",
     .dependencies = .{},
     .paths = .{
         "build.zig",

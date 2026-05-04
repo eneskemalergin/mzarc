@@ -463,7 +463,7 @@ pub fn decodeToDumpFile(allocator: Allocator, input_path: []const u8, output_pat
     const spectra = try decodeFileAlloc(allocator, bytes);
     defer binary_reader.freeSpectra(allocator, spectra);
 
-    try binary_reader.writeBinaryDump(output_path, spectra);
+    try binary_reader.writeBinaryDump(output_path, spectra, allocator);
 }
 
 pub fn inspectFileAlloc(allocator: Allocator, path: []const u8) !Inspection {

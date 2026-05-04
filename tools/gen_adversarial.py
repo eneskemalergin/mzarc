@@ -226,24 +226,26 @@ def gen_split_exp_narrow(rng: random.Random) -> list[Spectrum]:
 
 
 def gen_split_exp_degenerate(rng: random.Random) -> list[Spectrum]:
-    """100 spectra, all intensities identical (exponent range = 0, bit_width = 0).
+    """100 spectra mixing near-zero (1e-38) and near-max (1e+37) intensities.
 
-    Tests that the split-exponent encoder correctly writes a zero-length FOR
-    exponent payload (packed_exp.payload.len = 0, bit_width = 0) and that the
-    decoder reconstructs every f32 exactly from the base exponent alone.
+    Exercises the full f32 dynamic range: biased exponents from ~1 (near-min
+    positive normal, 2^-126 approx 1.2e-38) to ~250 (near-max approx 1.7e38,
+    biased exp = 254).  FOR exponent bit-width = 8 (floor(log2(253)) + 1).
+    split_bytes = 13 + ceil(8*40/8) + 3*40 = 13 + 40 + 120 = 173.
+    raw_bytes = 4*40 = 160 → split LOSES; raw fallback ensues.
 
-    With 500 total peaks: split=13+0+1500=1513 < raw=2000, so split-exponent
-    IS active (flag_split_exponent must be set, flag_lossless_intensity_raw=0).
-
-    The raw-f32 fallback path (when split_bytes >= raw_bytes) requires <=13 total
-    peaks per block; it is covered by the unit test:
-      "split-exponent: degenerate small spectrum falls back to raw f32"
-    in test/test_block.zig.
+    The per-block unit test covers the split-exponent bit-width=0 path
+    ("zero FOR bit-width still activates split when block is large enough").
     """
     spectra = []
     for i in range(100):
-        mz = sorted(100.0 + j * 50.0 for j in range(5))
-        intensity = [16384.0] * 5   # all identical → exponent range = 0, bit_width = 0
+        mz = sorted(100.0 + j * 50.0 for j in range(40))
+        intensity = []
+        for j in range(40):
+            if j % 2 == 0:
+                intensity.append(1e-38)   # near-min positive normal
+            else:
+                intensity.append(1e+37)   # near-max (avoids inf)
         spectra.append(_ms2(scan_id=i + 1, rt=float(i) * 0.1, precursor_mz=300.0,
                             mz=mz, intensity=intensity))
     return spectra

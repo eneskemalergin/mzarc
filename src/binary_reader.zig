@@ -146,9 +146,9 @@ pub fn readBinaryDump(path: []const u8, allocator: Allocator) ![]RawSpectrum {
     return parseDump(bytes, allocator);
 }
 
-pub fn writeBinaryDump(path: []const u8, spectra: []const RawSpectrum) !void {
-    const bytes = try writeDumpAlloc(std.heap.smp_allocator, spectra);
-    defer std.heap.smp_allocator.free(bytes);
+pub fn writeBinaryDump(path: []const u8, spectra: []const RawSpectrum, allocator: Allocator) !void {
+    const bytes = try writeDumpAlloc(allocator, spectra);
+    defer allocator.free(bytes);
 
     try std.Io.Dir.cwd().writeFile(io, .{
         .sub_path = path,

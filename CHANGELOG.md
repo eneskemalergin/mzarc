@@ -1,66 +1,55 @@
 <!-- markdownlint-disable MD024 -->
 # Changelog
 
-All notable changes to z-toml are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This project follows [Semantic Versioning](https://semver.org/).
+All notable changes to mzarc are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This project follows [Semantic Versioning](https://semver.org/).
 
-## [0.2.0] — unreleased
-
-### Added
-
-- CI harness: `zig build ci` runs tests, fixture checks, lossless/lossy round-trips,
-  adversarial corpus validation, and regression checks in under 3 seconds.
-- `mzarc validate` subcommand for lossless and lossy round-trip fidelity checks.
-- `mzarc validate-adversarial` subcommand for bulk adversarial corpus validation.
-- Frozen test fixture (`test/fixtures/frozen.bin`): 1,000-spectrum deterministic
-  slice with SHA-256 pinning via `zig build check-fixture`.
-- Adversarial corpus (`test/adversarial/`): 13 edge-case binary dump files
-  generated deterministically, covering empty, dense, zero-intensity, narrow
-  exponent range, degenerate exponent, and more.
-- Split-exponent intensity encoding: extracts the f32 exponent byte, packs it
-  with FOR, stores the 3-byte mantissa raw. Reduces intensity payload by 18.75%
-  on the `15HCD_1` dataset.
-- rANS entropy coding on m/z FOR residuals: 30.91% reduction in m/z payload.
-- rANS entropy coding on intensity exponent stream: applied when split-exponent
-  is active and gain exceeds the threshold.
-- Per-spectrum FOR bit-width granularity for m/z encoding: narrower bit-widths
-  per spectrum when it improves over the block-wide width. 0.37 MiB gain on
-  `15HCD_1`.
-- `--verbose-blocks` encoder flag for per-block encoding statistics.
-- `--mz-rans-min-gain` and `--intensity-rans-min-gain` encoder flags for rANS
-  threshold tuning.
-- `benchmark-rans-core` subcommand for isolated rANS codec micro-benchmarking.
-- Benchmarkable external baselines: mzMLb, MS-Numpress, MScompress (single and
-  threaded).
-- Regression check (`tools/check_regression.py`): gates file size and decode
-  time against the frozen v0.1.1 baseline.
-
-### Changed
-
-- Block container format version bumped to 1.2 (new flags for split-exponent,
-  per-spectrum FOR, rANS m/z, rANS intensity).
-- Lossless m/z encoding now prefers bit-exact f32 bit-cast delta when input
-  values are already single-precision (true for all instrument data).
-- Intensity encoding selects among raw f32, split-exponent, and split+rANS per
-  block based on dry-run byte estimates.
-- m/z encoding selects between block-wide and per-spectrum FOR based on dry-run
-  byte estimates.
-- scan_id and rt_seconds arrays are delta-encoded and FOR-packed.
-- Test fixtures and adversarial corpus consolidated under `test/`.
-- SHA-256 fixture check integrated into `zig build ci`.
+## [0.1.6] — 2026-05-03
 
 ### Fixed
 
-- Release build mode works correctly (`-Drelease=true`).
-- Checksum validation on block decode catches payload corruption.
+- Double-free in rANS decode error path (`block.zig`): redundant `errdefer`
+  removed; outer `defer` already handles cleanup.
+- Overflow-vulnerable wrapping addition in scan_id and RT delta recovery
+  replaced with checked `@addWithOverflow`, returning `error.Overflow` on
+  corrupt data.
+- Unsigned subtraction in per-spectrum m/z payload length calculation now
+  bounds-checked before use.
+- Portability: `writeStdout` no longer uses Linux-only `std.os.linux.write`;
+  replaced with `std.Io.File.stdout().writeStreamingAll()`.
+- `printStdout` no longer silently drops messages larger than 4096 bytes;
+  falls back to `std.fmt.allocPrint` on the page allocator when the stack
+  buffer overflows.
+- Stale comment corrected: "bits 6 and 7 remain free" updated to "All 8 flag
+  bits are allocated".
 
-### Known issues
+### Changed
 
-- Lossless decode time regressed by ~35% vs v0.1.1 baseline. The rANS decode
-  path and per-spectrum FOR unpack add per-byte overhead. Targeted for v0.3.0.
+- `fixtures/` directory consolidated under `test/fixtures/`; all test data
+  now lives under `test/`.
+- Adversarial `split_exp_degenerate.bin` replaced with full f32 dynamic range
+  extremes (mixing 1e-38 and 1e+37 intensities) per `plan.md` spec. The
+  zero-range exponent path is covered by unit tests.
+- `binary_reader.writeBinaryDump` now accepts caller-provided allocator instead
+  of hard-coding `std.heap.smp_allocator`.
+
+### Added
+
+- 7 new unit tests: lossy intensity with rANS active, non-monotonic RT and
+  scan_id fallback to raw encoding, mismatched m/z/intensity array rejection,
+  zero intensity quant rejection, empty block rejection, zero block_size
+  rejection. Total: 63 tests.
+- Empty-guards on 4 internal helper functions in `block.zig` (`flattenMzAsF32Bits`,
+  `flattenMzDeltas`, `buildScanIdDeltas`, `buildRtDeltas`).
+- `CHANGELOG.md` covering all versions from bootstrap to unreleased.
+
+### Removed
+
+- Unused `delta` module import from `build.zig` block module (delta logic is
+  inlined in `block.zig`).
 
 ---
 
-## [0.1.5] — 2026-03-27
+## [0.1.5] — 2026-03-27 `tagged`
 
 ### Changed
 
@@ -122,7 +111,7 @@ All notable changes to z-toml are documented here. The format follows [Keep a Ch
 
 ---
 
-## [0.1.0] — 2026-03-22
+## [0.1.0] — 2026-03-22 `tagged`
 
 ### Added
 
@@ -147,3 +136,6 @@ All notable changes to z-toml are documented here. The format follows [Keep a Ch
 - Initial prototype: mzML ingestion to flat binary dump via `tools/parse_mzml.py`.
 - Basic block encoder/decoder skeleton in Zig.
 - `build.zig` project scaffold.
+
+[0.1.5]: https://github.com/eneskemalergin/mzarc/releases/tag/v0.1.5
+[0.1.0]: https://github.com/eneskemalergin/mzarc/releases/tag/v0.1.0
