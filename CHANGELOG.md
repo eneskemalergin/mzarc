@@ -3,6 +3,39 @@
 
 All notable changes to mzarc are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This project follows [Semantic Versioning](https://semver.org/).
 
+## [0.1.11] — 2026-05-04
+
+### Fixed
+
+- `block_decode.zig`: silent `@truncate` u64→u32 on scan_id and RT delta
+  reconstruction replaced with explicit `> maxInt(u32)` bounds check before
+  `@intCast`. Corrupt data that encodes an oversized delta now returns
+  `error.Overflow` instead of silently producing a wrong value.
+- `block_encode.zig:buildRtDeltas`: float comparison guard (was raw u32
+  bit-pattern compare) fixed to compare as floats. Handles the -0.0 → +0.0
+  edge case correctly. Delta storage uses `if (cur_bits >= prev_bits) cur_bits - prev_bits else 0`
+  to avoid underflow on that case.
+- `block_common.zig:shouldUseRans`: `encoded_len * 100` and `raw_len * required`
+  widened to u64 arithmetic to eliminate latent 32-bit overflow.
+- `block_decode.zig:decodeBlock`: `decompressed_bytes` header field now
+  validated post-decode. Mismatch returns `error.DecompressedBytesMismatch`.
+  Guarded with `!= 0` for compatibility with legacy files.
+
+### Changed
+
+- Lossless intensity raw f32 fallback now attempts a rANS trial before writing
+  plain bytes. The `flag_lossless_intensity_raw | flag_rans_intensity` decoder
+  branch (previously unreachable) is now live for compressible raw f32 streams.
+
+### Added
+
+- 5 new unit tests: scan_id delta base overflow → `error.Overflow`; RT -0.0
+  edge case round-trip; single-spectrum block-level mz path; `decompressed_bytes`
+  mismatch → `error.DecompressedBytesMismatch`; zero-spectrum codec round-trip.
+  Total: 68 tests.
+
+---
+
 ## [0.1.10] — 2026-05-03
 
 ### Added
