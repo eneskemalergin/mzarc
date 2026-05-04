@@ -255,6 +255,9 @@ fn appendFilteredStreamBlocks(
     const block_spectra = try allocator.alloc(binary_reader.RawSpectrum, block_capacity);
     defer allocator.free(block_spectra);
 
+    var scratch_arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer scratch_arena.deinit();
+
     var used: usize = 0;
     for (spectra, 0..) |spectrum, spectrum_index| {
         if (spectrum.ms_level == level) {
@@ -265,8 +268,9 @@ fn appendFilteredStreamBlocks(
             order_cursor.* += 1;
 
             if (used == block_capacity) {
-                const encoded = try block.encodeBlockDetailed(allocator, block_spectra[0..used], options.block_options);
+                const encoded = try block.encodeBlockDetailed(allocator, scratch_arena.allocator(), block_spectra[0..used], options.block_options);
                 defer encoded.deinit(allocator);
+                _ = scratch_arena.reset(.retain_capacity);
                 maybePrintBlockStats(block_count.*, encoded.stats, options);
                 try file_bytes.appendSlice(allocator, encoded.bytes);
                 block_count.* += 1;
@@ -276,8 +280,9 @@ fn appendFilteredStreamBlocks(
     }
 
     if (used != 0) {
-        const encoded = try block.encodeBlockDetailed(allocator, block_spectra[0..used], options.block_options);
+        const encoded = try block.encodeBlockDetailed(allocator, scratch_arena.allocator(), block_spectra[0..used], options.block_options);
         defer encoded.deinit(allocator);
+        _ = scratch_arena.reset(.retain_capacity);
         maybePrintBlockStats(block_count.*, encoded.stats, options);
         try file_bytes.appendSlice(allocator, encoded.bytes);
         block_count.* += 1;
@@ -453,8 +458,11 @@ pub fn decodeFileAlloc(allocator: Allocator, bytes: []const u8, options: DecodeO
     }
 
     var spectrum_offset: usize = 0;
+    var decode_scratch_arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer decode_scratch_arena.deinit();
     for (inspection.blocks) |block_info| {
-        const decoded = try block.decodeBlock(allocator, bytes[block_info.offset .. block_info.offset + block_info.total_bytes]);
+        const decoded = try block.decodeBlockWithScratch(allocator, decode_scratch_arena.allocator(), bytes[block_info.offset .. block_info.offset + block_info.total_bytes]);
+        _ = decode_scratch_arena.reset(.retain_capacity);
 
         @memcpy(spectra[spectrum_offset .. spectrum_offset + decoded.len], decoded);
         spectrum_offset += decoded.len;

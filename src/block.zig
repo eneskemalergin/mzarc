@@ -34,4 +34,5 @@ pub const encodeBlock = encode.encodeBlock;
 // Re-export from block_decode
 pub const parseHeader = decode.parseHeader;
 pub const decodeBlock = decode.decodeBlock;
+pub const decodeBlockWithScratch = decode.decodeBlockWithScratch;
 pub const inspectBlockByteBreakdown = decode.inspectBlockByteBreakdown;

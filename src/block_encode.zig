@@ -186,30 +186,30 @@ fn appendRawIntensityBytes(payload: *std.ArrayList(u8), a: Allocator, spectra: [
 }
 
 fn writeHeader(list: *std.ArrayList(u8), allocator: Allocator, header: common.BlockHeader) !void {
-    try common.appendIntLe(list, allocator, u16, header.spectrum_count);
-    try list.append(allocator, header.ms_level);
-    try list.append(allocator, header.flags);
-    try common.appendIntLe(list, allocator, u32, header.total_peaks);
-    try common.appendIntLe(list, allocator, u32, header.mz_scale_factor);
-    try common.appendIntLe(list, allocator, u16, header.intensity_quant);
-    try common.appendIntLe(list, allocator, u16, header.reserved0);
-    try list.append(allocator, header.mz_bit_width);
-    try list.append(allocator, header.intensity_bit_width);
-    try common.appendIntLe(list, allocator, u16, header.reserved1);
-    try common.appendF32Le(list, allocator, header.rt_min);
-    try common.appendF32Le(list, allocator, header.rt_max);
-    try common.appendIntLe(list, allocator, u32, header.payload_bytes);
-    try common.appendIntLe(list, allocator, u32, header.decompressed_bytes);
-    try common.appendIntLe(list, allocator, u32, header.checksum);
+    var buf: [common.header_len]u8 = undefined;
+    std.mem.writeInt(u16, buf[0..2], header.spectrum_count, .little);
+    buf[2] = header.ms_level;
+    buf[3] = header.flags;
+    std.mem.writeInt(u32, buf[4..8], header.total_peaks, .little);
+    std.mem.writeInt(u32, buf[8..12], header.mz_scale_factor, .little);
+    std.mem.writeInt(u16, buf[12..14], header.intensity_quant, .little);
+    std.mem.writeInt(u16, buf[14..16], header.reserved0, .little);
+    buf[16] = header.mz_bit_width;
+    buf[17] = header.intensity_bit_width;
+    std.mem.writeInt(u16, buf[18..20], header.reserved1, .little);
+    std.mem.writeInt(u32, buf[20..24], @bitCast(header.rt_min), .little);
+    std.mem.writeInt(u32, buf[24..28], @bitCast(header.rt_max), .little);
+    std.mem.writeInt(u32, buf[28..32], header.payload_bytes, .little);
+    std.mem.writeInt(u32, buf[32..36], header.decompressed_bytes, .little);
+    std.mem.writeInt(u32, buf[36..40], header.checksum, .little);
+    try list.appendSlice(allocator, &buf);
 }
 
-pub fn encodeBlockDetailed(allocator: Allocator, spectra: []const binary_reader.RawSpectrum, options: common.EncodeOptions) !common.EncodedBlock {
+pub fn encodeBlockDetailed(allocator: Allocator, scratch: Allocator, spectra: []const binary_reader.RawSpectrum, options: common.EncodeOptions) !common.EncodedBlock {
     if (spectra.len == 0) return error.EmptyBlock;
     if (spectra.len > std.math.maxInt(u16)) return error.TooManySpectra;
 
-    var block_arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    defer block_arena.deinit();
-    const tmp = block_arena.allocator();
+    const tmp = scratch;
 
     const ms_level = spectra[0].ms_level;
     var rt_min = spectra[0].rt_seconds;
@@ -559,6 +559,8 @@ pub fn encodeBlockDetailed(allocator: Allocator, spectra: []const binary_reader.
 }
 
 pub fn encodeBlock(allocator: Allocator, spectra: []const binary_reader.RawSpectrum, options: common.EncodeOptions) ![]u8 {
-    const detailed = try encodeBlockDetailed(allocator, spectra, options);
+    var scratch_arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer scratch_arena.deinit();
+    const detailed = try encodeBlockDetailed(allocator, scratch_arena.allocator(), spectra, options);
     return detailed.bytes;
 }

@@ -152,12 +152,16 @@ pub fn parseHeader(bytes: []const u8) !common.BlockHeader {
 }
 
 pub fn decodeBlock(allocator: Allocator, block_bytes: []const u8) ![]binary_reader.RawSpectrum {
+    var scratch_arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer scratch_arena.deinit();
+    return decodeBlockWithScratch(allocator, scratch_arena.allocator(), block_bytes);
+}
+
+pub fn decodeBlockWithScratch(allocator: Allocator, scratch: Allocator, block_bytes: []const u8) ![]binary_reader.RawSpectrum {
     const header = try parseHeader(block_bytes);
     if (block_bytes.len < common.header_len + header.payload_bytes) return error.UnexpectedEndOfStream;
 
-    var block_arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    defer block_arena.deinit();
-    const tmp = block_arena.allocator();
+    const tmp = scratch;
 
     const payload = block_bytes[common.header_len .. common.header_len + header.payload_bytes];
     if (std.hash.crc.Crc32.hash(payload) != header.checksum) return error.ChecksumMismatch;
