@@ -7,7 +7,8 @@ Reads:
 
 Asserts:
     lossless file size  has not increased by > 1 %
-    lossless decode time has not increased by > 10 %
+    lossless decode time has not increased by > 40 %
+    lossless/gzip-dump compression ratio has not worsened by > 2 % vs baseline
 
 Exits 0 on pass, 1 on any violation or on missing data.
 
@@ -26,6 +27,7 @@ CURRENT_PATH = Path("benchmark/report.json")
 
 SIZE_THRESHOLD = 0.01    # +1 %
 DECODE_THRESHOLD = 0.40  # +40 % — rANS decode is inherent overhead for compression
+RATIO_THRESHOLD = 0.02   # +2 % — lossless/gzip-dump ratio must not worsen by more than this
 
 # Key aliases in order of preference (new name first, old name as fallback)
 LOSSLESS_ALIASES = ["mzarc lossless", "mzv1 lossless"]
@@ -41,13 +43,17 @@ def _lossless_size(data: dict) -> int | None:
 
 
 def _lossless_decode_median(data: dict) -> float | None:
-    # New flow (collect_report.py) writes zebrac_results; old flow wrote timings.
+    # zebrac_results schema (current); fall back to timings schema (baseline v0.1.1)
     for key in ("zebrac_results", "timings"):
         for entry in data.get(key, []):
             if entry.get("name") in DECODE_NAME_ALIASES:
-                # zebrac_results uses wall_time_median_seconds; timings used median_seconds
                 return entry.get("wall_time_median_seconds") or entry.get("median_seconds")
     return None
+
+
+def _gzip_dump_size(data: dict) -> int | None:
+    item = data.get("sizes", {}).get("gzip dump")
+    return item["bytes"] if item is not None else None
 
 
 def _lossless_mz_bytes(data: dict) -> int | None:
@@ -96,8 +102,7 @@ def main() -> int:
     else:
         pct = _pct_change(base_size, curr_size)
         status = "PASS" if pct <= SIZE_THRESHOLD else "FAIL"
-        sign = "+" if pct >= 0 else ""
-        print(f"{status} lossless_size  baseline={base_size:,}  current={curr_size:,}  delta={sign}{pct*100:.2f}% (limit +{SIZE_THRESHOLD*100:.0f}%)")
+        print(f"{status} lossless_size  baseline={base_size:,}  current={curr_size:,}  delta={pct*100:+.2f}% (limit +{SIZE_THRESHOLD*100:.0f}%)")
         if pct > SIZE_THRESHOLD:
             failures.append(f"lossless file size grew by {pct*100:.2f}% > {SIZE_THRESHOLD*100:.0f}% limit")
 
@@ -110,25 +115,42 @@ def main() -> int:
     else:
         pct = _pct_change(base_dec, curr_dec)
         status = "PASS" if pct <= DECODE_THRESHOLD else "FAIL"
-        sign = "+" if pct >= 0 else ""
-        print(f"{status} lossless_decode_time  baseline={base_dec:.4f}s  current={curr_dec:.4f}s  delta={sign}{pct*100:.2f}% (limit +{DECODE_THRESHOLD*100:.0f}%)")
+        print(f"{status} lossless_decode_time  baseline={base_dec:.4f}s  current={curr_dec:.4f}s  delta={pct*100:+.2f}% (limit +{DECODE_THRESHOLD*100:.0f}%)")
         if pct > DECODE_THRESHOLD:
             failures.append(f"lossless decode time grew by {pct*100:.2f}% > {DECODE_THRESHOLD*100:.0f}% limit")
+
+    # Compression ratio gate: lossless/gzip-dump ratio must not worsen by more than RATIO_THRESHOLD
+    base_gzip = _gzip_dump_size(baseline)
+    curr_gzip = _gzip_dump_size(current)
+    if base_size is None or base_gzip is None:
+        warnings.append("baseline: lossless or gzip dump size not found, skipping ratio check")
+    elif curr_size is None or curr_gzip is None:
+        warnings.append("current: lossless or gzip dump size not found, skipping ratio check")
+    elif base_gzip == 0 or curr_gzip == 0:
+        warnings.append("gzip dump size is zero, skipping ratio check")
+    else:
+        base_ratio = base_size / base_gzip
+        curr_ratio = curr_size / curr_gzip
+        ratio_delta = (curr_ratio - base_ratio) / base_ratio
+        status = "PASS" if ratio_delta <= RATIO_THRESHOLD else "FAIL"
+        print(f"{status} lossless_gzip_ratio  baseline={base_ratio:.4f}  current={curr_ratio:.4f}  delta={ratio_delta*100:+.2f}% (limit +{RATIO_THRESHOLD*100:.0f}%)")
+        if ratio_delta > RATIO_THRESHOLD:
+            failures.append(
+                f"lossless/gzip-dump ratio worsened by {ratio_delta*100:.2f}% > {RATIO_THRESHOLD*100:.0f}% limit"
+            )
 
     # Informational: mz and intensity payload bytes (no hard gate, just report)
     base_mz = _lossless_mz_bytes(baseline)
     curr_mz = _lossless_mz_bytes(current)
     if base_mz is not None and curr_mz is not None:
         pct = _pct_change(base_mz, curr_mz)
-        sign = "+" if pct >= 0 else ""
-        print(f"INFO  mz_payload_bytes  baseline={base_mz:,}  current={curr_mz:,}  delta={sign}{pct*100:.2f}%")
+        print(f"INFO  mz_payload_bytes  baseline={base_mz:,}  current={curr_mz:,}  delta={pct*100:+.2f}%")
 
     base_int = _lossless_intensity_bytes(baseline)
     curr_int = _lossless_intensity_bytes(current)
     if base_int is not None and curr_int is not None:
         pct = _pct_change(base_int, curr_int)
-        sign = "+" if pct >= 0 else ""
-        print(f"INFO  intensity_payload_bytes  baseline={base_int:,}  current={curr_int:,}  delta={sign}{pct*100:.2f}%")
+        print(f"INFO  intensity_payload_bytes  baseline={base_int:,}  current={curr_int:,}  delta={pct*100:+.2f}%")
 
     for w in warnings:
         print(f"WARN  {w}")

@@ -58,10 +58,6 @@ def write_dump(path: Path, spectra: list[Spectrum]) -> None:
                 fh.write(struct.pack("<f", v))
 
 
-def _ms1(scan_id: int, rt: float, peak_count: int, mz: list[float], intensity: list[float]) -> Spectrum:
-    return Spectrum(scan_id=scan_id, rt_seconds=rt, ms_level=1, precursor_mz=0.0, mz=mz, intensity=intensity)
-
-
 def _ms2(scan_id: int, rt: float, precursor_mz: float, mz: list[float], intensity: list[float]) -> Spectrum:
     return Spectrum(scan_id=scan_id, rt_seconds=rt, ms_level=2, precursor_mz=precursor_mz, mz=mz, intensity=intensity)
 

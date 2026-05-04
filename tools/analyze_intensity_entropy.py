@@ -126,18 +126,13 @@ def analyze(raw_bits: list[int]) -> dict:
 
     # How many distinct exponent values are needed to cover each target
     sorted_exps = sorted(exp_counter.items(), key=lambda kv: -kv[1])
-    coverage_needed: dict[float, int] = {}
-    running = 0.0
-    for target in sorted(COVERAGE_TARGETS):
-        coverage_needed[target] = 0
-    ci = 0
+    coverage_needed: dict[float, int] = {target: 0 for target in COVERAGE_TARGETS}
     cum = 0.0
     for i, (_, c) in enumerate(sorted_exps):
         cum += 100.0 * c / total
         for target in COVERAGE_TARGETS:
-            if target not in [k for k, v in coverage_needed.items() if v > 0]:
-                if cum >= target * 100:
-                    coverage_needed[target] = i + 1
+            if coverage_needed[target] == 0 and cum >= target * 100:
+                coverage_needed[target] = i + 1
 
     return {
         "n_peaks": n_peaks,

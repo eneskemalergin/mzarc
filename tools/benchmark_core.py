@@ -38,6 +38,7 @@ class FileStats:
     ms1_spectra: int
     ms2_spectra: int
 
+
 @dataclass(slots=True)
 class ErrorSummary:
     count: int

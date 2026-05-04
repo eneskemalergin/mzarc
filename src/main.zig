@@ -41,20 +41,41 @@ fn commandDumpInspect(allocator: std.mem.Allocator, path: []const u8) !void {
     var total_peaks: u64 = 0;
     var ms1_count: u64 = 0;
     var ms2_count: u64 = 0;
-    for (spectra) |spectrum| {
-        total_peaks += spectrum.mz.len;
+    var zero_intensity: u64 = 0;
+    var min_peaks: u64 = if (spectra.len > 0) std.math.maxInt(u64) else 0;
+    var max_peaks: u64 = 0;
+
+    const peak_counts = try allocator.alloc(u64, spectra.len);
+    defer allocator.free(peak_counts);
+
+    for (spectra, 0..) |spectrum, i| {
+        const n: u64 = spectrum.mz.len;
+        total_peaks += n;
+        peak_counts[i] = n;
+        if (n < min_peaks) min_peaks = n;
+        if (n > max_peaks) max_peaks = n;
         switch (spectrum.ms_level) {
             1 => ms1_count += 1,
             2 => ms2_count += 1,
             else => {},
         }
+        for (spectrum.intensity) |v| {
+            if (v == 0.0) zero_intensity += 1;
+        }
     }
+
+    std.mem.sort(u64, peak_counts, {}, std.sort.asc(u64));
+    const median_peaks: u64 = if (spectra.len > 0) peak_counts[spectra.len / 2] else 0;
 
     std.debug.print("file: {s}\n", .{path});
     std.debug.print("spectra: {}\n", .{spectra.len});
     std.debug.print("total peaks: {}\n", .{total_peaks});
     std.debug.print("ms1 count: {}\n", .{ms1_count});
     std.debug.print("ms2 count: {}\n", .{ms2_count});
+    std.debug.print("zero intensity peaks: {}\n", .{zero_intensity});
+    std.debug.print("min peaks per spectrum: {}\n", .{min_peaks});
+    std.debug.print("median peaks per spectrum: {}\n", .{median_peaks});
+    std.debug.print("max peaks per spectrum: {}\n", .{max_peaks});
 }
 
 fn parseOutputPath(args: []const [:0]const u8) ![]const u8 {

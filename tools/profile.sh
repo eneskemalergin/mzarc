@@ -131,4 +131,4 @@ for op in "${_OPS[@]}"; do
 done
 
 log "Profiling complete.  Results: $PROF_DIR/"
-log "Inspect with: python3 tools/inspect_dump.py $PROF_DIR/<op>.json"
+log "Compare runs with: python3 tools/profile_compare.py $PROF_DIR/ <other_dir/>"
