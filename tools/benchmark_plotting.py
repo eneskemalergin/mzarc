@@ -38,154 +38,313 @@ def _apply_style() -> None:
 _apply_style()
 
 
+# --------------------------------------------------------------------------- #
+# Shared colour + annotation helpers                                          #
+# --------------------------------------------------------------------------- #
+
+# Threading: artifacts that use multiple cores automatically.
+_MULTI_THREAD = frozenset([
+    "pigz dump", "pigz mzML",
+    "zstd mt dump", "zstd mt mzML",
+    "MScompress",          # all cores by default
+])
+
+# Colour tokens -- one authoritative source used by every plot.
+_COLORS = {
+    # mzarc (always prominent)
+    "mzarc_lossless": "#0d9488",   # vivid teal
+    "mzarc_lossy":    "#f59e0b",   # amber
+
+    # MS-domain external codecs
+    "mzmlb":         "#0ea5e9",    # sky blue
+    "numpress":      "#8b5cf6",    # violet
+    "mscompress":    "#e11d48",    # rose (multi-thread default)
+    "mscompress_st": "#f43f5e",    # lighter rose (single-thread)
+
+    # Generic on dump input (slate family)
+    "gzip_dump":   "#475569",
+    "zstd_dump":   "#334155",
+    "bzip2_dump":  "#1e3a5f",
+    "lz4_dump":    "#0369a1",
+    "xz_dump":     "#1d4ed8",
+    "pigz_dump":   "#64748b",      # lighter slate = threaded variant
+    "zstdmt_dump": "#94a3b8",      # even lighter = threaded
+
+    # Generic on mzML input (blue-gray family, clearly distinct from dump)
+    "gzip_mzml":   "#6b7280",
+    "zstd_mzml":   "#52525b",
+    "bzip2_mzml":  "#3f3f46",
+    "lz4_mzml":    "#0891b2",
+    "xz_mzml":     "#2563eb",
+    "pigz_mzml":   "#9ca3af",      # lighter = threaded
+    "zstdmt_mzml": "#cbd5e1",      # lightest = threaded
+
+    # Reference bars
+    "mzml": "#94a3b8",
+    "dump": "#bfdbfe",
+}
+
+
+def _color(name: str) -> str:
+    """Return a fill colour for an artifact bar."""
+    if name.startswith("mzarc lossless"):
+        return _COLORS["mzarc_lossless"]
+    if name.startswith("mzarc lossy"):
+        return _COLORS["mzarc_lossy"]
+    key = (
+        name.lower()
+        .replace(" ", "_")
+        .replace("-", "_")
+        .replace("(", "")
+        .replace(")", "")
+        .replace("mt_", "mt")       # "zstd mt dump" -> "zstdmt_dump"
+        .replace("zstd_mt", "zstdmt")
+        .replace("1t", "st")        # "mscompress_(1t)" -> "mscompress_st"
+    )
+    return _COLORS.get(key, "#475569")
+
+
 def _artifact_palette(artifact_names: list[str]) -> list[str]:
-    palette_map = {
-        "mzML": "#64748b",
-        "dump": "#2563eb",
-        "gzip dump": "#475569",
-        "zstd dump": "#0f172a",
-        "bzip2 dump": "#1e40af",
-        "lz4 dump": "#0369a1",
-        "xz dump": "#3730a3",
-        "gzip mzML": "#475569",
-        "zstd mzML": "#334155",
-        "bzip2 mzML": "#1e3a8a",
-        "lz4 mzML": "#075985",
-        "xz mzML": "#312e81",
-        "mzarc lossless": "#0f766e",
-        "mzarc lossy": "#d97706",
-        "pigz dump": "#4b5563",
-        "pigz mzML": "#6b7280",
-        "zstd mt dump": "#1e293b",
-        "zstd mt mzML": "#0f172a",
-        "mzMLb": "#0ea5e9",
-        "MS-Numpress in mzML": "#7c3aed",
-        "MScompress": "#be185d",
-        "MScompress (1T)": "#9d174d",
-    }
-    colors: list[str] = []
-    for name in artifact_names:
-        if name.startswith("mzarc lossy q="):
-            colors.append(palette_map["mzarc lossy"])
-        else:
-            colors.append(palette_map.get(name, "#475569"))
-    return colors
+    return [_color(n) for n in artifact_names]
+
+
+def _display_label(name: str) -> str:
+    """Return display label, appending [MT] for multi-threaded artifacts."""
+    if name in _MULTI_THREAD:
+        return f"{name} [MT]"
+    return name
+
+
+def _input_facet(artifact: str) -> str:
+    """Classify an artifact into 'ms_codec', 'dump', or 'mzML'."""
+    if artifact.startswith("mzarc"):
+        return "ms_codec"
+    lc = artifact.lower()
+    ms_names = {"mzmlb", "ms-numpress in mzml", "mscompress", "mscompress (1t)"}
+    if artifact in ms_names or lc in ms_names:
+        return "ms_codec"
+    if "dump" in lc:
+        return "dump"
+    return "mzML"
 
 
 def plot_size_comparison(size_rows: list[dict[str, object]], path: Path) -> None:
+    """Faceted size comparison: MS-domain codecs (left) vs general-purpose (right).
+
+    Within the general-purpose panel bars are coloured by input: dump (slate)
+    or mzML (blue-gray).  Multi-thread variants get an [MT] label suffix.
+    mzarc is highlighted with vivid teal/amber and a bold label.
+    """
     frame = pd.DataFrame(size_rows)
     mzml_size = float(frame.loc[frame["artifact"] == "mzML", "size_mib"].iloc[0])
+    dump_size  = float(frame.loc[frame["artifact"] == "dump", "size_mib"].iloc[0])
 
-    fig, ax = plt.subplots(figsize=(10.5, 4.8))
-    sns.barplot(
-        data=frame,
-        y="artifact",
-        x="size_mib",
-        order=list(frame["artifact"]),
-        hue="artifact",
-        palette=_artifact_palette(list(frame["artifact"])),
-        dodge=False,
-        legend=False,
-        ax=ax,
+    frame["facet"] = frame["artifact"].apply(_input_facet)
+    frame["label"] = frame["artifact"].apply(_display_label)
+
+    # Exclude the raw reference bars from the comparison panels.
+    ref = frame[frame["artifact"].isin({"mzML", "dump"})]
+    ms  = frame[frame["facet"] == "ms_codec"].copy()
+    gen = frame[~frame["artifact"].isin({"mzML", "dump"}) & (frame["facet"] != "ms_codec")].copy()
+
+    # Order: ms_codec sorted ascending by size; general-purpose: all dump first
+    # then mzML, within each sorted ascending by size.
+    ms  = ms.sort_values("size_mib")
+    dump_gen = gen[gen["facet"] == "dump"].sort_values("size_mib")
+    mzml_gen = gen[gen["facet"] == "mzML"].sort_values("size_mib")
+    gen = pd.concat([dump_gen, mzml_gen], ignore_index=True)
+
+    fig, (ax_ms, ax_gen) = plt.subplots(
+        1, 2,
+        figsize=(18, max(5.0, 0.52 * max(len(ms), len(gen)) + 2.0)),
+        sharey=False,
     )
 
-    for patch, (_, row) in zip(ax.patches, frame.iterrows(), strict=True):
-        reduction = (1.0 - (float(row["size_mib"]) / mzml_size)) * 100.0
-        detail = "baseline" if str(row["artifact"]) == "mzML" else f"{reduction:.1f}% smaller than mzML"
-        ax.text(
-            patch.get_width() + 0.05,
-            patch.get_y() + patch.get_height() / 2,
-            f"{row['size_mib']:.2f} MiB  |  {detail}",
-            va="center",
-            ha="left",
-            fontsize=11,
-        )
+    def _draw_panel(ax: plt.Axes, sub: pd.DataFrame, title: str) -> None:
+        colors = [_color(str(a)) for a in sub["artifact"]]
+        bars = ax.barh(sub["label"], sub["size_mib"], color=colors, edgecolor="#e2e8f0", linewidth=0.5)
 
-    ax.set_title("Artifact Size Comparison")
-    ax.set_xlabel("size (MiB)")
-    ax.set_ylabel("")
-    ax.margins(x=0.18)
+        max_w = float(sub["size_mib"].max())
+        for patch, (_, row) in zip(ax.patches, sub.iterrows(), strict=True):
+            pct_mzml = (float(row["size_mib"]) / mzml_size) * 100.0
+            ax.text(
+                patch.get_width() + max_w * 0.015,
+                patch.get_y() + patch.get_height() / 2,
+                f"{float(row['size_mib']):.2f} MiB  ({pct_mzml:.0f}% of mzML)",
+                va="center", ha="left", fontsize=9.5,
+            )
+
+        # Reference lines: mzML and dump baselines.
+        ax.axvline(mzml_size, color="#94a3b8", linestyle=":",  linewidth=1.2, label=f"mzML {mzml_size:.1f} MiB")
+        ax.axvline(dump_size, color="#bfdbfe", linestyle="--", linewidth=1.2, label=f"dump {dump_size:.1f} MiB")
+        ax.legend(fontsize=8, loc="lower right")
+        ax.set_title(title, fontsize=14)
+        ax.set_xlabel("size (MiB)")
+        ax.set_ylabel("")
+        ax.margins(x=0.26)
+        ax.invert_yaxis()
+
+        # Bold mzarc labels.
+        for tick in ax.get_yticklabels():
+            if "mzarc" in tick.get_text().lower():
+                tick.set_fontweight("bold")
+                tick.set_color(_COLORS["mzarc_lossless"])
+
+    _draw_panel(ax_ms,  ms,  "MS-domain codecs")
+    _draw_panel(ax_gen, gen, "General-purpose (dump = slate, mzML = blue-gray)")
+
+    # Legend patches for input-format colours in the general panel.
+    legend_items = [
+        mpatches.Patch(color="#475569", label="generic — dump input"),
+        mpatches.Patch(color="#6b7280", label="generic — mzML input"),
+        mpatches.Patch(facecolor="white", edgecolor="#334155", label="[MT] = multi-threaded"),
+    ]
+    fig.legend(handles=legend_items, loc="lower center", ncol=3, fontsize=9,
+               bbox_to_anchor=(0.5, -0.03))
+    fig.suptitle("Artifact Size Comparison", fontsize=19, fontweight="bold")
     fig.tight_layout()
     fig.savefig(path, bbox_inches="tight")
     plt.close(fig)
 
 
 def plot_performance_overview(performance_rows: list[dict[str, object]], path: Path) -> None:
+    """2×2 faceted throughput chart: rows=direction, cols=input format (dump|mzML).
+
+    MS-domain codecs are shown in both columns with their appropriate input.
+    mzarc is highlighted; [MT] suffix marks multi-threaded tools.
+    """
     frame = pd.DataFrame(performance_rows)
     frame = frame[(frame["status"] == "measured") & frame["throughput_mib_s"].notna()].copy()
     if frame.empty:
         fig, ax = plt.subplots(figsize=(10.0, 3.2))
         ax.axis("off")
-        ax.text(0.5, 0.5, "No measured throughput rows available for this run", ha="center", va="center", fontsize=16)
+        ax.text(0.5, 0.5, "No measured throughput rows", ha="center", va="center", fontsize=16)
         fig.tight_layout()
         fig.savefig(path, bbox_inches="tight")
         plt.close(fig)
         return
 
-    order = list(dict.fromkeys(str(item["artifact"]) for item in performance_rows if str(item["status"]) == "measured"))
-    directions = [("compression", "Compression Speed (MiB/s)"), ("decompression", "Decompression Speed (MiB/s)")]
-    fig, axes = plt.subplots(1, 2, figsize=(14.5, max(4.8, 0.62 * len(order) + 1.8)), sharey=True)
+    # Classify each row's input format from source_format field.
+    def _facet(row: dict) -> str:
+        sf = str(row.get("source_format") or "")
+        if "dump" in sf.lower():
+            return "dump"
+        return "mzML"
 
-    for index, (direction, title) in enumerate(directions):
-        ax = axes[index]
-        subset = frame[frame["direction"] == direction].copy()
-        if subset.empty:
-            ax.axis("off")
-            continue
-        subset_order = [name for name in order if name in set(subset["artifact"])]
-        ordered = subset.set_index("artifact").loc[subset_order].reset_index()
-        colors = _artifact_palette(subset_order)
-        ax.barh(ordered["artifact"], ordered["throughput_mib_s"], color=colors)
-        max_value = float(ordered["throughput_mib_s"].max())
-        for patch, (_, row) in zip(ax.patches, ordered.iterrows(), strict=True):
-            basis = "restored bytes" if row.get("throughput_basis") == "output" else "source bytes"
-            ax.text(
-                patch.get_width() + max(max_value * 0.015, 0.05),
-                patch.get_y() + patch.get_height() / 2,
-                f"{float(row['throughput_mib_s']):.2f}  |  {basis}",
-                va="center",
-                ha="left",
-                fontsize=10,
-            )
-        ax.set_title(title)
-        ax.set_xlabel("MiB/s")
-        ax.set_ylabel("")
-        ax.margins(x=0.22)
+    frame["input_facet"] = frame.apply(_facet, axis=1)
+    frame["label"] = frame["artifact"].apply(_display_label)
 
-        if direction == "compression":
+    directions = [
+        ("compression",   "Compression / Encode  (MiB/s)"),
+        ("decompression", "Decompression / Decode  (MiB/s)"),
+    ]
+    facets = [("dump", "Input: binary dump"), ("mzML", "Input: mzML")]
+
+    # Determine a shared y-label order per facet so both direction panels align.
+    def _panel_order(direction: str, facet: str) -> list[str]:
+        sub = frame[(frame["direction"] == direction) & (frame["input_facet"] == facet)]
+        # Sort descending by throughput so fastest at top.
+        return list(sub.sort_values("throughput_mib_s", ascending=False)["artifact"])
+
+    fig, axes = plt.subplots(
+        2, 2,
+        figsize=(22, max(8.0, 0.52 * frame["artifact"].nunique() + 3.0)),
+        sharey=False,
+    )
+
+    for row_idx, (direction, dir_title) in enumerate(directions):
+        for col_idx, (facet, facet_title) in enumerate(facets):
+            ax = axes[row_idx][col_idx]
+            sub = frame[
+                (frame["direction"] == direction) & (frame["input_facet"] == facet)
+            ].copy()
+
+            if sub.empty:
+                ax.axis("off")
+                continue
+
+            order = _panel_order(direction, facet)
+            sub = sub.set_index("artifact").loc[order].reset_index()
+            sub["label"] = sub["artifact"].apply(_display_label)
+            colors = [_color(str(a)) for a in sub["artifact"]]
+
+            ax.barh(sub["label"], sub["throughput_mib_s"], color=colors,
+                    edgecolor="#e2e8f0", linewidth=0.5)
+
+            max_v = float(sub["throughput_mib_s"].max())
+            for patch, (_, r) in zip(ax.patches, sub.iterrows(), strict=True):
+                ax.text(
+                    patch.get_width() + max_v * 0.015,
+                    patch.get_y() + patch.get_height() / 2,
+                    f"{float(r['throughput_mib_s']):.1f}",
+                    va="center", ha="left", fontsize=9,
+                )
+
+            ax.set_title(f"{dir_title}\n{facet_title}", fontsize=12)
+            ax.set_xlabel("MiB/s")
+            ax.set_ylabel("")
+            ax.margins(x=0.18)
             ax.invert_yaxis()
 
-    fig.suptitle("Throughput Overview", y=1.02, fontsize=20, fontweight="bold")
+            for tick in ax.get_yticklabels():
+                if "mzarc" in tick.get_text().lower():
+                    tick.set_fontweight("bold")
+                    tick.set_color(_COLORS["mzarc_lossless"])
+
+    # Shared legend
+    legend_items = [
+        mpatches.Patch(color=_COLORS["mzarc_lossless"], label="mzarc lossless"),
+        mpatches.Patch(color=_COLORS["mzarc_lossy"],    label="mzarc lossy"),
+        mpatches.Patch(color=_COLORS["mzmlb"],          label="mzMLb"),
+        mpatches.Patch(color=_COLORS["mscompress"],     label="MScompress [MT]"),
+        mpatches.Patch(color="#475569",                  label="generic — dump"),
+        mpatches.Patch(color="#6b7280",                  label="generic — mzML"),
+        mpatches.Patch(facecolor="white", edgecolor="#334155", label="[MT] = multi-threaded"),
+    ]
+    fig.legend(handles=legend_items, loc="lower center", ncol=4, fontsize=9,
+               bbox_to_anchor=(0.5, -0.02))
+    fig.suptitle("Throughput Overview", fontsize=20, fontweight="bold")
     fig.tight_layout()
     fig.savefig(path, bbox_inches="tight")
     plt.close(fig)
 
 
 def plot_fidelity_overview(fidelity_rows: list[dict[str, object]], path: Path) -> None:
+    """Fidelity metrics for all measured codecs; mzarc highlighted."""
     frame = pd.DataFrame(fidelity_rows)
     frame = frame[frame["status"] == "measured"].copy()
     if frame.empty:
         fig, ax = plt.subplots(figsize=(10.0, 3.2))
         ax.axis("off")
-        ax.text(0.5, 0.5, "No measured fidelity rows available for this run", ha="center", va="center", fontsize=16)
+        ax.text(0.5, 0.5, "No measured fidelity rows available for this run",
+                ha="center", va="center", fontsize=16)
         fig.tight_layout()
         fig.savefig(path, bbox_inches="tight")
         plt.close(fig)
         return
 
-    order = list(frame.sort_values(["max_abs_mz_error", "mean_abs_intensity_error", "artifact"], ascending=[True, True, True])["artifact"])
+    order = list(frame.sort_values(
+        ["max_abs_mz_error", "mean_abs_intensity_error", "artifact"],
+        ascending=[True, True, True],
+    )["artifact"])
     metrics = [
-        ("max_abs_mz_error", "Max m/z Error", 1e-12, "{:.3g}"),
-        ("mean_abs_intensity_error", "Mean Intensity Error", 1e-3, "{:.3g}"),
-        ("p95_rel_intensity_error_pct", "P95 Rel Intensity Error (%)", 1e-4, "{:.3f}%"),
+        ("max_abs_mz_error",            "Max m/z Error",              1e-12, "{:.3g}"),
+        ("mean_abs_intensity_error",     "Mean Intensity Error",        1e-3,  "{:.3g}"),
+        ("p95_rel_intensity_error_pct",  "P95 Rel Intensity Error (%)", 1e-4,  "{:.3f}%"),
     ]
-    fig, axes = plt.subplots(1, 3, figsize=(17.5, max(4.8, 0.62 * len(order) + 1.6)), sharey=True)
+    fig, axes = plt.subplots(
+        1, 3,
+        figsize=(17.5, max(4.8, 0.62 * len(order) + 1.6)),
+        sharey=True,
+    )
+
+    colors = [_color(str(a)) for a in order]
 
     for axis_index, (column, title, linthresh, value_format) in enumerate(metrics):
         ax = axes[axis_index]
         ordered = frame.set_index("artifact").loc[order].reset_index()
-        colors = _artifact_palette(order)
-        ax.barh(ordered["artifact"], ordered[column], color=colors)
+        ax.barh(ordered["artifact"], ordered[column], color=colors,
+                edgecolor="#e2e8f0", linewidth=0.5)
         ax.set_xscale("symlog", linthresh=linthresh)
         for patch, (_, row) in zip(ax.patches, ordered.iterrows(), strict=True):
             value = float(row[column])
@@ -195,19 +354,21 @@ def plot_fidelity_overview(fidelity_rows: list[dict[str, object]], path: Path) -
                 text_x,
                 patch.get_y() + patch.get_height() / 2,
                 value_format.format(value),
-                va="center",
-                ha="left",
-                fontsize=10,
+                va="center", ha="left", fontsize=10,
             )
-        ax.set_title(title)
+        ax.set_title(title, fontsize=13)
         ax.set_xlabel("")
         ax.set_ylabel("")
         ax.margins(x=0.3)
 
         if axis_index == 0:
             ax.invert_yaxis()
+            for tick in ax.get_yticklabels():
+                if "mzarc" in tick.get_text().lower():
+                    tick.set_fontweight("bold")
+                    tick.set_color(_COLORS["mzarc_lossless"])
 
-    fig.suptitle("Data Fidelity Overview", y=1.02, fontsize=20, fontweight="bold")
+    fig.suptitle("Data Fidelity Overview", fontsize=20, fontweight="bold")
     fig.tight_layout()
     fig.savefig(path, bbox_inches="tight")
     plt.close(fig)
@@ -247,46 +408,77 @@ def plot_lossy_tradeoff(lossy_rows: list[dict[str, object]], selected_quant: int
 
 
 def plot_memory_footprint(memory_rows: list[dict[str, object]], path: Path) -> None:
-    frame = pd.DataFrame(memory_rows)
-    if frame.empty:
+    """Peak RSS by operation, faceted encode|decode; mzarc highlighted.
+
+    Operations follow the format "src -> artifact" (encode) or "artifact -> src"
+    (decode).  Bars are coloured per artifact; mzarc labels are bold teal.
+    [MT] suffix marks multi-thread variants.
+    """
+    if not memory_rows:
         fig, ax = plt.subplots(figsize=(10.0, 3.2))
         ax.axis("off")
-        ax.text(0.5, 0.5, "No zebrac memory rows available for this run", ha="center", va="center", fontsize=16)
+        ax.text(0.5, 0.5, "No zebrac memory rows available for this run",
+                ha="center", va="center", fontsize=16)
         fig.tight_layout()
         fig.savefig(path, bbox_inches="tight")
         plt.close(fig)
         return
 
-    # Split into encode and decode rows for side-by-side display.
-    def _is_encode(name: str) -> bool:
-        lower = name.lower()
-        return "encode" in lower or ("-> mzarc" in lower) or ("-> gzip" in lower) or ("-> zstd" in lower) or ("-> bzip2" in lower) or ("-> lz4" in lower) or ("-> xz" in lower) or ("mzml ->" in lower) or ("dump ->" in lower)
+    frame = pd.DataFrame(memory_rows)
+    _sources = {"dump", "mzML", "mzml"}
 
-    frame["direction"] = frame["operation"].apply(lambda n: "encode / compress" if _is_encode(str(n)) else "decode / decompress")
-    palette_map = {
-        "encode / compress": "#0f766e",
-        "decode / decompress": "#2563eb",
-    }
-    colors = [palette_map[d] for d in frame["direction"]]
+    def _parse(op: str) -> tuple[str, str]:
+        """Return (artifact, direction) from an operation string."""
+        if " -> " not in op:
+            # e.g. "mzml dump" - treat as the dump conversion itself
+            return op, "encode / compress"
+        lhs, rhs = op.split(" -> ", 1)
+        if lhs in _sources:
+            return rhs, "encode / compress"
+        return lhs, "decode / decompress"
 
-    fig, ax = plt.subplots(figsize=(10.5, max(4.0, 0.55 * len(frame) + 1.6)))
-    ax.barh(frame["operation"], frame["peak_rss_median_mib"], color=colors)
-    max_rss = float(frame["peak_rss_median_mib"].max())
-    for patch, (_, row) in zip(ax.patches, frame.iterrows(), strict=True):
-        ax.text(
-            patch.get_width() + max(max_rss * 0.015, 0.1),
-            patch.get_y() + patch.get_height() / 2,
-            f"{row['peak_rss_median_mib']:.1f} MiB",
-            va="center",
-            ha="left",
-            fontsize=10,
-        )
-    ax.set_title("Peak RSS by Operation (zebrac median)")
-    ax.set_xlabel("peak RSS (MiB)")
-    ax.set_ylabel("")
-    ax.margins(x=0.18)
-    legend_handles = [mpatches.Patch(color=v, label=k) for k, v in palette_map.items()]
-    ax.legend(handles=legend_handles, loc="lower right", fontsize=10)
+    frame[["artifact", "direction"]] = pd.DataFrame(
+        frame["operation"].apply(_parse).tolist(), index=frame.index
+    )
+    frame["label"] = frame["artifact"].apply(_display_label)
+
+    enc = frame[frame["direction"] == "encode / compress"].copy()
+    dec = frame[frame["direction"] == "decode / decompress"].copy()
+    enc = enc.sort_values("peak_rss_median_mib")
+    dec = dec.sort_values("peak_rss_median_mib")
+
+    fig, (ax_enc, ax_dec) = plt.subplots(
+        1, 2,
+        figsize=(20, max(5.0, 0.52 * max(len(enc), len(dec)) + 2.0)),
+        sharey=False,
+    )
+
+    def _draw(ax: plt.Axes, sub: pd.DataFrame, title: str) -> None:
+        colors = [_color(str(a)) for a in sub["artifact"]]
+        ax.barh(sub["label"], sub["peak_rss_median_mib"], color=colors,
+                edgecolor="#e2e8f0", linewidth=0.5)
+        max_v = float(sub["peak_rss_median_mib"].max())
+        for patch, (_, row) in zip(ax.patches, sub.iterrows(), strict=True):
+            ax.text(
+                patch.get_width() + max_v * 0.015,
+                patch.get_y() + patch.get_height() / 2,
+                f"{float(row['peak_rss_median_mib']):.1f} MiB",
+                va="center", ha="left", fontsize=9.5,
+            )
+        ax.set_title(title, fontsize=13)
+        ax.set_xlabel("peak RSS (MiB)")
+        ax.set_ylabel("")
+        ax.margins(x=0.22)
+        ax.invert_yaxis()
+        for tick in ax.get_yticklabels():
+            if "mzarc" in tick.get_text().lower():
+                tick.set_fontweight("bold")
+                tick.set_color(_COLORS["mzarc_lossless"])
+
+    _draw(ax_enc, enc, "Encode / Compress  — peak RSS")
+    _draw(ax_dec, dec, "Decode / Decompress  — peak RSS")
+
+    fig.suptitle("Peak Memory Footprint (zebrac median)", fontsize=18, fontweight="bold")
     fig.tight_layout()
     fig.savefig(path, bbox_inches="tight")
     plt.close(fig)
@@ -393,6 +585,8 @@ def plot_hardware_efficiency(memory_rows: list[dict[str, object]], path: Path) -
 
     Cache miss rate (cache_misses / cache_references) measures data locality.
     Lower is better; a value near 1 means nearly every cache access is a miss.
+
+    Bars are coloured by artifact; mzarc labels are bold teal.
     """
     rows_with_hw = [
         r for r in memory_rows
@@ -409,25 +603,30 @@ def plot_hardware_efficiency(memory_rows: list[dict[str, object]], path: Path) -
         return
 
     frame = pd.DataFrame(rows_with_hw)
+    _sources = {"dump", "mzML", "mzml"}
 
-    def _direction(name: str) -> str:
-        lower = name.lower()
-        return "encode / compress" if (
-            "encode" in lower or "mzml ->" in lower or "dump ->" in lower
-        ) else "decode / decompress"
+    def _artifact_from_op(op: str) -> str:
+        if " -> " not in op:
+            return op
+        lhs, rhs = op.split(" -> ", 1)
+        return rhs if lhs in _sources else lhs
 
-    frame["direction"] = frame["operation"].apply(_direction)
-    dir_palette = {
-        "encode / compress":   "#0f766e",
-        "decode / decompress": "#2563eb",
-    }
-    colors = [dir_palette[d] for d in frame["direction"]]
+    frame["artifact"] = frame["operation"].apply(_artifact_from_op)
+    frame["op_label"]  = frame["operation"]
+    colors = [_color(str(a)) for a in frame["artifact"]]
 
-    fig, axes = plt.subplots(1, 2, figsize=(18, max(4.0, 0.45 * len(frame) + 1.8)))
+    fig, axes = plt.subplots(1, 2, figsize=(20, max(4.0, 0.45 * len(frame) + 1.8)))
+
+    def _annotate_yaxis(ax: plt.Axes, artifacts: list[str]) -> None:
+        for tick, art in zip(ax.get_yticklabels(), artifacts):
+            if "mzarc" in art.lower():
+                tick.set_fontweight("bold")
+                tick.set_color(_COLORS["mzarc_lossless"])
 
     # Left: IPC
     ax_ipc = axes[0]
-    ax_ipc.barh(frame["operation"], frame["ipc"].astype(float), color=colors)
+    ax_ipc.barh(frame["op_label"], frame["ipc"].astype(float), color=colors,
+                edgecolor="#e2e8f0", linewidth=0.5)
     max_ipc = float(frame["ipc"].max())
     for patch, (_, row) in zip(ax_ipc.patches, frame.iterrows(), strict=True):
         ax_ipc.text(
@@ -436,15 +635,17 @@ def plot_hardware_efficiency(memory_rows: list[dict[str, object]], path: Path) -
             f"{float(row['ipc']):.2f}",
             va="center", ha="left", fontsize=9,
         )
-    ax_ipc.set_title("IPC (instructions / cycle)\nhigher = more compute-efficient")
+    ax_ipc.set_title("IPC (instructions / cycle)\nhigher = more compute-efficient", fontsize=12)
     ax_ipc.set_xlabel("IPC")
     ax_ipc.set_ylabel("")
     ax_ipc.margins(x=0.22)
     ax_ipc.invert_yaxis()
+    _annotate_yaxis(ax_ipc, list(frame["artifact"]))
 
     # Right: Cache miss rate
     ax_cmr = axes[1]
-    ax_cmr.barh(frame["operation"], (frame["cache_miss_rate"].astype(float) * 100), color=colors)
+    ax_cmr.barh(frame["op_label"], (frame["cache_miss_rate"].astype(float) * 100), color=colors,
+                edgecolor="#e2e8f0", linewidth=0.5)
     max_cmr = float(frame["cache_miss_rate"].max()) * 100
     for patch, (_, row) in zip(ax_cmr.patches, frame.iterrows(), strict=True):
         ax_cmr.text(
@@ -453,14 +654,18 @@ def plot_hardware_efficiency(memory_rows: list[dict[str, object]], path: Path) -
             f"{float(row['cache_miss_rate']) * 100:.1f}%",
             va="center", ha="left", fontsize=9,
         )
-    ax_cmr.set_title("Cache miss rate (misses / references)\nlower = better data locality")
+    ax_cmr.set_title("Cache miss rate (misses / references)\nlower = better data locality", fontsize=12)
     ax_cmr.set_xlabel("cache miss rate (%)")
     ax_cmr.set_ylabel("")
     ax_cmr.margins(x=0.22)
     ax_cmr.invert_yaxis()
+    _annotate_yaxis(ax_cmr, list(frame["artifact"]))
 
-    legend_handles = [mpatches.Patch(color=v, label=k) for k, v in dir_palette.items()]
-    fig.legend(handles=legend_handles, loc="lower center", ncol=2, fontsize=10,
+    legend_items = [
+        mpatches.Patch(color=_COLORS["mzarc_lossless"], label="mzarc lossless"),
+        mpatches.Patch(color=_COLORS["mzarc_lossy"],    label="mzarc lossy"),
+    ]
+    fig.legend(handles=legend_items, loc="lower center", ncol=2, fontsize=10,
                bbox_to_anchor=(0.5, -0.02))
     fig.suptitle("Hardware Algorithm Efficiency", fontsize=18, fontweight="bold")
     fig.tight_layout()
