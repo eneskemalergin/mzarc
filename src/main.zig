@@ -24,8 +24,8 @@ fn printUsage() void {
     std.debug.print(
         "Usage:\n" ++
             "  mzarc dump-inspect <input.bin>\n" ++
-            "  mzarc encode <input.bin> -o <output.mzarc> [--lossy] [--intensity-quant <levels>] [--mz-rans-min-gain <pct>] [--intensity-rans-min-gain <pct>] [--verbose-blocks]\n" ++
-            "  mzarc decode <input.mzarc> -o <output.bin>\n" ++
+            "  mzarc encode <input.bin> -o <output.mzarc> [--lossy] [--intensity-quant <levels>] [--mz-rans-min-gain <pct>] [--intensity-rans-min-gain <pct>] [--verbose-blocks] [--verbose-timing]\n" ++
+            "  mzarc decode <input.mzarc> -o <output.bin> [--verbose-timing]\n" ++
             "  mzarc inspect <input.mzarc> [--json] [--blocks]\n" ++
             "  mzarc benchmark-rans-core <input.mzarc> [--repeats <n>]\n" ++
             "  mzarc validate <original.bin> <decoded.bin> --mode=lossless|lossy\n" ++
@@ -129,6 +129,7 @@ fn commandEncode(allocator: std.mem.Allocator, args: []const [:0]const u8) !void
             .intensity_rans_min_gain_percent = intensity_rans_min_gain orelse 12,
             .verbose_blocks = hasFlag(args[3..], "--verbose-blocks"),
         },
+        .verbose_timing = hasFlag(args[3..], "--verbose-timing"),
     });
 
     std.debug.print("encoded: {s} -> {s}\n", .{ input_path, output_path });
@@ -140,7 +141,9 @@ fn commandDecode(allocator: std.mem.Allocator, args: []const [:0]const u8) !void
     const input_path = args[2];
     const output_path = try parseOutputPath(args[3..]);
 
-    try codec.decodeToDumpFile(allocator, input_path, output_path);
+    try codec.decodeToDumpFile(allocator, input_path, output_path, .{
+        .verbose_timing = hasFlag(args[3..], "--verbose-timing"),
+    });
     std.debug.print("decoded: {s} -> {s}\n", .{ input_path, output_path });
 }
 
@@ -531,7 +534,7 @@ fn commandValidateAdversarial(allocator: std.mem.Allocator, args: []const [:0]co
         };
         defer allocator.free(encoded);
 
-        const decoded = codec.decodeFileAlloc(allocator, encoded) catch |err| {
+        const decoded = codec.decodeFileAlloc(allocator, encoded, .{}) catch |err| {
             printStdout("FAIL {s} decode_error={s}\n", .{ entry.name, @errorName(err) });
             any_fail = true;
             continue;

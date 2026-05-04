@@ -170,7 +170,7 @@ test "codec lossless round-trip preserves original global order" {
     try std.testing.expectEqual(@as(usize, 1), inspection.ms1_block_count);
     try std.testing.expectEqual(@as(usize, 1), inspection.ms2_block_count);
 
-    const decoded = try codec.decodeFileAlloc(std.testing.allocator, encoded);
+    const decoded = try codec.decodeFileAlloc(std.testing.allocator, encoded, .{});
     defer binary_reader.freeSpectra(std.testing.allocator, decoded);
 
     try std.testing.expectEqual(@as(usize, 3), decoded.len);
@@ -229,7 +229,7 @@ test "codec lossless round-trip preserves order and spectra across many interlea
     try std.testing.expectEqual(@as(usize, 2), inspection.ms1_block_count);
     try std.testing.expectEqual(@as(usize, 2), inspection.ms2_block_count);
 
-    const decoded = try codec.decodeFileAlloc(std.testing.allocator, encoded);
+    const decoded = try codec.decodeFileAlloc(std.testing.allocator, encoded, .{});
     defer binary_reader.freeSpectra(std.testing.allocator, decoded);
 
     try std.testing.expectEqual(@as(usize, input.len), decoded.len);
@@ -261,7 +261,7 @@ test "codec decode rejects invalid global order tables" {
     std.mem.writeInt(u32, tampered[order_offset..][0..@sizeOf(u32)], 0, .little);
     std.mem.writeInt(u32, tampered[order_offset + @sizeOf(u32) ..][0..@sizeOf(u32)], 0, .little);
 
-    try std.testing.expectError(error.InvalidOrderTable, codec.decodeFileAlloc(std.testing.allocator, tampered));
+    try std.testing.expectError(error.InvalidOrderTable, codec.decodeFileAlloc(std.testing.allocator, tampered, .{}));
 }
 
 test "codec inspect rejects invalid magic, unsupported version, trailing data, and unsupported ms level" {
@@ -316,7 +316,7 @@ test "codec inspect accepts prior minor version files" {
 
     try std.testing.expectEqual(@as(u16, 0), inspection.header.version_minor);
 
-    const decoded = try codec.decodeFileAlloc(std.testing.allocator, old_minor);
+    const decoded = try codec.decodeFileAlloc(std.testing.allocator, old_minor, .{});
     defer binary_reader.freeSpectra(std.testing.allocator, decoded);
     try expectLosslessRoundTrip(&input, decoded);
 }
@@ -359,7 +359,7 @@ test "codec lossless round-trip preserves per-spectrum m/z width blocks" {
     try std.testing.expect((inspection.blocks[0].header.flags & block.flag_mz_per_spectrum_bit_widths) != 0);
     try expectByteBreakdownSums(inspection, encoded.len);
 
-    const decoded = try codec.decodeFileAlloc(std.testing.allocator, encoded);
+    const decoded = try codec.decodeFileAlloc(std.testing.allocator, encoded, .{});
     defer binary_reader.freeSpectra(std.testing.allocator, decoded);
     try expectLosslessRoundTrip(&input, decoded);
 }
@@ -395,7 +395,7 @@ test "codec lossless synthetic corpus round-trips with sub-ppm m/z across many s
     const encoded = try codec.encodeFileAlloc(std.testing.allocator, corpus.spectra, .{ .block_options = .{ .mode = .lossless }, .block_size = 3 });
     defer std.testing.allocator.free(encoded);
 
-    const decoded = try codec.decodeFileAlloc(std.testing.allocator, encoded);
+    const decoded = try codec.decodeFileAlloc(std.testing.allocator, encoded, .{});
     defer binary_reader.freeSpectra(std.testing.allocator, decoded);
 
     try std.testing.expectEqual(corpus.spectra.len, decoded.len);
@@ -413,7 +413,7 @@ test "codec lossless pseudo-random corpus round-trips with sub-ppm m/z and accou
     defer codec.freeInspection(std.testing.allocator, inspection);
     try expectByteBreakdownSums(inspection, encoded.len);
 
-    const decoded = try codec.decodeFileAlloc(std.testing.allocator, encoded);
+    const decoded = try codec.decodeFileAlloc(std.testing.allocator, encoded, .{});
     defer binary_reader.freeSpectra(std.testing.allocator, decoded);
 
     try std.testing.expectEqual(corpus.spectra.len, decoded.len);
@@ -427,7 +427,7 @@ test "codec lossy synthetic corpus preserves order while bounding m/z and intens
     const encoded = try codec.encodeFileAlloc(std.testing.allocator, corpus.spectra, .{ .block_options = .{ .mode = .lossy, .intensity_quant = 4096 }, .block_size = 4 });
     defer std.testing.allocator.free(encoded);
 
-    const decoded = try codec.decodeFileAlloc(std.testing.allocator, encoded);
+    const decoded = try codec.decodeFileAlloc(std.testing.allocator, encoded, .{});
     defer binary_reader.freeSpectra(std.testing.allocator, decoded);
 
     try std.testing.expectEqual(corpus.spectra.len, decoded.len);
@@ -465,7 +465,7 @@ test "codec lossy pseudo-random corpus keeps order, bounds error, and reports pa
     try std.testing.expect(inspection.byte_breakdown.intensity_metadata_bytes > 0);
     try std.testing.expect(inspection.byte_breakdown.intensity_payload_bytes > 0);
 
-    const decoded = try codec.decodeFileAlloc(std.testing.allocator, encoded);
+    const decoded = try codec.decodeFileAlloc(std.testing.allocator, encoded, .{});
     defer binary_reader.freeSpectra(std.testing.allocator, decoded);
 
     const mz_tolerance = 1.1 / 500_000.0;
@@ -767,7 +767,7 @@ test "encodeFileAlloc with zero spectra produces a valid decodable empty file" {
     try std.testing.expectEqual(@as(u32, 0), inspection.header.spectrum_count);
     try std.testing.expectEqual(@as(u32, 0), inspection.header.block_count);
 
-    const decoded = try codec.decodeFileAlloc(std.testing.allocator, encoded);
+    const decoded = try codec.decodeFileAlloc(std.testing.allocator, encoded, .{});
     defer binary_reader.freeSpectra(std.testing.allocator, decoded);
 
     try std.testing.expectEqual(@as(usize, 0), decoded.len);

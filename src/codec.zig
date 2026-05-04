@@ -5,6 +5,12 @@ const block = @import("block");
 pub const Allocator = std.mem.Allocator;
 const io = std.Io.Threaded.global_single_threaded.io();
 
+fn monotonic_ns() u64 {
+    var ts: std.os.linux.timespec = undefined;
+    _ = std.os.linux.clock_gettime(std.os.linux.CLOCK.MONOTONIC, &ts);
+    return @as(u64, @intCast(ts.sec)) * 1_000_000_000 + @as(u64, @intCast(ts.nsec));
+}
+
 pub const magic = "MZAR".*;
 pub const header_len = 32;
 pub const version_major: u16 = 1;
@@ -30,6 +36,11 @@ pub const FileHeader = struct {
 pub const EncodeOptions = struct {
     block_options: block.EncodeOptions = .{},
     block_size: u16 = 128,
+    verbose_timing: bool = false,
+};
+
+pub const DecodeOptions = struct {
+    verbose_timing: bool = false,
 };
 
 pub const BlockInfo = struct {
@@ -279,6 +290,8 @@ pub fn encodeFileAlloc(allocator: Allocator, spectra: []const binary_reader.RawS
     if (options.block_size == 0) return error.InvalidBlockSize;
     if (spectra.len > std.math.maxInt(u32)) return error.TooManySpectra;
 
+    const t0 = monotonic_ns();
+
     var ms1_count: usize = 0;
     var ms2_count: usize = 0;
     for (spectra) |spectrum| {
@@ -302,10 +315,15 @@ pub fn encodeFileAlloc(allocator: Allocator, spectra: []const binary_reader.RawS
     if (ms2_count != 0) flags |= flag_contains_ms2;
     flags |= flag_has_global_order;
 
+    const t1 = monotonic_ns();
+
     var block_count: u32 = 0;
     var order_cursor: usize = 0;
     _ = try appendFilteredStreamBlocks(&file_bytes, allocator, spectra, 1, options, order_entries, &order_cursor, &block_count);
+    const t2 = monotonic_ns();
     _ = try appendFilteredStreamBlocks(&file_bytes, allocator, spectra, 2, options, order_entries, &order_cursor, &block_count);
+    const t3 = monotonic_ns();
+
     if (order_cursor != spectra.len) return error.InvalidOrderTable;
 
     const order_bytes = file_bytes.items[header_len .. header_len + order_len];
@@ -323,8 +341,31 @@ pub fn encodeFileAlloc(allocator: Allocator, spectra: []const binary_reader.RawS
         .total_peaks = @intCast(totalPeaks(spectra)),
     };
     writeHeaderInto(file_bytes.items[0..header_len], header);
+    const result = try file_bytes.toOwnedSlice(allocator);
 
-    return file_bytes.toOwnedSlice(allocator);
+    if (options.verbose_timing) {
+        const t4 = monotonic_ns();
+        const total_ns = t4 - t0;
+        const setup_ns = t1 - t0;
+        const ms1_ns = t2 - t1;
+        const ms2_ns = t3 - t2;
+        const finalize_ns = t4 - t3;
+        const ms = struct {
+            fn f(ns: u64) f64 {
+                return @as(f64, @floatFromInt(ns)) / 1_000_000.0;
+            }
+        };
+        std.debug.print(
+            "[encode timing] setup={d:.2}ms  ms1_blocks={d:.2}ms  ms2_blocks={d:.2}ms  finalize={d:.2}ms  total={d:.2}ms\n" ++
+                "[encode timing] setup={d:.1}%  ms1_blocks={d:.1}%  ms2_blocks={d:.1}%  finalize={d:.1}%\n",
+            .{
+                ms.f(setup_ns),                                                                ms.f(ms1_ns),                                                                ms.f(ms2_ns),                                                                ms.f(finalize_ns),                                                                ms.f(total_ns),
+                @as(f64, @floatFromInt(setup_ns)) * 100.0 / @as(f64, @floatFromInt(total_ns)), @as(f64, @floatFromInt(ms1_ns)) * 100.0 / @as(f64, @floatFromInt(total_ns)), @as(f64, @floatFromInt(ms2_ns)) * 100.0 / @as(f64, @floatFromInt(total_ns)), @as(f64, @floatFromInt(finalize_ns)) * 100.0 / @as(f64, @floatFromInt(total_ns)),
+            },
+        );
+    }
+
+    return result;
 }
 
 pub fn inspectAlloc(allocator: Allocator, bytes: []const u8) !Inspection {
@@ -387,7 +428,9 @@ pub fn freeInspection(allocator: Allocator, inspection: Inspection) void {
     allocator.free(inspection.blocks);
 }
 
-pub fn decodeFileAlloc(allocator: Allocator, bytes: []const u8) ![]binary_reader.RawSpectrum {
+pub fn decodeFileAlloc(allocator: Allocator, bytes: []const u8, options: DecodeOptions) ![]binary_reader.RawSpectrum {
+    const t0 = monotonic_ns();
+
     const inspection = try inspectAlloc(allocator, bytes);
     defer freeInspection(allocator, inspection);
 
@@ -396,6 +439,8 @@ pub fn decodeFileAlloc(allocator: Allocator, bytes: []const u8) ![]binary_reader
     else
         null;
     defer if (global_order) |order| allocator.free(order);
+
+    const t1 = monotonic_ns();
 
     const spectra = try allocator.alloc(binary_reader.RawSpectrum, @intCast(inspection.header.spectrum_count));
     var initialized: usize = 0;
@@ -417,13 +462,57 @@ pub fn decodeFileAlloc(allocator: Allocator, bytes: []const u8) ![]binary_reader
         allocator.free(decoded);
     }
 
-    if (global_order == null) return spectra;
+    const t2 = monotonic_ns();
+
+    if (global_order == null) {
+        if (options.verbose_timing) {
+            const total_ns = t2 - t0;
+            const setup_ns = t1 - t0;
+            const blocks_ns = t2 - t1;
+            const ms = struct {
+                fn f(ns: u64) f64 {
+                    return @as(f64, @floatFromInt(ns)) / 1_000_000.0;
+                }
+            };
+            std.debug.print(
+                "[decode timing] setup={d:.2}ms  block_loop={d:.2}ms  reorder=0.00ms  total={d:.2}ms\n" ++
+                    "[decode timing] setup={d:.1}%  block_loop={d:.1}%  reorder=0.0%\n",
+                .{
+                    ms.f(setup_ns),                                                                ms.f(blocks_ns),                                                                ms.f(total_ns),
+                    @as(f64, @floatFromInt(setup_ns)) * 100.0 / @as(f64, @floatFromInt(total_ns)), @as(f64, @floatFromInt(blocks_ns)) * 100.0 / @as(f64, @floatFromInt(total_ns)),
+                },
+            );
+        }
+        return spectra;
+    }
 
     const reordered = try allocator.alloc(binary_reader.RawSpectrum, spectra.len);
     for (global_order.?, 0..) |original_index, file_index| {
         reordered[original_index] = spectra[file_index];
     }
     allocator.free(spectra);
+
+    if (options.verbose_timing) {
+        const t3 = monotonic_ns();
+        const total_ns = t3 - t0;
+        const setup_ns = t1 - t0;
+        const blocks_ns = t2 - t1;
+        const reorder_ns = t3 - t2;
+        const ms = struct {
+            fn f(ns: u64) f64 {
+                return @as(f64, @floatFromInt(ns)) / 1_000_000.0;
+            }
+        };
+        std.debug.print(
+            "[decode timing] setup={d:.2}ms  block_loop={d:.2}ms  reorder={d:.2}ms  total={d:.2}ms\n" ++
+                "[decode timing] setup={d:.1}%  block_loop={d:.1}%  reorder={d:.1}%\n",
+            .{
+                ms.f(setup_ns),                                                                ms.f(blocks_ns),                                                                ms.f(reorder_ns),                                                                ms.f(total_ns),
+                @as(f64, @floatFromInt(setup_ns)) * 100.0 / @as(f64, @floatFromInt(total_ns)), @as(f64, @floatFromInt(blocks_ns)) * 100.0 / @as(f64, @floatFromInt(total_ns)), @as(f64, @floatFromInt(reorder_ns)) * 100.0 / @as(f64, @floatFromInt(total_ns)),
+            },
+        );
+    }
+
     return reordered;
 }
 
@@ -445,11 +534,11 @@ pub fn encodeDumpFile(allocator: Allocator, input_path: []const u8, output_path:
     try writeFile(output_path, encoded);
 }
 
-pub fn decodeToDumpFile(allocator: Allocator, input_path: []const u8, output_path: []const u8) !void {
+pub fn decodeToDumpFile(allocator: Allocator, input_path: []const u8, output_path: []const u8, options: DecodeOptions) !void {
     const bytes = try readFileAlloc(input_path, allocator);
     defer allocator.free(bytes);
 
-    const spectra = try decodeFileAlloc(allocator, bytes);
+    const spectra = try decodeFileAlloc(allocator, bytes, options);
     defer binary_reader.freeSpectra(allocator, spectra);
 
     try binary_reader.writeBinaryDump(output_path, spectra, allocator);
