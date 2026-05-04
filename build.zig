@@ -28,8 +28,8 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
-    const block_module = b.createModule(.{
-        .root_source_file = b.path("src/block.zig"),
+    const block_common_module = b.createModule(.{
+        .root_source_file = b.path("src/block_common.zig"),
         .target = target,
         .optimize = optimize,
         .imports = &.{
@@ -37,6 +37,40 @@ pub fn build(b: *std.Build) void {
             .{ .name = "quantize", .module = quantize_module },
             .{ .name = "bitpack", .module = bitpack_module },
             .{ .name = "rans", .module = rans_module },
+        },
+    });
+    const block_encode_module = b.createModule(.{
+        .root_source_file = b.path("src/block_encode.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "block_common", .module = block_common_module },
+            .{ .name = "binary_reader", .module = binary_reader_module },
+            .{ .name = "quantize", .module = quantize_module },
+            .{ .name = "bitpack", .module = bitpack_module },
+            .{ .name = "rans", .module = rans_module },
+        },
+    });
+    const block_decode_module = b.createModule(.{
+        .root_source_file = b.path("src/block_decode.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "block_common", .module = block_common_module },
+            .{ .name = "binary_reader", .module = binary_reader_module },
+            .{ .name = "quantize", .module = quantize_module },
+            .{ .name = "bitpack", .module = bitpack_module },
+            .{ .name = "rans", .module = rans_module },
+        },
+    });
+    const block_module = b.createModule(.{
+        .root_source_file = b.path("src/block.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "block_common", .module = block_common_module },
+            .{ .name = "block_encode", .module = block_encode_module },
+            .{ .name = "block_decode", .module = block_decode_module },
         },
     });
     const codec_module = b.createModule(.{

@@ -3,6 +3,24 @@
 
 All notable changes to mzarc are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This project follows [Semantic Versioning](https://semver.org/).
 
+## [0.1.9] — 2026-05-03
+
+### Changed
+
+- `block.zig` (1370 LOC) refactored into 4 files:
+    - `block_common.zig` (261 LOC): types, constants, shared helpers
+    - `block_encode.zig` (410 LOC): encoder logic
+    - `block_decode.zig` (548 LOC): decoder logic
+    - `block.zig` (29 LOC): thin wrapper re-exporting public API
+- No new flags, no new modes. Pure structural refactor — makes v0.3.x
+  cross-spectrum delta and SIMD integration safer.
+
+### Performance
+
+- No regressions in speed, memory, compression, or correctness.
+
+---
+
 ## [0.1.8] — 2026-05-03
 
 ### Changed

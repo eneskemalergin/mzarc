@@ -57,13 +57,6 @@ fn expectByteBreakdownSums(inspection: codec.Inspection, encoded_len: usize) !vo
 
 fn makeSyntheticCorpus(allocator: std.mem.Allocator, spectrum_count: usize) !SyntheticCorpus {
     const spectra = try allocator.alloc(binary_reader.RawSpectrum, spectrum_count);
-    errdefer {
-        for (spectra[0..spectrum_count]) |spectrum| {
-            allocator.free(spectrum.mz);
-            allocator.free(spectrum.intensity);
-        }
-        allocator.free(spectra);
-    }
 
     var initialized: usize = 0;
     errdefer {
@@ -106,13 +99,6 @@ fn makePseudoRandomCorpus(allocator: std.mem.Allocator, seed: u64, spectrum_coun
     var prng = std.Random.DefaultPrng.init(seed);
     const random = prng.random();
     const spectra = try allocator.alloc(binary_reader.RawSpectrum, spectrum_count);
-    errdefer {
-        for (spectra[0..spectrum_count]) |spectrum| {
-            allocator.free(spectrum.mz);
-            allocator.free(spectrum.intensity);
-        }
-        allocator.free(spectra);
-    }
 
     var initialized: usize = 0;
     errdefer {
