@@ -5,30 +5,33 @@ All notable changes to mzarc are documented here. The format follows [Keep a Cha
 
 ## [0.1.13] — 2026-05-04
 
+### Added
+
+- External baselines (`mzMLb`, `MS-Numpress in mzML`, `MScompress`) via
+  `benchmark_external.py`. All three are timed by zebrac and appear in every
+  plot and table alongside internal codecs.
+- Multi-threaded codec variants: `pigz` (parallel gzip) and `zstd -T0`
+  benchmarked at both dump and mzML level. `MScompress (1T)` added as an
+  explicit single-thread counterpart to the default all-core run.
+- `save_baseline.py`: snapshots `benchmark/report.json` as
+  `benchmark/baseline_v<VERSION>.json` using the version from `build.zig.zon`.
+
 ### Changed
 
-- Benchmarking overhaul: zebrac is now the primary timing tool for all internal
-  operations (encode, decode, mzML codec loops). The Python wall-clock timer
-  (`run_timed_command`, `run_timed_path_command`) is removed from
-  `benchmark_roundtrip` and the mzML codec loops.
-- `benchmark_core.py`: added `HyperfineResult` dataclass, `run_hyperfine()`,
-  `serialize_hyperfine_result()`, and `compare_wall_times()`. zebrac results now
-  carry `input_bytes`/`output_bytes` and emit throughput fields in serialized form.
-- `benchmark_v1.py`: `benchmark_roundtrip` no longer accepts `repeats`; zebrac
-  always runs. Added `--hyperfine-runs` CLI flag (default 10, 0 to skip). mzML
-  codec loops now use zebrac+hyperfine instead of the Python timer.
-- `benchmark_metrics.py`: `build_performance_rows` is now zebrac-primary with a
-  Python-timer fallback. Performance rows include `median_seconds` and
-  `timing_source`. Added `build_timing_validation_rows` to compare zebrac and
-  hyperfine wall-time medians per operation.
-- `benchmark_report.py`: Performance Overview table now shows median time and
-  timing source. Replaced "Timing Variability" section (Python-timer CI scatter)
-  with "Zebrac Statistics" (per-operation median/stddev/min/max) and a new
-  "Timing Validation" section (zebrac vs hyperfine wall-time comparison table).
-- `benchmark_plotting.py`: added `plot_timing_validation` (scatter: zebrac vs
-  hyperfine median, green=agree, red=disagree). `generate_plots` now calls it
-  when timing validation rows are present; `plot_timing_intervals` is no longer
-  called from `generate_plots`.
+- `benchmark.sh`: `bench()` helper writes a temp shell script before passing
+  to zebrac so shell redirection works correctly. Added sections for
+  multi-threaded variants (pigz, zstd -T0) and external baselines.
+- `collect_report.py`: `external_baselines` derived from manifest
+  `group=external` ops rather than hard-coded `[]`; fixes performance overview
+  and all other plots missing external tools.
+- `write_manifest.py`, `benchmark_metrics.py`, `benchmark_plotting.py`:
+  updated to include pigz, zstd_mt, and external baseline entries.
+- `fidelity_check.py`: fixed `.resolve()` on relative output path.
+- `refresh_fidelity.py`: removed broken glob discovery loop.
+- Dead code removed from `benchmark_stats.py`, `benchmark_report.py`,
+  `collect_report.py`.
+- `.gitignore`: only `benchmark/raw/` ignored; plots, report, and baselines
+  are tracked.
 
 ## [0.1.12] — 2026-05-04
 
