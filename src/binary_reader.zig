@@ -141,8 +141,9 @@ pub fn parseDump(bytes: []const u8, allocator: Allocator) ![]RawSpectrum {
 }
 
 pub fn readBinaryDump(path: []const u8, allocator: Allocator) ![]RawSpectrum {
-    const bytes = try std.Io.Dir.cwd().readFileAlloc(io, path, allocator, .limited(std.math.maxInt(usize)));
-    defer allocator.free(bytes);
+    var file_arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer file_arena.deinit();
+    const bytes = try std.Io.Dir.cwd().readFileAlloc(io, path, file_arena.allocator(), .limited(std.math.maxInt(usize)));
     return parseDump(bytes, allocator);
 }
 

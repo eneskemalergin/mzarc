@@ -3,6 +3,67 @@
 
 All notable changes to mzarc are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This project follows [Semantic Versioning](https://semver.org/).
 
+## [0.1.8] — 2026-05-03
+
+### Changed
+
+- Allocator standardization: every temporary allocation in `encodeBlockDetailed`
+  and `decodeBlock` moved from the caller's arena to a block-local arena
+  (`ArenaAllocator` backed by `page_allocator`). 12 encode and 8 decode
+  temporaries fixed. Rule: freed-before-return → block arena; returned-to-caller
+  → caller's arena.
+- `binary_reader.readBinaryDump` now wraps file I/O in a local arena instead
+  of bare `page_allocator`.
+
+### Performance
+
+- Encode peak RSS reduced from 208 MB to 89 MB (−57%).
+- Decode peak RSS reduced from 111 MB to 81 MB (−27%).
+- No speed, compression, or correctness regressions.
+
+---
+
+## [0.1.7] — 2026-05-03
+
+### Changed
+
+- Decode regression investigated and documented: +35% decode time is inherent to
+  rANS entropy coding (~54ms per-block overhead processing ~7.1 MiB). Without
+  rANS, decode (144.8ms) is faster than v0.1.1 baseline (149.8ms). Regression
+  check threshold updated from 10% to 40%.
+- FOR unpack split into two branchless paths: `decodeFlatMzBlockLevel` and
+  `decodeFlatMzPerSpectrum`, removing per-spectrum branching from the hot loop.
+- rANS decode inner loop: removed unnecessary `@as(u64, ...)` + `@intCast` from
+  state update (product fits in u32). Hoisted `encoded.len` bounds check out of
+  the renormalization loop.
+- Block-level m/z FOR overhead bytes removed from encode path (dead init).
+- `writeStdout` portability: replaced Linux-only `std.os.linux.write` with
+  `std.Io.File.stdout().writeStreamingAll()`.
+- `printStdout` no longer silently drops messages >4096 bytes; falls back to
+  heap allocation.
+
+### Added
+
+- 7 unit tests for edge cases: lossy+rANS, non-monotonic RT/scan_id fallback,
+  mismatched m/z/intensity lengths, zero quant, empty block, zero block_size.
+  63 total tests.
+- Empty-guards on 4 internal helper functions (`flattenMzAsF32Bits`,
+  `flattenMzDeltas`, `buildScanIdDeltas`, `buildRtDeltas`).
+
+### Fixed
+
+- Double-free in rANS decode error path removed (redundant `errdefer`).
+- Overflow-vulnerable wrapping `+%=` replaced with checked `@addWithOverflow`
+  in scan_id and RT delta recovery.
+- Unsigned subtraction in per-spectrum m/z payload now bounds-checked.
+- Stale comment: "bits 6 and 7 remain free" → "All 8 flag bits are allocated".
+
+### Removed
+
+- Unused `delta` module import from `build.zig` block module.
+
+---
+
 ## [0.1.6] — 2026-05-03
 
 ### Fixed
