@@ -119,7 +119,7 @@ pub const flag_mz_per_spectrum_bit_widths: u8 = 0b0000_0010;
 /// Lossless intensity stored as split exponent + raw mantissa.
 /// The f32 exponent byte (bits 23..30) is FOR-packed; bytes 0..2 are stored raw.
 /// Mutually exclusive with flag_lossless_intensity_raw.
-/// Bit 2 (0b0000_0100) is used; bits 6 and 7 remain free.
+/// Bit 2 (0b0000_0100) is used. All 8 flag bits are allocated.
 pub const flag_split_exponent: u8 = 0b0000_0100;
 /// m/z stored as f32 bit patterns, delta-encoded as u32.  Guarantees bit-exact
 /// round-trips for values that are already f32-precision (every real instrument
@@ -505,6 +505,7 @@ fn allMzExactlyF32(spectra: []const binary_reader.RawSpectrum) bool {
 /// then delta-encoded within its spectrum (previous resets to 0 at each new
 /// spectrum).  Caller must verify `allMzExactlyF32` first.
 fn flattenMzAsF32Bits(allocator: Allocator, spectra: []const binary_reader.RawSpectrum) ![]u64 {
+    if (spectra.len == 0) return error.EmptyBlock;
     const total_peaks = try totalPeakCount(spectra);
     const flat = try allocator.alloc(u64, total_peaks);
     errdefer allocator.free(flat);
@@ -526,6 +527,7 @@ fn flattenMzAsF32Bits(allocator: Allocator, spectra: []const binary_reader.RawSp
 }
 
 fn flattenMzDeltas(allocator: Allocator, spectra: []const binary_reader.RawSpectrum, scale_factor: u32) ![]u64 {
+    if (spectra.len == 0) return error.EmptyBlock;
     const total_peaks = try totalPeakCount(spectra);
     const flat = try allocator.alloc(u64, total_peaks);
     errdefer allocator.free(flat);
@@ -549,6 +551,7 @@ fn flattenMzDeltas(allocator: Allocator, spectra: []const binary_reader.RawSpect
 /// subsequent elements are the positive differences.  Scan IDs from real
 /// instruments always increase by 1-2 per scan, so deltas fit in 1-2 bits.
 fn buildScanIdDeltas(allocator: Allocator, spectra: []const binary_reader.RawSpectrum) ![]u64 {
+    if (spectra.len == 0) return error.EmptyBlock;
     const result = try allocator.alloc(u64, spectra.len);
     errdefer allocator.free(result);
     result[0] = spectra[0].scan_id;
@@ -564,6 +567,7 @@ fn buildScanIdDeltas(allocator: Allocator, spectra: []const binary_reader.RawSpe
 /// monotonically ordered, so integer delta-encoding and FOR bit-packing works
 /// directly without any loss of precision.
 fn buildRtDeltas(allocator: Allocator, spectra: []const binary_reader.RawSpectrum) ![]u64 {
+    if (spectra.len == 0) return error.EmptyBlock;
     const result = try allocator.alloc(u64, spectra.len);
     errdefer allocator.free(result);
     result[0] = @as(u32, @bitCast(spectra[0].rt_seconds));
@@ -685,7 +689,7 @@ pub fn encodeBlockDetailed(allocator: Allocator, spectra: []const binary_reader.
         .mz_rans_used = false,
         .mz_estimated_rans_bytes = 0,
         .intensity_raw_f32_bytes = total_peaks * @sizeOf(f32),
-        .intensity_base_bytes = total_peaks * @sizeOf(f32),
+        .intensity_base_bytes = 0,
         .intensity_stored_bytes = total_peaks * @sizeOf(f32),
         .intensity_rans_used = false,
         .intensity_estimated_rans_bytes = 0,
@@ -768,7 +772,11 @@ pub fn encodeBlockDetailed(allocator: Allocator, spectra: []const binary_reader.
         stats.mz_stored_bytes = selected_stored_bytes;
         stats.mz_rans_used = selected_rans_used;
 
-        try appendIntLe(&payload, allocator, u32, @intCast(if (selected_bit_widths != null) selected_stored_bytes - per_spectrum_analysis.bit_widths.len else selected_stored_bytes));
+        const mz_payload_field: usize = if (selected_bit_widths != null) blk: {
+            if (selected_stored_bytes < per_spectrum_analysis.bit_widths.len) return error.InvalidMzPayload;
+            break :blk selected_stored_bytes - per_spectrum_analysis.bit_widths.len;
+        } else selected_stored_bytes;
+        try appendIntLe(&payload, allocator, u32, @intCast(mz_payload_field));
         if (selected_bit_widths) |bit_widths| {
             flags |= flag_mz_per_spectrum_bit_widths;
             try payload.appendSlice(allocator, bit_widths);
@@ -966,7 +974,9 @@ pub fn decodeBlock(allocator: Allocator, block_bytes: []const u8) ![]binary_read
         offset += pack_len;
         var running: u32 = 0;
         for (scan_ids, 0..) |*value, idx| {
-            running +%= @truncate(unpacked[idx]);
+            const sum = @addWithOverflow(running, @as(u32, @truncate(unpacked[idx])));
+            if (sum[1] != 0) return error.Overflow;
+            running = sum[0];
             value.* = running;
         }
     } else {
@@ -998,7 +1008,9 @@ pub fn decodeBlock(allocator: Allocator, block_bytes: []const u8) ![]binary_read
         offset += pack_len;
         var running_bits: u32 = 0;
         for (rt_values, 0..) |*value, idx| {
-            running_bits +%= @truncate(unpacked[idx]);
+            const sum_bits = @addWithOverflow(running_bits, @as(u32, @truncate(unpacked[idx])));
+            if (sum_bits[1] != 0) return error.Overflow;
+            running_bits = sum_bits[0];
             value.* = @bitCast(running_bits);
         }
     } else {
@@ -1054,7 +1066,6 @@ pub fn decodeBlock(allocator: Allocator, block_bytes: []const u8) ![]binary_read
             else
                 packedByteLen(header.mz_bit_width, total_peaks);
             mz_rans_payload = try allocator.alloc(u8, decoded_len);
-            errdefer if (mz_rans_payload) |buf| allocator.free(buf);
             try rans.decodeInto(payload[offset .. offset + mz_payload_len], mz_rans_payload.?);
             break :blk mz_rans_payload.?;
         } else payload[offset .. offset + mz_payload_len];

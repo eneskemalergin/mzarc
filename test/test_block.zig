@@ -531,3 +531,116 @@ test "split-exponent: split_plain mode activates when rANS gain is below thresho
     try std.testing.expectEqual(@as(usize, 1), decoded.len);
     try std.testing.expectEqualSlices(f32, int_buf[0..], decoded[0].intensity);
 }
+
+test "lossy intensity activates rANS on structured repeating data" {
+    // 1024 peaks with 4 repeating intensity values → FOR output has repeating
+    // byte patterns that rANS compresses below the 12% gain threshold.
+    var mz_buf: [1024]f64 = undefined;
+    var int_buf: [1024]f32 = undefined;
+    const levels = [_]f32{ 1.0, 10.0, 100.0, 1000.0 };
+    for (0..1024) |i| {
+        mz_buf[i] = @as(f64, @floatFromInt(100 + i));
+        int_buf[i] = levels[i % 4];
+    }
+
+    const spectra = [_]binary_reader.RawSpectrum{
+        .{ .scan_id = 1, .rt_seconds = 1.0, .ms_level = 2, .precursor_mz = 500.0, .mz = mz_buf[0..], .intensity = int_buf[0..] },
+    };
+
+    const encoded = try block.encodeBlock(std.testing.allocator, &spectra, .{ .mode = .lossy, .intensity_quant = 16384 });
+    defer std.testing.allocator.free(encoded);
+
+    const header = try block.parseHeader(encoded);
+    // rANS must activate on the intensity FOR payload.
+    try std.testing.expect((header.flags & block.flag_rans_intensity) != 0);
+    try std.testing.expect((header.flags & block.flag_lossless_intensity_raw) == 0);
+
+    const decoded = try block.decodeBlock(std.testing.allocator, encoded);
+    defer binary_reader.freeSpectra(std.testing.allocator, decoded);
+
+    try std.testing.expectEqual(@as(usize, 1), decoded.len);
+    for (int_buf[0..], decoded[0].intensity) |exp, act| {
+        if (exp == 0.0) {
+            try std.testing.expectEqual(@as(f32, 0.0), act);
+        } else {
+            try std.testing.expectApproxEqRel(exp, act, 0.02);
+        }
+    }
+}
+
+test "non-monotonic rt_seconds falls back to raw encoding and round-trips" {
+    var mz_buf = [_]f64{ 500.0, 501.0 };
+    var int_buf = [_]f32{ 10.0, 20.0 };
+
+    const spectra = [_]binary_reader.RawSpectrum{
+        .{ .scan_id = 1, .rt_seconds = 3.0, .ms_level = 2, .precursor_mz = 400.0, .mz = mz_buf[0..], .intensity = int_buf[0..] },
+        .{ .scan_id = 2, .rt_seconds = 1.0, .ms_level = 2, .precursor_mz = 401.0, .mz = mz_buf[0..], .intensity = int_buf[0..] },
+        .{ .scan_id = 3, .rt_seconds = 2.0, .ms_level = 2, .precursor_mz = 402.0, .mz = mz_buf[0..], .intensity = int_buf[0..] },
+    };
+
+    const encoded = try block.encodeBlock(std.testing.allocator, &spectra, .{ .mode = .lossless });
+    defer std.testing.allocator.free(encoded);
+
+    const header = try block.parseHeader(encoded);
+    try std.testing.expect((header.flags & block.flag_delta_rt) == 0);
+
+    const decoded = try block.decodeBlock(std.testing.allocator, encoded);
+    defer binary_reader.freeSpectra(std.testing.allocator, decoded);
+
+    try std.testing.expectEqual(@as(usize, 3), decoded.len);
+    try std.testing.expectEqual(@as(f32, 3.0), decoded[0].rt_seconds);
+    try std.testing.expectEqual(@as(f32, 1.0), decoded[1].rt_seconds);
+    try std.testing.expectEqual(@as(f32, 2.0), decoded[2].rt_seconds);
+}
+
+test "non-monotonic scan_id falls back to raw encoding and round-trips" {
+    var mz_buf = [_]f64{ 300.0, 301.0 };
+    var int_buf = [_]f32{ 10.0, 20.0 };
+
+    const spectra = [_]binary_reader.RawSpectrum{
+        .{ .scan_id = 200, .rt_seconds = 1.0, .ms_level = 2, .precursor_mz = 500.0, .mz = mz_buf[0..], .intensity = int_buf[0..] },
+        .{ .scan_id = 100, .rt_seconds = 2.0, .ms_level = 2, .precursor_mz = 501.0, .mz = mz_buf[0..], .intensity = int_buf[0..] },
+        .{ .scan_id = 150, .rt_seconds = 3.0, .ms_level = 2, .precursor_mz = 502.0, .mz = mz_buf[0..], .intensity = int_buf[0..] },
+    };
+
+    const encoded = try block.encodeBlock(std.testing.allocator, &spectra, .{ .mode = .lossless });
+    defer std.testing.allocator.free(encoded);
+
+    const header = try block.parseHeader(encoded);
+    try std.testing.expect((header.flags & block.flag_delta_scan_id) == 0);
+
+    const decoded = try block.decodeBlock(std.testing.allocator, encoded);
+    defer binary_reader.freeSpectra(std.testing.allocator, decoded);
+
+    try std.testing.expectEqual(@as(usize, 3), decoded.len);
+    try std.testing.expectEqual(@as(u32, 200), decoded[0].scan_id);
+    try std.testing.expectEqual(@as(u32, 100), decoded[1].scan_id);
+    try std.testing.expectEqual(@as(u32, 150), decoded[2].scan_id);
+}
+
+test "block encoding rejects mismatched m/z and intensity array lengths" {
+    var mz = [_]f64{ 100.0, 200.0 };
+    var intensity = [_]f32{10.0};
+
+    const spectra = [_]binary_reader.RawSpectrum{
+        .{ .scan_id = 1, .rt_seconds = 1.0, .ms_level = 2, .precursor_mz = 300.0, .mz = mz[0..], .intensity = intensity[0..] },
+    };
+
+    try std.testing.expectError(error.MismatchedPeakArrays, block.encodeBlock(std.testing.allocator, &spectra, .{ .mode = .lossless }));
+}
+
+test "lossy block encoding rejects intensity quant of zero" {
+    var mz = [_]f64{ 100.0, 200.0 };
+    var intensity = [_]f32{ 10.0, 20.0 };
+
+    const spectra = [_]binary_reader.RawSpectrum{
+        .{ .scan_id = 1, .rt_seconds = 1.0, .ms_level = 2, .precursor_mz = 300.0, .mz = mz[0..], .intensity = intensity[0..] },
+    };
+
+    try std.testing.expectError(error.InvalidQuantFactor, block.encodeBlock(std.testing.allocator, &spectra, .{ .mode = .lossy, .intensity_quant = 0 }));
+}
+
+test "block encoding rejects empty spectra array" {
+    const spectra = [_]binary_reader.RawSpectrum{};
+    try std.testing.expectError(error.EmptyBlock, block.encodeBlock(std.testing.allocator, &spectra, .{ .mode = .lossless }));
+}

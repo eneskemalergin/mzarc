@@ -526,3 +526,13 @@ test "codec lossy round-trip keeps counts and flags consistent" {
     try std.testing.expect((inspection.header.flags & codec.flag_contains_ms2) != 0);
     try std.testing.expectEqual(@as(u64, 5), inspection.header.total_peaks);
 }
+
+test "codec encode rejects block_size of zero" {
+    var mz = [_]f64{100.0};
+    var intensity = [_]f32{1.0};
+    const input = [_]binary_reader.RawSpectrum{
+        .{ .scan_id = 1, .rt_seconds = 1.0, .ms_level = 1, .precursor_mz = 0.0, .mz = mz[0..], .intensity = intensity[0..] },
+    };
+
+    try std.testing.expectError(error.InvalidBlockSize, codec.encodeFileAlloc(std.testing.allocator, &input, .{ .block_size = 0 }));
+}

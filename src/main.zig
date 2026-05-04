@@ -4,25 +4,17 @@ const block = @import("block");
 const codec = @import("codec");
 const rans = @import("rans");
 
-/// Write `bytes` to stdout (fd 1) using the raw Linux syscall.
-/// Errors are silently ignored — if stdout is closed, there is nothing useful
-/// we can do from a CLI tool perspective.
 fn writeStdout(bytes: []const u8) void {
-    var remaining = bytes;
-    while (remaining.len > 0) {
-        const written = std.os.linux.write(1, remaining.ptr, remaining.len);
-        if (@as(isize, @bitCast(written)) <= 0) break;
-        remaining = remaining[@intCast(written)..];
-    }
+    const io = std.Io.Threaded.global_single_threaded.io();
+    std.Io.File.stdout().writeStreamingAll(io, bytes) catch return;
 }
 
-/// Print a formatted string to stdout.  `buf` is a scratch buffer for
-/// formatting; pass a stack-allocated array like `var buf: [512]u8 = undefined`.
 fn printStdout(comptime fmt: []const u8, args: anytype) void {
     var buf: [4096]u8 = undefined;
     const s = std.fmt.bufPrint(&buf, fmt, args) catch {
-        // Message too long for stack buffer — fall back to a heap allocation on
-        // the arena backing the process.  This should be rare.
+        const fallback = std.fmt.allocPrint(std.heap.page_allocator, fmt, args) catch return;
+        defer std.heap.page_allocator.free(fallback);
+        writeStdout(fallback);
         return;
     };
     writeStdout(s);

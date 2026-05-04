@@ -35,7 +35,6 @@ pub fn build(b: *std.Build) void {
         .imports = &.{
             .{ .name = "binary_reader", .module = binary_reader_module },
             .{ .name = "quantize", .module = quantize_module },
-            .{ .name = "delta", .module = delta_module },
             .{ .name = "bitpack", .module = bitpack_module },
             .{ .name = "rans", .module = rans_module },
         },
