@@ -43,6 +43,18 @@ def _lognormal_params(mean: float, std_dev: float) -> tuple[float, float]:
     return mu, sigma
 
 
+def _op_samples(stats: dict[str, Any], n: int, seed: int) -> np.ndarray:
+    """Generate synthetic wall-time samples from a zebrac result dict."""
+    return _synthetic_samples(
+        mean=float(stats.get("wall_time_mean_seconds") or stats.get("wall_time_median_seconds", 1.0)),
+        std_dev=float(stats.get("wall_time_stddev_seconds") or 0.001),
+        n=n,
+        min_val=float(stats.get("wall_time_min_seconds", 0.0)),
+        max_val=float(stats.get("wall_time_max_seconds", 1.0)),
+        seed=seed,
+    )
+
+
 def _synthetic_samples(
     mean: float,
     std_dev: float,
@@ -133,27 +145,16 @@ def mann_whitney_compare(
     (p < 0.05), speed_ratio (median_a / median_b, > 1 means a is slower),
     effect_size_r (rank-biserial correlation).
     """
-    no_scipy: dict[str, Any] = {
-        "name_a": name_a, "name_b": name_b,
-        "u_statistic": None, "p_value": None, "significant": None,
-        "speed_ratio": None, "effect_size_r": None,
-        "note": "scipy not installed",
-    }
     if not _HAS_SCIPY:
-        return no_scipy
+        return {
+            "name_a": name_a, "name_b": name_b,
+            "u_statistic": None, "p_value": None, "significant": None,
+            "speed_ratio": None, "effect_size_r": None,
+            "note": "scipy not installed",
+        }
 
-    def _samples(st: dict[str, Any]) -> np.ndarray:
-        return _synthetic_samples(
-            mean=float(st.get("wall_time_mean_seconds") or st.get("wall_time_median_seconds", 1.0)),
-            std_dev=float(st.get("wall_time_stddev_seconds") or 0.001),
-            n=int(st.get("sample_count", n_synthetic)),
-            min_val=float(st.get("wall_time_min_seconds", 0.0)),
-            max_val=float(st.get("wall_time_max_seconds", 1.0)),
-            seed=42,
-        )
-
-    sa = _samples(stats_a)
-    sb = _samples(stats_b)
+    sa = _op_samples(stats_a, int(stats_a.get("sample_count", n_synthetic)), seed=42)
+    sb = _op_samples(stats_b, int(stats_b.get("sample_count", n_synthetic)), seed=42)
     result = _scipy_stats.mannwhitneyu(sa, sb, alternative="two-sided")
     n_a, n_b = len(sa), len(sb)
     u = float(result.statistic)
@@ -191,29 +192,22 @@ def wilcoxon_paired(
     similar conditions, making their per-sample measurements correlated.  We
     synthesise matching sample pairs.
     """
-    no_scipy: dict[str, Any] = {
-        "name_a": name_a, "name_b": name_b,
-        "statistic": None, "p_value": None, "significant": None,
-        "note": "scipy not installed",
-    }
     if not _HAS_SCIPY:
-        return no_scipy
+        return {
+            "name_a": name_a, "name_b": name_b,
+            "statistic": None, "p_value": None, "significant": None,
+            "note": "scipy not installed",
+        }
 
-    def _samples(st: dict[str, Any]) -> np.ndarray:
-        return _synthetic_samples(
-            mean=float(st.get("wall_time_mean_seconds") or st.get("wall_time_median_seconds", 1.0)),
-            std_dev=float(st.get("wall_time_stddev_seconds") or 0.001),
-            n=n_synthetic,
-            min_val=float(st.get("wall_time_min_seconds", 0.0)),
-            max_val=float(st.get("wall_time_max_seconds", 1.0)),
-            seed=99,
-        )
-
-    sa = _samples(stats_a)
-    sb = _samples(stats_b)
+    sa = _op_samples(stats_a, n_synthetic, seed=99)
+    sb = _op_samples(stats_b, n_synthetic, seed=99)
     n = min(len(sa), len(sb))
     if n < 10:
-        return {**no_scipy, "note": "too few synthetic samples"}
+        return {
+            "name_a": name_a, "name_b": name_b,
+            "statistic": None, "p_value": None, "significant": None,
+            "note": "too few synthetic samples",
+        }
     result = _scipy_stats.wilcoxon(sa[:n], sb[:n], alternative="two-sided")
     return {
         "name_a": name_a,

@@ -38,15 +38,6 @@ def _format_optional_percent(value: object, *, precision: int = 3) -> str:
         return "n/a"
     return f"{float(value):.{precision}f}%"
 
-def _join_with_and(items: list[str]) -> str:
-    if not items:
-        return ""
-    if len(items) == 1:
-        return items[0]
-    if len(items) == 2:
-        return f"{items[0]} and {items[1]}"
-    return ", ".join(items[:-1]) + f", and {items[-1]}"
-
 def render_markdown(report: dict) -> str:
     dataset = report["dataset"]
     selected_quant = report["selected_lossy_intensity_quant"]
@@ -101,7 +92,7 @@ def render_markdown(report: dict) -> str:
             f"mzML input: {report['paths']['mzml']}",
             f"private workdir: {report['paths']['private_workdir']}",
             f"public output dir: {report['paths']['public_dir']}",
-            f"repeats: {report['repeats']}",
+            f"repeats: {report.get('repeats', 'n/a')}",
             f"selected lossy intensity quantization: q={selected_quant}",
         ]
     )
@@ -157,10 +148,12 @@ def render_markdown(report: dict) -> str:
             [
                 [
                     artifact,
-                    f"{format_bytes(data['file_header_bytes'] + data['global_order_bytes'] + data['block_header_bytes'])} ({((data['file_header_bytes'] + data['global_order_bytes'] + data['block_header_bytes']) / data['total_bytes']) * 100:.2f}%)",
-                    f"{format_bytes(data['scan_id_bytes'] + data['rt_bytes'] + data['precursor_bytes'] + data['peak_count_bytes'])} ({((data['scan_id_bytes'] + data['rt_bytes'] + data['precursor_bytes'] + data['peak_count_bytes']) / data['total_bytes']) * 100:.2f}%)",
-                    f"{format_bytes(data['mz_metadata_bytes'] + data['mz_payload_bytes'])} ({((data['mz_metadata_bytes'] + data['mz_payload_bytes']) / data['total_bytes']) * 100:.2f}%)",
-                    f"{format_bytes(data['intensity_metadata_bytes'] + data['intensity_payload_bytes'])} ({((data['intensity_metadata_bytes'] + data['intensity_payload_bytes']) / data['total_bytes']) * 100:.2f}%)",
+                    *[f"{format_bytes(n)} ({n / data['total_bytes'] * 100:.2f}%)" for n in [
+                        data['file_header_bytes'] + data['global_order_bytes'] + data['block_header_bytes'],
+                        data['scan_id_bytes'] + data['rt_bytes'] + data['precursor_bytes'] + data['peak_count_bytes'],
+                        data['mz_metadata_bytes'] + data['mz_payload_bytes'],
+                        data['intensity_metadata_bytes'] + data['intensity_payload_bytes'],
+                    ]],
                     format_bytes(data['total_bytes']),
                 ]
                 for artifact, data in codec_byte_breakdown.items()
@@ -170,19 +163,14 @@ def render_markdown(report: dict) -> str:
 
         lossless_bytes = codec_byte_breakdown.get("mzarc lossless")
         if lossless_bytes is not None:
-            structural_bytes = lossless_bytes["file_header_bytes"] + lossless_bytes["global_order_bytes"] + lossless_bytes["block_header_bytes"]
-            spectrum_metadata_bytes = lossless_bytes["scan_id_bytes"] + lossless_bytes["rt_bytes"] + lossless_bytes["precursor_bytes"] + lossless_bytes["peak_count_bytes"]
-            mz_stream_bytes = lossless_bytes["mz_metadata_bytes"] + lossless_bytes["mz_payload_bytes"]
-            intensity_stream_bytes = lossless_bytes["intensity_metadata_bytes"] + lossless_bytes["intensity_payload_bytes"]
-            dominant_component = max(
-                [
-                    ("structural overhead", structural_bytes),
-                    ("per-spectrum metadata", spectrum_metadata_bytes),
-                    ("the m/z stream", mz_stream_bytes),
-                    ("the intensity stream", intensity_stream_bytes),
-                ],
-                key=lambda item: item[1],
-            )
+            d = lossless_bytes
+            components = [
+                ("structural overhead",    d["file_header_bytes"] + d["global_order_bytes"] + d["block_header_bytes"]),
+                ("per-spectrum metadata",  d["scan_id_bytes"] + d["rt_bytes"] + d["precursor_bytes"] + d["peak_count_bytes"]),
+                ("the m/z stream",         d["mz_metadata_bytes"] + d["mz_payload_bytes"]),
+                ("the intensity stream",   d["intensity_metadata_bytes"] + d["intensity_payload_bytes"]),
+            ]
+            dominant_component = max(components, key=lambda item: item[1])
             paragraph(
                 f"The lossless byte breakdown shows whether the size regression is real payload or container overhead. On this run, {dominant_component[0]} is the largest component at {format_bytes(dominant_component[1])}, which keeps the diagnosis grounded in actual encoded bytes rather than guesswork."
             )
@@ -199,7 +187,6 @@ def render_markdown(report: dict) -> str:
                 _format_optional_number(item["throughput_mib_s"], precision=4, suffix=" MiB/s"),
                 _format_optional_number(item["median_seconds"], precision=5, suffix="s"),
                 item.get("timing_source") or "n/a",
-                item["throughput_basis"] or "n/a",
                 item["source_format"] or "n/a",
                 item["notes"] or "",
             ]
@@ -383,7 +370,7 @@ def render_markdown(report: dict) -> str:
         )
 
     exact_sentence = (
-        f"On the current run, {_join_with_and(exact_artifacts)} round-trip exactly."
+        f"On the current run, {', '.join(exact_artifacts[:-1]) + ' and ' + exact_artifacts[-1] if len(exact_artifacts) > 1 else exact_artifacts[0]} round-trip exactly."
         if exact_artifacts
         else "On the current run, no measured artifact round-trips exactly."
     )

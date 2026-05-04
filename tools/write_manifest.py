@@ -177,6 +177,30 @@ def main() -> None:
             "size_mib": b / (1024 * 1024),
         })
 
+    # External baselines: auto-detect if artifacts and zebrac JSONs exist.
+    _ext_candidates = [
+        ("mzMLb",               wd / f"{s}.mzMLb",          wd / f"{s}.mzmlb.roundtrip.bin",       "mzmlb"),
+        ("MS-Numpress in mzML", wd / f"{s}.numpress.mzML",  wd / f"{s}.numpress.roundtrip.bin",    "numpress"),
+        ("MScompress",          wd / f"{s}.msz",            wd / f"{s}.mscompress.roundtrip.bin",  "mscompress"),
+    ]
+    for ext_name, ext_art, ext_rt, ext_slug in _ext_candidates:
+        if not ext_art.exists():
+            continue
+        enc_json = raw / f"{ext_slug}_encode.json"
+        dec_json = raw / f"{ext_slug}_decode.json"
+        if not enc_json.exists():
+            continue
+        operations.append(_op(
+            f"mzML -> {ext_name}", "external", "encode", ext_name, ext_name,
+            mzml, ext_art, None, f"{ext_slug}_encode", raw,
+        ))
+        if dec_json.exists() and ext_rt.exists():
+            operations.append(_op(
+                f"{ext_name} -> dump", "external", "decode", ext_name, ext_name,
+                ext_art, ext_rt, ext_rt, f"{ext_slug}_decode", raw,
+            ))
+        sizes[ext_name] = {"path": _rel(ext_art), "bytes": _size(ext_art)}
+
     manifest: dict[str, object] = {
         "schema_version": 1,
         "sample": s,

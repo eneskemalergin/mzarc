@@ -74,7 +74,7 @@ def main() -> None:
     out_path = args.output or (raw_dir / "fidelity.json")
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(output, indent=2), encoding="utf-8")
-    print(f"Wrote {out_path.relative_to(REPO_ROOT)}", file=sys.stderr)
+    print(f"Wrote {out_path.resolve().relative_to(REPO_ROOT)}", file=sys.stderr)
 
 
 if __name__ == "__main__":

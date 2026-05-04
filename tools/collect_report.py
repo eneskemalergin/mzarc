@@ -207,11 +207,10 @@ def main() -> None:
         {"artifact": artifact, "data": fdata}
         for artifact, fdata in fidelity_data["by_artifact"].items()
     ]
-    external_results: dict = {"records": [], "sizes": {}, "timings": []}
     fidelity_metric_rows = build_fidelity_metric_rows(
         fidelity_rows,
         selected_quant=selected_quant,
-        external_baselines=external_results["records"],
+        external_baselines=[],
     )
 
     # ------------------------------------------------------------------ #
@@ -235,7 +234,7 @@ def main() -> None:
     performance_rows = build_performance_rows(
         serialized_zebrac,
         selected_quant=selected_quant,
-        external_baselines=external_results["records"],
+        external_baselines=[],
     )
     memory_metric_rows = build_memory_rows(serialized_zebrac)
     search_impact_data = load_search_impact(
@@ -243,7 +242,7 @@ def main() -> None:
     )
     search_impact_rows = build_search_impact_rows(
         selected_quant=selected_quant,
-        external_baselines=external_results["records"],
+        external_baselines=[],
         search_impact_data=search_impact_data,
         fidelity_metric_rows=fidelity_metric_rows,
     )
@@ -328,7 +327,7 @@ def main() -> None:
         "search_impact_rows": search_impact_rows,
         "lossy_sweep":        lossy_sweep_rows,
         "plot_rows":          plot_rows,
-        "external_baselines": external_results["records"],
+        "external_baselines": [],
         "comparison_candidates": FUTURE_BASELINES,
     }
 

@@ -50,34 +50,6 @@ def main() -> None:
         f"mzarc lossy q={selected_quant}": private_workdir / f"{sample_name}.lossy.q{selected_quant}.roundtrip.bin",
     }
 
-    # Also pick up any external baseline roundtrip files recorded in fidelity_rows.
-    for row in report.get("fidelity_rows", []):
-        artifact = str(row["artifact"])
-        if artifact not in roundtrip_map:
-            # Try to find the roundtrip file by looking for a .roundtrip.bin file
-            # whose name contains a known keyword from the artifact name.
-            keyword = artifact.lower().replace(" ", "_").replace("-", "").replace("/", "_")
-            candidates = list(private_workdir.glob(f"*{keyword}*.roundtrip.bin"))
-            if len(candidates) == 1:
-                roundtrip_map[artifact] = candidates[0]
-            else:
-                # Try a broader pattern for known external baselines
-                for ext_candidate in private_workdir.glob("*.roundtrip.bin"):
-                    name_lower = ext_candidate.stem.lower()
-                    if keyword in name_lower or any(part in name_lower for part in keyword.split("_")):
-                        if artifact not in roundtrip_map:
-                            roundtrip_map[artifact] = ext_candidate
-
-    # Additionally, discover MScompress roundtrip files from report
-    for ext in report.get("external_baselines", []):
-        artifact = str(ext["name"])
-        if artifact in roundtrip_map:
-            continue
-        # MScompress roundtrip bin might be recorded in the external record
-        decode_op = ext.get("decode_operation")
-        if decode_op and "->" in decode_op:
-            dest = decode_op.split("->")[-1].strip()
-            # The destination is an artifact name, not a path.  Skip; handled above.
 
     new_fidelity_rows: list[dict] = []
     new_direct_fidelity: dict[str, dict] = {}
@@ -99,7 +71,6 @@ def main() -> None:
 
     # Also refresh external baseline fidelity rows from the existing fidelity_rows
     # that do NOT have a corresponding roundtrip file.
-    existing_by_artifact = {row["artifact"]: row["data"] for row in report.get("fidelity_rows", [])}
     for row in report.get("fidelity_rows", []):
         artifact = str(row["artifact"])
         if artifact not in roundtrip_map:

@@ -99,8 +99,12 @@ log()  { echo "[benchmark] $*" >&2; }
 bench() {
     # bench <slug> <shell_command_string>
     local out="$RAW/$1.json"
+    local tmp; tmp=$(mktemp /tmp/mzarc_bench_XXXXXX.sh)
+    printf '#!/bin/sh\n%s\n' "$2" > "$tmp"
+    chmod +x "$tmp"
     log "$1"
-    "$ZEBRAC" --duration "$DURATION" --json "$out" "$2"
+    "$ZEBRAC" --duration "$DURATION" --json "$out" "$tmp"
+    rm -f "$tmp"
 }
 
 # --------------------------------------------------------------------------- #
@@ -138,7 +142,7 @@ MZARC_LOSSY_RT="$WORKDIR/$SAMPLE.lossy.q${QUANT}.roundtrip.bin"
 # --------------------------------------------------------------------------- #
 # 1. mzML dump (Python wrapped in zebrac)                                     #
 # --------------------------------------------------------------------------- #
-bench "mzml_dump" "python3 tools/mzml_dump.py $MZML $DUMP"
+bench "mzml_dump" "python3 tools/mzml_dump.py $MZML -o $DUMP"
 
 # --------------------------------------------------------------------------- #
 # 2. dump-level compressors                                                   #
@@ -205,7 +209,42 @@ for q in "${_SWEEP[@]}"; do
 done
 
 # --------------------------------------------------------------------------- #
-# 7. write manifest                                                           #
+# 7. external baselines (optional, requires Python packages)                  #
+# --------------------------------------------------------------------------- #
+_AVAIL=$(python3 tools/benchmark_external.py available 2>/dev/null || true)
+
+for _TOOL in mzmlb numpress mscompress; do
+    if echo "$_AVAIL" | grep -qw "$_TOOL"; then
+        case "$_TOOL" in
+            mzmlb)
+                _EXT_ART="$WORKDIR/$SAMPLE.mzMLb"
+                _EXT_RT="$WORKDIR/$SAMPLE.mzmlb.roundtrip.bin"
+                _EXT_LABEL="mzMLb"
+                ;;
+            numpress)
+                _EXT_ART="$WORKDIR/$SAMPLE.numpress.mzML"
+                _EXT_RT="$WORKDIR/$SAMPLE.numpress.roundtrip.bin"
+                _EXT_LABEL="MS-Numpress"
+                ;;
+            mscompress)
+                _EXT_ART="$WORKDIR/$SAMPLE.msz"
+                _EXT_RT="$WORKDIR/$SAMPLE.mscompress.roundtrip.bin"
+                _EXT_LABEL="MScompress"
+                ;;
+        esac
+        log "external: $_EXT_LABEL encode"
+        bench "${_TOOL}_encode" \
+            "python3 tools/benchmark_external.py encode $_TOOL $MZML $_EXT_ART"
+        log "external: $_EXT_LABEL decode"
+        bench "${_TOOL}_decode" \
+            "python3 tools/benchmark_external.py decode $_TOOL $_EXT_ART $_EXT_RT"
+    else
+        log "external: $_TOOL not available, skipping"
+    fi
+done
+
+# --------------------------------------------------------------------------- #
+# 8. write manifest                                                           #
 # --------------------------------------------------------------------------- #
 log "writing manifest.json"
 python3 tools/write_manifest.py \
