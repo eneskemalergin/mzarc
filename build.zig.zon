@@ -1,6 +1,6 @@
 .{
     .name = .mzarc,
-    .version = "0.1.6",
+    .version = "0.1.7",
     .fingerprint = 0x23a58e985cd2488f,
     .minimum_zig_version = "0.16.0",
     .dependencies = .{},

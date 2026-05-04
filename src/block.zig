@@ -337,6 +337,95 @@ fn unpackNextForValue(payload: []const u8, bit_width: u8, bit_offset: *usize, ba
     return sum[0];
 }
 
+fn decodeFlatMzOne(raw: u64, uses_f32: bool, scale_factor: u32) !f64 {
+    if (uses_f32) return @as(f64, @as(f32, @bitCast(@as(u32, @truncate(raw)))));
+    return quantize.dequantizeMzValue(raw, scale_factor);
+}
+
+fn decodeFlatMzBlockLevel(
+    flat_mz: []f64,
+    peak_counts: []const u32,
+    payload: []const u8,
+    bit_width: u8,
+    base: u64,
+    uses_f32: bool,
+    scale_factor: u32,
+) !void {
+    const required_payload_len = packedByteLen(bit_width, flat_mz.len);
+    if (payload.len < required_payload_len) return error.UnexpectedEndOfStream;
+
+    var bit_offset: usize = 0;
+    var mz_cursor: usize = 0;
+    for (peak_counts) |peak_count| {
+        if (peak_count == 0) {
+            continue;
+        }
+
+        // First value: absolute (base + delta) — no overflow check needed.
+        const first = try unpackNextForValue(payload, bit_width, &bit_offset, base);
+        flat_mz[mz_cursor] = try decodeFlatMzOne(first, uses_f32, scale_factor);
+        var previous = first;
+
+        // Remaining values: deltas from previous.
+        var i: u32 = 1;
+        while (i < peak_count) : (i += 1) {
+            const delta = try unpackNextForValue(payload, bit_width, &bit_offset, base);
+            const sum = @addWithOverflow(previous, delta);
+            if (sum[1] != 0) return error.Overflow;
+            flat_mz[mz_cursor + i] = try decodeFlatMzOne(sum[0], uses_f32, scale_factor);
+            previous = sum[0];
+        }
+
+        mz_cursor += peak_count;
+    }
+}
+
+fn decodeFlatMzPerSpectrum(
+    flat_mz: []f64,
+    peak_counts: []const u32,
+    bit_widths: []const u8,
+    payload: []const u8,
+    base: u64,
+    uses_f32: bool,
+    scale_factor: u32,
+) !void {
+    const required_payload_len = try perSpectrumPayloadLen(bit_widths, peak_counts);
+    if (payload.len < required_payload_len) return error.UnexpectedEndOfStream;
+
+    var payload_cursor: usize = 0;
+    var mz_cursor: usize = 0;
+    for (peak_counts, 0..) |peak_count, spectrum_idx| {
+        if (peak_count == 0) {
+            continue;
+        }
+
+        const spectrum_bit_width = bit_widths[spectrum_idx];
+        const spectrum_payload_len = packedByteLen(spectrum_bit_width, peak_count);
+        if (payload.len - payload_cursor < spectrum_payload_len) return error.UnexpectedEndOfStream;
+
+        const spectrum_payload = payload[payload_cursor .. payload_cursor + spectrum_payload_len];
+        var spectrum_bit_offset: usize = 0;
+
+        // First value: absolute (base + delta).
+        const first = try unpackNextForValue(spectrum_payload, spectrum_bit_width, &spectrum_bit_offset, base);
+        flat_mz[mz_cursor] = try decodeFlatMzOne(first, uses_f32, scale_factor);
+        var previous = first;
+
+        // Remaining values: deltas from previous.
+        var i: u32 = 1;
+        while (i < peak_count) : (i += 1) {
+            const delta = try unpackNextForValue(spectrum_payload, spectrum_bit_width, &spectrum_bit_offset, base);
+            const sum = @addWithOverflow(previous, delta);
+            if (sum[1] != 0) return error.Overflow;
+            flat_mz[mz_cursor + i] = try decodeFlatMzOne(sum[0], uses_f32, scale_factor);
+            previous = sum[0];
+        }
+
+        mz_cursor += peak_count;
+        payload_cursor += spectrum_payload_len;
+    }
+}
+
 fn decodeFlatMzFromPackedForPayload(
     flat_mz: []f64,
     peak_counts: []const u32,
@@ -347,43 +436,10 @@ fn decodeFlatMzFromPackedForPayload(
     uses_f32: bool,
     scale_factor: u32,
 ) !void {
-    const required_payload_len = if (per_spectrum_bit_widths) |widths|
-        try perSpectrumPayloadLen(widths, peak_counts)
-    else
-        packedByteLen(bit_width, flat_mz.len);
-    if (payload.len < required_payload_len) return error.UnexpectedEndOfStream;
-
-    var payload_cursor: usize = 0;
-    var block_bit_offset: usize = 0;
-    var mz_cursor: usize = 0;
-    for (peak_counts, 0..) |peak_count, spectrum_idx| {
-        const spectrum_bit_width = if (per_spectrum_bit_widths) |widths| widths[spectrum_idx] else bit_width;
-        const spectrum_payload_len = packedByteLen(spectrum_bit_width, peak_count);
-        if (payload.len - payload_cursor < spectrum_payload_len) return error.UnexpectedEndOfStream;
-
-        const spectrum_payload = if (per_spectrum_bit_widths != null)
-            payload[payload_cursor .. payload_cursor + spectrum_payload_len]
-        else
-            payload;
-        var spectrum_bit_offset: usize = 0;
-        var previous: u64 = 0;
-        for (0..peak_count) |local_idx| {
-            const bit_offset_ptr = if (per_spectrum_bit_widths != null) &spectrum_bit_offset else &block_bit_offset;
-            const delta_value = try unpackNextForValue(spectrum_payload, spectrum_bit_width, bit_offset_ptr, base);
-            const absolute = if (local_idx == 0) delta_value else blk: {
-                const sum = @addWithOverflow(previous, delta_value);
-                if (sum[1] != 0) return error.Overflow;
-                break :blk sum[0];
-            };
-            flat_mz[mz_cursor + local_idx] = if (uses_f32)
-                @as(f64, @as(f32, @bitCast(@as(u32, @truncate(absolute)))))
-            else
-                try quantize.dequantizeMzValue(absolute, scale_factor);
-            previous = absolute;
-        }
-        mz_cursor += peak_count;
-        if (per_spectrum_bit_widths != null) payload_cursor += spectrum_payload_len;
+    if (per_spectrum_bit_widths) |widths| {
+        return decodeFlatMzPerSpectrum(flat_mz, peak_counts, widths, payload, base, uses_f32, scale_factor);
     }
+    return decodeFlatMzBlockLevel(flat_mz, peak_counts, payload, bit_width, base, uses_f32, scale_factor);
 }
 
 fn shouldUseRans(encoded_len: usize, raw_len: usize, min_gain_percent: u8) bool {

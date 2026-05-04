@@ -250,17 +250,20 @@ pub fn decodeInto(encoded: []const u8, out: []u8) !void {
     offset += state_bytes;
     if (state < rans_lower_bound) return error.InvalidState;
 
+    const encoded_end = encoded.len;
     for (out) |*symbol_out| {
         const slot = state & decode_table_mask;
         const entry = decode_table[slot];
-        symbol_out.* = @truncate((entry >> 24) & 0xff);
+        symbol_out.* = @truncate(entry >> 24);
         const start: u32 = entry & 0x0fff;
         const packed_freq: u32 = (entry >> 12) & 0x0fff;
-        const freq: u32 = if (packed_freq == 0) precision else packed_freq;
-        state = @intCast((@as(u64, freq) * (state >> precision_bits)) + (slot - start));
+        const freq: u32 = if (packed_freq == 0) @as(u32, precision) else packed_freq;
+
+        // Product fits in u32: freq <= 4096, state >> 12 <= ~1M.
+        state = (freq * (state >> precision_bits)) + (slot - start);
 
         while (state < rans_lower_bound) {
-            if (offset >= encoded.len) return error.UnexpectedEndOfStream;
+            if (offset >= encoded_end) return error.UnexpectedEndOfStream;
             state = (state << 8) | encoded[offset];
             offset += 1;
         }

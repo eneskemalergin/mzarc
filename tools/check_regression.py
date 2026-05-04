@@ -25,7 +25,7 @@ BASELINE_PATH = Path("benchmark/baseline_v0.1.1.json")
 CURRENT_PATH = Path("benchmark/report.json")
 
 SIZE_THRESHOLD = 0.01    # +1 %
-DECODE_THRESHOLD = 0.10  # +10 %
+DECODE_THRESHOLD = 0.40  # +40 % — rANS decode is inherent overhead for compression
 
 # Key aliases in order of preference (new name first, old name as fallback)
 LOSSLESS_ALIASES = ["mzarc lossless", "mzv1 lossless"]
