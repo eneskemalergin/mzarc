@@ -24,12 +24,12 @@
      inkscape:pagecheckerboard="0"
      inkscape:deskcolor="#d1d1d1"
      inkscape:zoom="1.1155556"
-     inkscape:cx="900"
-     inkscape:cy="250.0996"
-     inkscape:window-width="2160"
-     inkscape:window-height="3803"
-     inkscape:window-x="0"
-     inkscape:window-y="0"
+     inkscape:cx="900.89638"
+     inkscape:cy="250.09959"
+     inkscape:window-width="3840"
+     inkscape:window-height="2089"
+     inkscape:window-x="2160"
+     inkscape:window-y="34"
      inkscape:window-maximized="1"
      inkscape:current-layer="svg15" />
   <title
@@ -141,8 +141,8 @@
        fill="url(#accentGrad)"
        id="circle8" />
     <circle
-       cx="232"
-       cy="456"
+       cx="220.88892"
+       cy="478.22217"
        r="20"
        fill="#ffffff"
        stroke="#2f76aa"

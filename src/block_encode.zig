@@ -144,9 +144,9 @@ fn buildRtDeltas(allocator: Allocator, spectra: []const binary_reader.RawSpectru
     errdefer allocator.free(result);
     result[0] = @as(u32, @bitCast(spectra[0].rt_seconds));
     for (spectra[1..], 1..) |spectrum, idx| {
+        if (spectrum.rt_seconds < spectra[idx - 1].rt_seconds) return error.NonMonotonicRt;
         const cur_bits: u32 = @bitCast(spectrum.rt_seconds);
         const prev_bits: u32 = @bitCast(spectra[idx - 1].rt_seconds);
-        if (cur_bits < prev_bits) return error.NonMonotonicRt;
         result[idx] = cur_bits - prev_bits;
     }
     return result;

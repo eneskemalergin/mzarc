@@ -200,7 +200,7 @@ pub fn perSpectrumPayloadLen(bit_widths: []const u8, peak_counts: []const u32) !
 pub fn shouldUseRans(encoded_len: usize, raw_len: usize, min_gain_percent: u8) bool {
     if (raw_len == 0 or encoded_len >= raw_len) return false;
     const required = 100 - @min(@as(usize, min_gain_percent), 99);
-    return encoded_len * 100 < raw_len * required;
+    return @as(u64, encoded_len) * 100 < @as(u64, raw_len) * required;
 }
 
 pub fn maybeEncodeRansAlloc(allocator: Allocator, raw: []const u8, min_gain_percent: u8) !RansCandidate {

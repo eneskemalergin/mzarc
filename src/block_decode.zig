@@ -187,7 +187,8 @@ pub fn decodeBlock(allocator: Allocator, block_bytes: []const u8) ![]binary_read
         offset += pack_len;
         var running: u32 = 0;
         for (scan_ids, 0..) |*value, idx| {
-            const sum = @addWithOverflow(running, @as(u32, @truncate(unpacked[idx])));
+            if (unpacked[idx] > std.math.maxInt(u32)) return error.Overflow;
+            const sum = @addWithOverflow(running, @as(u32, @intCast(unpacked[idx])));
             if (sum[1] != 0) return error.Overflow;
             running = sum[0];
             value.* = running;
@@ -221,7 +222,8 @@ pub fn decodeBlock(allocator: Allocator, block_bytes: []const u8) ![]binary_read
         offset += pack_len;
         var running_bits: u32 = 0;
         for (rt_values, 0..) |*value, idx| {
-            const sum_bits = @addWithOverflow(running_bits, @as(u32, @truncate(unpacked[idx])));
+            if (unpacked[idx] > std.math.maxInt(u32)) return error.Overflow;
+            const sum_bits = @addWithOverflow(running_bits, @as(u32, @intCast(unpacked[idx])));
             if (sum_bits[1] != 0) return error.Overflow;
             running_bits = sum_bits[0];
             value.* = @bitCast(running_bits);
