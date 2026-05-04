@@ -15,8 +15,12 @@ def comparison_artifact_order(selected_quant: int, external_baselines: list[dict
         "lz4 mzML",
         "gzip dump",
         "gzip mzML",
+        "pigz dump",
+        "pigz mzML",
         "zstd dump",
         "zstd mzML",
+        "zstd mt dump",
+        "zstd mt mzML",
         "bzip2 dump",
         "bzip2 mzML",
         "xz dump",
@@ -85,50 +89,26 @@ def build_performance_rows(
         notes: str | None = None,
     ) -> None:
         zitem = zebrac_by_name.get(operation or "") if operation is not None else None
-        if zitem is not None:
-            rows.append(
-                {
-                    "artifact": artifact,
-                    "direction": direction,
-                    "operation": operation,
-                    "source_format": source_format,
-                    "status": status,
-                    "timing_source": "zebrac",
-                    "median_seconds": float(zitem["wall_time_median_seconds"]),
-                    "stddev_seconds": float(zitem.get("wall_time_stddev_seconds") or 0.0),
-                    "ci95_lo_seconds": zitem.get("ci95_lo_seconds"),
-                    "ci95_hi_seconds": zitem.get("ci95_hi_seconds"),
-                    "iqr_seconds": zitem.get("iqr_seconds"),
-                    "sample_count": int(zitem.get("sample_count") or 0),
-                    "throughput_mib_s": zitem.get("throughput_mib_s"),
-                    "throughput_input_mib_s": zitem.get("throughput_input_mib_s"),
-                    "throughput_output_mib_s": zitem.get("throughput_output_mib_s"),
-                    "throughput_basis": zitem.get("throughput_basis"),
-                    "notes": notes,
-                }
-            )
-        else:
-            rows.append(
-                {
-                    "artifact": artifact,
-                    "direction": direction,
-                    "operation": operation,
-                    "source_format": source_format,
-                    "status": status,
-                    "timing_source": None,
-                    "median_seconds": None,
-                    "stddev_seconds": None,
-                    "ci95_lo_seconds": None,
-                    "ci95_hi_seconds": None,
-                    "iqr_seconds": None,
-                    "sample_count": None,
-                    "throughput_mib_s": None,
-                    "throughput_input_mib_s": None,
-                    "throughput_output_mib_s": None,
-                    "throughput_basis": None,
-                    "notes": notes,
-                }
-            )
+        row: dict[str, object] = {
+            "artifact": artifact,
+            "direction": direction,
+            "operation": operation,
+            "source_format": source_format,
+            "status": status,
+            "timing_source": "zebrac" if zitem is not None else None,
+            "median_seconds": float(zitem["wall_time_median_seconds"]) if zitem is not None else None,
+            "stddev_seconds": float(zitem.get("wall_time_stddev_seconds") or 0.0) if zitem is not None else None,
+            "ci95_lo_seconds": zitem.get("ci95_lo_seconds") if zitem is not None else None,
+            "ci95_hi_seconds": zitem.get("ci95_hi_seconds") if zitem is not None else None,
+            "iqr_seconds": zitem.get("iqr_seconds") if zitem is not None else None,
+            "sample_count": int(zitem.get("sample_count") or 0) if zitem is not None else None,
+            "throughput_mib_s": zitem.get("throughput_mib_s") if zitem is not None else None,
+            "throughput_input_mib_s": zitem.get("throughput_input_mib_s") if zitem is not None else None,
+            "throughput_output_mib_s": zitem.get("throughput_output_mib_s") if zitem is not None else None,
+            "throughput_basis": zitem.get("throughput_basis") if zitem is not None else None,
+            "notes": notes,
+        }
+        rows.append(row)
 
     internal_rows = [
         ("gzip dump", "compression", "dump -> gzip dump", "dump"),
@@ -155,6 +135,14 @@ def build_performance_rows(
         ("mzarc lossless", "decompression", "mzarc lossless -> dump", "mzarc lossless"),
         (f"mzarc lossy q={selected_quant}", "compression", f"dump -> mzarc lossy q={selected_quant}", "dump"),
         (f"mzarc lossy q={selected_quant}", "decompression", f"mzarc lossy q={selected_quant} -> dump", f"mzarc lossy q={selected_quant}"),
+        ("pigz dump", "compression", "dump -> pigz dump", "dump"),
+        ("pigz dump", "decompression", "pigz dump -> dump", "pigz dump"),
+        ("pigz mzML", "compression", "mzML -> pigz mzML", "mzML"),
+        ("pigz mzML", "decompression", "pigz mzML -> mzML", "pigz mzML"),
+        ("zstd mt dump", "compression", "dump -> zstd mt dump", "dump"),
+        ("zstd mt dump", "decompression", "zstd mt dump -> dump", "zstd mt dump"),
+        ("zstd mt mzML", "compression", "mzML -> zstd mt mzML", "mzML"),
+        ("zstd mt mzML", "decompression", "zstd mt mzML -> mzML", "zstd mt mzML"),
     ]
     for artifact, direction, operation, source_format in internal_rows:
         add_row(artifact, direction, operation, source_format=source_format, status="measured")

@@ -10,8 +10,8 @@ Usage:
     python3 tools/benchmark_external.py decode mzmlb   <input.mzMLb>         <output.bin>
     python3 tools/benchmark_external.py encode numpress <input.mzML>          <output.numpress.mzML>
     python3 tools/benchmark_external.py decode numpress <input.numpress.mzML> <output.bin>
-    python3 tools/benchmark_external.py encode mscompress <input.mzML>        <output.msz>
-    python3 tools/benchmark_external.py decode mscompress <input.msz>         <output.bin>
+    python3 tools/benchmark_external.py encode mscompress_st <input.mzML>     <output.msz>
+    python3 tools/benchmark_external.py decode mscompress_st <input.msz>      <output.bin>
 
 The `available` subcommand prints a space-separated list of tool keys whose
 Python packages are importable, then exits 0.
@@ -116,25 +116,33 @@ def decode_numpress(input_path: Path, output_path: Path) -> None:
     dump_main()
 
 
-def encode_mscompress(input_path: Path, output_path: Path, *, threads: int = 1) -> None:
+def encode_mscompress(input_path: Path, output_path: Path, *, threads: int = 0) -> None:
     import mscompress
     artifact = mscompress.read(str(input_path))
-    artifact.arguments.threads = threads
+    if threads > 0:
+        artifact.arguments.threads = threads
     artifact.compress(str(output_path))
 
 
-def decode_mscompress(input_path: Path, output_path: Path, *, threads: int = 1) -> None:
+def decode_mscompress(input_path: Path, output_path: Path) -> None:
     import mscompress
     from mzml_dump import main as dump_main
     import sys as _sys
 
     roundtrip_mzml = output_path.with_suffix(".mscompress.roundtrip.mzML")
     artifact = mscompress.read(str(input_path))
-    artifact.arguments.threads = threads
     artifact.decompress(str(roundtrip_mzml))
 
     _sys.argv = ["mzml_dump.py", str(roundtrip_mzml), "-o", str(output_path)]
     dump_main()
+
+
+def encode_mscompress_st(input_path: Path, output_path: Path) -> None:
+    encode_mscompress(input_path, output_path, threads=1)
+
+
+def decode_mscompress_st(input_path: Path, output_path: Path) -> None:
+    decode_mscompress(input_path, output_path)
 
 
 # --------------------------------------------------------------------------- #
@@ -142,9 +150,10 @@ def decode_mscompress(input_path: Path, output_path: Path, *, threads: int = 1) 
 # --------------------------------------------------------------------------- #
 
 _TOOLS = {
-    "mzmlb":      (_psims_available,      encode_mzmlb,      decode_mzmlb),
-    "numpress":   (_psims_available,      encode_numpress,   decode_numpress),
-    "mscompress": (_mscompress_available, encode_mscompress, decode_mscompress),
+    "mzmlb":          (_psims_available,      encode_mzmlb,         decode_mzmlb),
+    "numpress":       (_psims_available,      encode_numpress,      decode_numpress),
+    "mscompress":     (_mscompress_available, encode_mscompress,    decode_mscompress),
+    "mscompress_st":  (_mscompress_available, encode_mscompress_st, decode_mscompress_st),
 }
 
 

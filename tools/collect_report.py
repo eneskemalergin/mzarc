@@ -201,6 +201,27 @@ def main() -> None:
     dataset["path"] = manifest["dump_path"]
 
     # ------------------------------------------------------------------ #
+    # external_baselines: derived from manifest group="external" ops     #
+    # ------------------------------------------------------------------ #
+    _ext_ops: dict[str, dict] = {}
+    for op in manifest["operations"]:
+        if op.get("group") == "external":
+            artifact = str(op["artifact"])
+            if artifact not in _ext_ops:
+                _ext_ops[artifact] = {
+                    "name": artifact,
+                    "status": "measured",
+                    "reason": None,
+                    "encode_operation": None,
+                    "decode_operation": None,
+                }
+            if op["direction"] == "encode":
+                _ext_ops[artifact]["encode_operation"] = op["name"]
+            elif op["direction"] == "decode":
+                _ext_ops[artifact]["decode_operation"] = op["name"]
+    external_baselines: list[dict] = list(_ext_ops.values())
+
+    # ------------------------------------------------------------------ #
     # fidelity rows                                                       #
     # ------------------------------------------------------------------ #
     fidelity_rows: list[dict] = [
@@ -210,7 +231,7 @@ def main() -> None:
     fidelity_metric_rows = build_fidelity_metric_rows(
         fidelity_rows,
         selected_quant=selected_quant,
-        external_baselines=[],
+        external_baselines=external_baselines,
     )
 
     # ------------------------------------------------------------------ #
@@ -234,7 +255,7 @@ def main() -> None:
     performance_rows = build_performance_rows(
         serialized_zebrac,
         selected_quant=selected_quant,
-        external_baselines=[],
+        external_baselines=external_baselines,
     )
     memory_metric_rows = build_memory_rows(serialized_zebrac)
     search_impact_data = load_search_impact(
@@ -242,7 +263,7 @@ def main() -> None:
     )
     search_impact_rows = build_search_impact_rows(
         selected_quant=selected_quant,
-        external_baselines=[],
+        external_baselines=external_baselines,
         search_impact_data=search_impact_data,
         fidelity_metric_rows=fidelity_metric_rows,
     )
@@ -327,7 +348,7 @@ def main() -> None:
         "search_impact_rows": search_impact_rows,
         "lossy_sweep":        lossy_sweep_rows,
         "plot_rows":          plot_rows,
-        "external_baselines": [],
+        "external_baselines": external_baselines,
         "comparison_candidates": FUTURE_BASELINES,
     }
 

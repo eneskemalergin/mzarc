@@ -114,6 +114,12 @@ def main() -> None:
     mzarc_lossy       = wd / f"{s}.lossy.q{q}.mzarc"
     mzarc_lossy_rt    = wd / f"{s}.lossy.q{q}.roundtrip.bin"
 
+    # Multi-threaded variants
+    pigz_dump   = wd / f"{s}.bin.pigz.gz";   pigz_dump_rt  = wd / f"{s}.pigz.roundtrip.bin"
+    pigz_mzml   = wd / f"{s}.mzML.pigz.gz"
+    zstd_mt_dump   = wd / f"{s}.bin.zst.mt";    zstd_mt_dump_rt   = wd / f"{s}.zstd_mt.roundtrip.bin"
+    zstd_mt_mzml   = wd / f"{s}.mzML.zst.mt"
+
     def o(name, group, direction, fmt, artifact, inp, out, rt, slug):
         return _op(name, group, direction, fmt, artifact, inp, out, rt, slug, raw)
 
@@ -147,6 +153,16 @@ def main() -> None:
         o("mzarc lossless -> dump",          "mzarc", "decode", "mzarc lossless",        "mzarc lossless",        mzarc_lossless,  mzarc_lossless_rt, mzarc_lossless_rt, "mzarc_lossless_decode"),
         o(f"dump -> mzarc lossy q={q}",      "mzarc", "encode", f"mzarc lossy q={q}",   f"mzarc lossy q={q}",   dump,            mzarc_lossy,       None,             "mzarc_lossy_encode"),
         o(f"mzarc lossy q={q} -> dump",      "mzarc", "decode", f"mzarc lossy q={q}",   f"mzarc lossy q={q}",   mzarc_lossy,     mzarc_lossy_rt,    mzarc_lossy_rt,   "mzarc_lossy_decode"),
+        # pigz (parallel gzip, gzip-compatible output)
+        o("dump -> pigz dump",   "dump_codec_mt", "encode", "pigz dump",   "pigz dump",   dump,       pigz_dump,    None,        "pigz_dump_encode"),
+        o("pigz dump -> dump",   "dump_codec_mt", "decode", "pigz dump",   "pigz dump",   pigz_dump,  pigz_dump_rt, pigz_dump_rt, "pigz_dump_decode"),
+        o("mzML -> pigz mzML",   "mzml_codec_mt", "encode", "pigz mzML",   "pigz mzML",   mzml,       pigz_mzml,   None, "pigz_mzml_encode"),
+        o("pigz mzML -> mzML",   "mzml_codec_mt", "decode", "pigz mzML",   "pigz mzML",   pigz_mzml,  wd / f"{s}.pigz_mzml.roundtrip.mzML",  None, "pigz_mzml_decode"),
+        # zstd multi-threaded (-T0 = all cores)
+        o("dump -> zstd mt dump",   "dump_codec_mt", "encode", "zstd mt dump",   "zstd mt dump",   dump,          zstd_mt_dump,    None,            "zstd_mt_dump_encode"),
+        o("zstd mt dump -> dump",   "dump_codec_mt", "decode", "zstd mt dump",   "zstd mt dump",   zstd_mt_dump,  zstd_mt_dump_rt, zstd_mt_dump_rt, "zstd_mt_dump_decode"),
+        o("mzML -> zstd mt mzML",   "mzml_codec_mt", "encode", "zstd mt mzML",   "zstd mt mzML",   mzml,          zstd_mt_mzml,    None, "zstd_mt_mzml_encode"),
+        o("zstd mt mzML -> mzML",   "mzml_codec_mt", "decode", "zstd mt mzML",   "zstd mt mzML",   zstd_mt_mzml,  wd / f"{s}.zstd_mt_mzml.roundtrip.mzML", None, "zstd_mt_mzml_decode"),
     ]
 
     sizes: dict[str, object] = {
@@ -164,6 +180,10 @@ def main() -> None:
         "xz mzML":     {"path": _rel(xz_mzml),    "bytes": _size(xz_mzml)},
         "mzarc lossless":      {"path": _rel(mzarc_lossless), "bytes": _size(mzarc_lossless)},
         f"mzarc lossy q={q}":  {"path": _rel(mzarc_lossy),    "bytes": _size(mzarc_lossy)},
+        "pigz dump":           {"path": _rel(pigz_dump),      "bytes": _size(pigz_dump)},
+        "pigz mzML":           {"path": _rel(pigz_mzml),      "bytes": _size(pigz_mzml)},
+        "zstd mt dump":        {"path": _rel(zstd_mt_dump),   "bytes": _size(zstd_mt_dump)},
+        "zstd mt mzML":        {"path": _rel(zstd_mt_mzml),   "bytes": _size(zstd_mt_mzml)},
     }
 
     lossy_sweep_rows: list[dict[str, object]] = []
@@ -179,9 +199,10 @@ def main() -> None:
 
     # External baselines: auto-detect if artifacts and zebrac JSONs exist.
     _ext_candidates = [
-        ("mzMLb",               wd / f"{s}.mzMLb",          wd / f"{s}.mzmlb.roundtrip.bin",       "mzmlb"),
-        ("MS-Numpress in mzML", wd / f"{s}.numpress.mzML",  wd / f"{s}.numpress.roundtrip.bin",    "numpress"),
-        ("MScompress",          wd / f"{s}.msz",            wd / f"{s}.mscompress.roundtrip.bin",  "mscompress"),
+        ("mzMLb",               wd / f"{s}.mzMLb",          wd / f"{s}.mzmlb.roundtrip.bin",          "mzmlb"),
+        ("MS-Numpress in mzML", wd / f"{s}.numpress.mzML",  wd / f"{s}.numpress.roundtrip.bin",       "numpress"),
+        ("MScompress",          wd / f"{s}.msz",            wd / f"{s}.mscompress.roundtrip.bin",     "mscompress"),
+        ("MScompress (1T)",     wd / f"{s}.1t.msz",         wd / f"{s}.mscompress_st.roundtrip.bin",  "mscompress_st"),
     ]
     for ext_name, ext_art, ext_rt, ext_slug in _ext_candidates:
         if not ext_art.exists():

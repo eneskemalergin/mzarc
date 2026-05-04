@@ -83,7 +83,7 @@ fi
 # --------------------------------------------------------------------------- #
 # sanity checks                                                               #
 # --------------------------------------------------------------------------- #
-for tool in gzip zstd bzip2 lz4 xz; do
+for tool in gzip zstd bzip2 lz4 xz pigz; do
     command -v "$tool" >/dev/null 2>&1 || { echo "ERROR: $tool not found in PATH" >&2; exit 1; }
 done
 [[ -f "$MZARC" ]] || { echo "ERROR: mzarc binary not found: $MZARC (run with --build)" >&2; exit 1; }
@@ -134,6 +134,17 @@ LZ4_MZML_RT="$WORKDIR/$SAMPLE.lz4_mzml.roundtrip.mzML"
 XZ_MZML="$WORKDIR/$SAMPLE.mzML.xz"
 XZ_MZML_RT="$WORKDIR/$SAMPLE.xz_mzml.roundtrip.mzML"
 
+# multi-threaded variants (pigz = parallel gzip; zstd_mt = zstd -T0 all cores)
+# Note: xz already defaults to -T0 (all cores); no separate xz_mt needed.
+PIGZ_DUMP="$WORKDIR/$SAMPLE.bin.pigz.gz"
+PIGZ_DUMP_RT="$WORKDIR/$SAMPLE.pigz.roundtrip.bin"
+PIGZ_MZML="$WORKDIR/$SAMPLE.mzML.pigz.gz"
+PIGZ_MZML_RT="$WORKDIR/$SAMPLE.pigz_mzml.roundtrip.mzML"
+ZSTD_MT_DUMP="$WORKDIR/$SAMPLE.bin.zst.mt"
+ZSTD_MT_DUMP_RT="$WORKDIR/$SAMPLE.zstd_mt.roundtrip.bin"
+ZSTD_MT_MZML="$WORKDIR/$SAMPLE.mzML.zst.mt"
+ZSTD_MT_MZML_RT="$WORKDIR/$SAMPLE.zstd_mt_mzml.roundtrip.mzML"
+
 MZARC_LOSSLESS="$WORKDIR/$SAMPLE.lossless.mzarc"
 MZARC_LOSSLESS_RT="$WORKDIR/$SAMPLE.lossless.roundtrip.bin"
 MZARC_LOSSY="$WORKDIR/$SAMPLE.lossy.q${QUANT}.mzarc"
@@ -162,6 +173,13 @@ bench "lz4_dump_decode"   "lz4 -q -d -c $LZ4_DUMP > $LZ4_DUMP_RT"
 bench "xz_dump_encode"    "xz -c $DUMP > $XZ_DUMP"
 bench "xz_dump_decode"    "xz -d -c $XZ_DUMP > $XZ_DUMP_RT"
 
+# multi-threaded dump variants
+bench "pigz_dump_encode"     "pigz -n -c $DUMP > $PIGZ_DUMP"
+bench "pigz_dump_decode"     "pigz -d -c $PIGZ_DUMP > $PIGZ_DUMP_RT"
+
+bench "zstd_mt_dump_encode"  "zstd -T0 -q -c $DUMP > $ZSTD_MT_DUMP"
+bench "zstd_mt_dump_decode"  "zstd -q -d -c $ZSTD_MT_DUMP > $ZSTD_MT_DUMP_RT"
+
 # --------------------------------------------------------------------------- #
 # 3. mzML-level compressors                                                   #
 # --------------------------------------------------------------------------- #
@@ -179,6 +197,13 @@ bench "lz4_mzml_decode"   "lz4 -q -d -c $LZ4_MZML > $LZ4_MZML_RT"
 
 bench "xz_mzml_encode"    "xz -c $MZML > $XZ_MZML"
 bench "xz_mzml_decode"    "xz -d -c $XZ_MZML > $XZ_MZML_RT"
+
+# multi-threaded mzML variants
+bench "pigz_mzml_encode"     "pigz -n -c $MZML > $PIGZ_MZML"
+bench "pigz_mzml_decode"     "pigz -d -c $PIGZ_MZML > $PIGZ_MZML_RT"
+
+bench "zstd_mt_mzml_encode"  "zstd -T0 -q -c $MZML > $ZSTD_MT_MZML"
+bench "zstd_mt_mzml_decode"  "zstd -q -d -c $ZSTD_MT_MZML > $ZSTD_MT_MZML_RT"
 
 # --------------------------------------------------------------------------- #
 # 4. mzarc lossless                                                           #
@@ -213,7 +238,7 @@ done
 # --------------------------------------------------------------------------- #
 _AVAIL=$(python3 tools/benchmark_external.py available 2>/dev/null || true)
 
-for _TOOL in mzmlb numpress mscompress; do
+for _TOOL in mzmlb numpress mscompress mscompress_st; do
     if echo "$_AVAIL" | grep -qw "$_TOOL"; then
         case "$_TOOL" in
             mzmlb)
@@ -230,6 +255,11 @@ for _TOOL in mzmlb numpress mscompress; do
                 _EXT_ART="$WORKDIR/$SAMPLE.msz"
                 _EXT_RT="$WORKDIR/$SAMPLE.mscompress.roundtrip.bin"
                 _EXT_LABEL="MScompress"
+                ;;
+            mscompress_st)
+                _EXT_ART="$WORKDIR/$SAMPLE.1t.msz"
+                _EXT_RT="$WORKDIR/$SAMPLE.mscompress_st.roundtrip.bin"
+                _EXT_LABEL="MScompress (1T)"
                 ;;
         esac
         log "external: $_EXT_LABEL encode"

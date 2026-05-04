@@ -289,10 +289,10 @@ def render_markdown(report: dict) -> str:
                 [
                     item["name"],
                     item["status"],
-                    "n/a" if item["artifact_bytes"] is None else format_bytes(item["artifact_bytes"]),
+                    format_bytes(report["sizes"][item["name"]]["bytes"]) if item["name"] in report.get("sizes", {}) else "n/a",
                     item["encode_operation"] or "n/a",
                     item["decode_operation"] or "n/a",
-                    item["reason"] or "",
+                    item.get("reason") or "",
                 ]
                 for item in external_baselines
             ],

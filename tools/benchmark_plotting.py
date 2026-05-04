@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import matplotlib
+import matplotlib.patches as mpatches
 
 matplotlib.use("Agg")
 
@@ -53,10 +54,14 @@ def _artifact_palette(artifact_names: list[str]) -> list[str]:
         "xz mzML": "#312e81",
         "mzarc lossless": "#0f766e",
         "mzarc lossy": "#d97706",
+        "pigz dump": "#4b5563",
+        "pigz mzML": "#6b7280",
+        "zstd mt dump": "#1e293b",
+        "zstd mt mzML": "#0f172a",
         "mzMLb": "#0ea5e9",
         "MS-Numpress in mzML": "#7c3aed",
         "MScompress": "#be185d",
-        "MScompress (threaded)": "#9d174d",
+        "MScompress (1T)": "#9d174d",
     }
     colors: list[str] = []
     for name in artifact_names:
@@ -208,73 +213,6 @@ def plot_fidelity_overview(fidelity_rows: list[dict[str, object]], path: Path) -
     plt.close(fig)
 
 
-def plot_timing_intervals(timing_rows: list[dict[str, object]], path: Path) -> None:
-    order = [str(row["name"]) for row in timing_rows]
-    run_rows: list[dict[str, object]] = []
-    summary_rows: list[dict[str, object]] = []
-
-    for row in timing_rows:
-        name = str(row["name"])
-        summary_rows.append(
-            {
-                "operation": name,
-                "mean_seconds": float(row["mean_seconds"]),
-                "stdev_seconds": float(row["stdev_seconds"]),
-                "ci95_half_width_seconds": float(row["ci95_half_width_seconds"]),
-            }
-        )
-        for index, seconds in enumerate(row["runs_seconds"], start=1):
-            run_rows.append({"operation": name, "run": index, "seconds": float(seconds)})
-
-    runs_frame = pd.DataFrame(run_rows)
-    summary_frame = pd.DataFrame(summary_rows)
-    max_seconds = max(float(runs_frame["seconds"].max()), float(summary_frame["mean_seconds"].max()))
-
-    fig, ax = plt.subplots(figsize=(12.5, max(5.0, 0.75 * len(order) + 1.5)))
-    sns.stripplot(
-        data=runs_frame,
-        y="operation",
-        x="seconds",
-        order=order,
-        orient="h",
-        size=7,
-        color="#94a3b8",
-        alpha=0.75,
-        ax=ax,
-    )
-
-    ax.errorbar(
-        summary_frame["mean_seconds"],
-        list(range(len(summary_frame))),
-        xerr=summary_frame["ci95_half_width_seconds"],
-        fmt="o",
-        color="#0f172a",
-        ecolor="#0f172a",
-        elinewidth=2,
-        capsize=5,
-        markersize=8,
-        zorder=5,
-    )
-
-    for idx, row in summary_frame.iterrows():
-        ax.text(
-            float(row["mean_seconds"]) + float(row["ci95_half_width_seconds"]) + max_seconds * 0.03,
-            idx,
-            f"{row['mean_seconds']:.3f}s ± {row['stdev_seconds']:.3f}s",
-            va="center",
-            ha="left",
-            fontsize=10,
-        )
-
-    ax.set_title("Timing Variability Across Runs")
-    ax.set_xlabel("seconds; dots are individual runs, black points show mean with 95% CI")
-    ax.set_ylabel("")
-    ax.margins(x=0.28)
-    fig.tight_layout()
-    fig.savefig(path, bbox_inches="tight")
-    plt.close(fig)
-
-
 def plot_lossy_tradeoff(lossy_rows: list[dict[str, object]], selected_quant: int, path: Path) -> None:
     frame = pd.DataFrame(lossy_rows)
     frame["selected"] = frame["intensity_quant"].astype(int) == int(selected_quant)
@@ -347,8 +285,6 @@ def plot_memory_footprint(memory_rows: list[dict[str, object]], path: Path) -> N
     ax.set_xlabel("peak RSS (MiB)")
     ax.set_ylabel("")
     ax.margins(x=0.18)
-    # Legend patches
-    import matplotlib.patches as mpatches
     legend_handles = [mpatches.Patch(color=v, label=k) for k, v in palette_map.items()]
     ax.legend(handles=legend_handles, loc="lower right", fontsize=10)
     fig.tight_layout()
@@ -437,7 +373,6 @@ def plot_stat_comparisons(comparisons: list[dict], path: Path) -> None:
     ax.set_xlabel("speed ratio (mzarc time / baseline time — lower is faster for mzarc)")
     ax.set_title("Statistical Comparisons: mzarc vs Baselines (Mann-Whitney U)")
 
-    import matplotlib.patches as mpatches
     legend_handles = [
         mpatches.Patch(color="#0f766e", label="mzarc faster (significant)"),
         mpatches.Patch(color="#dc2626", label="mzarc slower (significant)"),
