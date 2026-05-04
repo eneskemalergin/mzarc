@@ -190,14 +190,15 @@ def render_markdown(report: dict) -> str:
     section("Performance Overview")
     image("Throughput Overview", f"plots/{report['plots']['performance_overview']}")
     table(
-        ["artifact", "direction", "status", "throughput", "mean time", "throughput basis", "source format", "notes"],
+        ["artifact", "direction", "status", "throughput", "median time", "timing source", "source format", "notes"],
         [
             [
                 item["artifact"],
                 item["direction"],
                 item["status"],
                 _format_optional_number(item["throughput_mib_s"], precision=4, suffix=" MiB/s"),
-                _format_optional_number(item["mean_seconds"], precision=5, suffix="s"),
+                _format_optional_number(item["median_seconds"], precision=5, suffix="s"),
+                item.get("timing_source") or "n/a",
                 item["throughput_basis"] or "n/a",
                 item["source_format"] or "n/a",
                 item["notes"] or "",
@@ -235,28 +236,58 @@ def render_markdown(report: dict) -> str:
             ["left", "right", "right", "right", "right", "right", "right"],
         )
 
-    section("Timing Variability")
-    image("Timing Variability Across Runs", f"plots/{report['plots']['timing_intervals']}")
-    paragraph(
-        f"The chart above uses all {report['repeats']} runs per operation. Gray dots are individual runs. Black points show the mean with a two-sided 95% confidence interval for the mean."
-    )
-    table(
-        ["operation", "mean ± sd", "median", "95% CI of mean", "min", "max", "throughput", "basis"],
-        [
+    zebrac_results = report.get("zebrac_results", [])
+    if zebrac_results:
+        section("Zebrac Statistics")
+        paragraph(
+            "All internal operations are timed by zebrac, which runs each command repeatedly "
+            "over a fixed duration window using Linux perf counters. "
+            "Reported wall times are medians across all samples in the window. "
+            "These replace the old Python-timer runs."
+        )
+        table(
+            ["operation", "wall time (median)", "wall time (stddev)", "min", "max", "samples"],
             [
-                item["name"],
-                f"{item['mean_seconds']:.4f}s ± {item['stdev_seconds']:.4f}s",
-                f"{item['median_seconds']:.4f}s",
-                format_interval(item["ci95_low_seconds"], item["ci95_high_seconds"]),
-                f"{item['min_seconds']:.4f}s",
-                f"{item['max_seconds']:.4f}s",
-                "n/a" if item["throughput_mib_s"] is None else f"{item['throughput_mib_s']:.2f} MiB/s",
-                item.get("throughput_basis", "n/a"),
-            ]
-            for item in report["timings"]
-        ],
-        ["left", "right", "right", "right", "right", "right", "right", "left"],
-    )
+                [
+                    str(item["name"]),
+                    _format_optional_number(item.get("wall_time_median_seconds"), precision=4, suffix="s"),
+                    _format_optional_number(item.get("wall_time_stddev_seconds"), precision=4, suffix="s"),
+                    _format_optional_number(item.get("wall_time_min_seconds"), precision=4, suffix="s"),
+                    _format_optional_number(item.get("wall_time_max_seconds"), precision=4, suffix="s"),
+                    str(item.get("sample_count", "n/a")),
+                ]
+                for item in zebrac_results
+            ],
+            ["left", "right", "right", "right", "right", "right"],
+        )
+
+    timing_validation_rows = report.get("timing_validation_rows", [])
+    if timing_validation_rows:
+        section("Timing Validation")
+        paragraph(
+            "Wall-time medians from zebrac and hyperfine are compared for each shared operation. "
+            "Agreement is defined as |zebrac - hyperfine| / hyperfine ≤ 10%. "
+            "Agreement confirms that zebrac's richer metrics (RSS, instructions, cache misses) "
+            "are collected under conditions consistent with an independent wall-time reference."
+        )
+        if "timing_validation" in report.get("plots", {}):
+            image("Zebrac vs Hyperfine Wall Time", f"plots/{report['plots']['timing_validation']}")
+        table(
+            ["operation", "zebrac median", "hyperfine median", "diff %", "agrees", "zebrac samples", "hyperfine runs"],
+            [
+                [
+                    row["name"],
+                    f"{row['zebrac_median_s']:.4f}s",
+                    f"{row['hyperfine_median_s']:.4f}s",
+                    f"{row['diff_pct']:.2f}%",
+                    "yes" if row["agrees"] else "NO",
+                    str(row["zebrac_samples"]),
+                    str(row["hyperfine_runs"]),
+                ]
+                for row in timing_validation_rows
+            ],
+            ["left", "right", "right", "right", "left", "right", "right"],
+        )
 
     section("External Baselines")
     if external_baselines:

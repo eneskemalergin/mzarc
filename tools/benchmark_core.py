@@ -567,6 +567,8 @@ class ZebracResult:
     peak_rss_bytes: dict[str, float]
     instructions: dict[str, float]
     cache_misses: dict[str, float]
+    input_bytes: int | None = None
+    output_bytes: int | None = None
 
 
 def run_zebrac(
@@ -574,6 +576,8 @@ def run_zebrac(
     shell_command: str,
     *,
     duration_ms: int = 5000,
+    input_bytes: int | None = None,
+    output_bytes: int | None = None,
     progress_callback: Callable[[str, int, int], None] | None = None,
 ) -> ZebracResult:
     """Run a shell command under zebrac and return structured metrics.
@@ -607,6 +611,8 @@ def run_zebrac(
             peak_rss_bytes=_zebrac_stat_fields(result["peak_rss"]),
             instructions=_zebrac_stat_fields(result["instructions"]),
             cache_misses=_zebrac_stat_fields(result["cache_misses"]),
+            input_bytes=input_bytes,
+            output_bytes=output_bytes,
         )
     finally:
         json_file.unlink(missing_ok=True)
@@ -615,6 +621,21 @@ def run_zebrac(
 
 
 def serialize_zebrac_result(result: ZebracResult) -> dict[str, object]:
+    wall_time_median_s = result.wall_time_ns["median"] / 1e9
+    throughput_input_mib_s: float | None = None
+    throughput_output_mib_s: float | None = None
+    throughput_mib_s: float | None = None
+    throughput_basis: str | None = None
+    if result.input_bytes and wall_time_median_s > 0:
+        throughput_input_mib_s = (result.input_bytes / (1024 * 1024)) / wall_time_median_s
+    if result.output_bytes and wall_time_median_s > 0:
+        throughput_output_mib_s = (result.output_bytes / (1024 * 1024)) / wall_time_median_s
+    if result.output_bytes:
+        throughput_mib_s = throughput_output_mib_s
+        throughput_basis = "output"
+    elif result.input_bytes:
+        throughput_mib_s = throughput_input_mib_s
+        throughput_basis = "input"
     return {
         "name": result.name,
         "shell_command": result.shell_command,
@@ -623,9 +644,127 @@ def serialize_zebrac_result(result: ZebracResult) -> dict[str, object]:
         "peak_rss_bytes": result.peak_rss_bytes,
         "instructions": result.instructions,
         "cache_misses": result.cache_misses,
-        "wall_time_median_seconds": result.wall_time_ns["median"] / 1e9,
+        "input_bytes": result.input_bytes,
+        "output_bytes": result.output_bytes,
+        "wall_time_median_seconds": wall_time_median_s,
+        "wall_time_mean_seconds": result.wall_time_ns["mean"] / 1e9,
+        "wall_time_stddev_seconds": result.wall_time_ns["std_dev"] / 1e9,
+        "wall_time_min_seconds": result.wall_time_ns["min"] / 1e9,
+        "wall_time_max_seconds": result.wall_time_ns["max"] / 1e9,
         "peak_rss_median_mib": result.peak_rss_bytes["median"] / (1024 * 1024),
+        "throughput_mib_s": throughput_mib_s,
+        "throughput_input_mib_s": throughput_input_mib_s,
+        "throughput_output_mib_s": throughput_output_mib_s,
+        "throughput_basis": throughput_basis,
     }
+
+
+# ---------------------------------------------------------------------------
+# hyperfine integration
+# ---------------------------------------------------------------------------
+
+
+@dataclass(slots=True)
+class HyperfineResult:
+    name: str
+    shell_command: str
+    runs: int
+    mean_s: float
+    stddev_s: float
+    median_s: float
+    min_s: float
+    max_s: float
+
+
+def run_hyperfine(
+    name: str,
+    shell_command: str,
+    *,
+    warmup: int = 1,
+    runs: int = 10,
+    progress_callback: Callable[[str, int, int], None] | None = None,
+) -> HyperfineResult:
+    """Run a shell command under hyperfine and return wall-time statistics.
+
+    hyperfine is used as a secondary validator: its wall-time median should
+    agree with zebrac's within a few percent. When they agree, zebrac's richer
+    metrics (RSS, instructions, cache misses) can be trusted.
+    """
+    json_file = Path(tempfile.mktemp(suffix=".json", prefix="hyperfine_"))
+    try:
+        try:
+            subprocess.run(
+                [
+                    "hyperfine",
+                    "--warmup", str(warmup),
+                    "--runs", str(runs),
+                    "--export-json", str(json_file),
+                    shell_command,
+                ],
+                check=True,
+                cwd=REPO_ROOT,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
+            )
+        except subprocess.CalledProcessError as exc:
+            stderr = exc.stderr.decode("utf-8", errors="replace") if exc.stderr else ""
+            raise RuntimeError(f"hyperfine failed for {name!r}: {shell_command}\n{stderr}") from exc
+        data = json.loads(json_file.read_text(encoding="utf-8"))
+        r = data["results"][0]
+        return HyperfineResult(
+            name=name,
+            shell_command=shell_command,
+            runs=int(r.get("exit_codes", [0]).__len__() if "exit_codes" in r else runs),
+            mean_s=float(r["mean"]),
+            stddev_s=float(r["stddev"]),
+            median_s=float(r["median"]),
+            min_s=float(r["min"]),
+            max_s=float(r["max"]),
+        )
+    finally:
+        json_file.unlink(missing_ok=True)
+        if progress_callback is not None:
+            progress_callback(name, 1, 1)
+
+
+def serialize_hyperfine_result(result: HyperfineResult) -> dict[str, object]:
+    return {
+        "name": result.name,
+        "shell_command": result.shell_command,
+        "runs": result.runs,
+        "mean_s": result.mean_s,
+        "stddev_s": result.stddev_s,
+        "median_s": result.median_s,
+        "min_s": result.min_s,
+        "max_s": result.max_s,
+    }
+
+
+def compare_wall_times(zebrac: ZebracResult, hyperfine: HyperfineResult) -> dict[str, object]:
+    """Compare zebrac and hyperfine wall-time medians for the same command.
+
+    Returns a summary dict with the two medians, the percent difference
+    (|zebrac - hyperfine| / hyperfine * 100), and whether they agree within
+    10% (a generous threshold that accounts for scheduling noise).
+    """
+    z_s = zebrac.wall_time_ns["median"] / 1e9
+    h_s = hyperfine.median_s
+    if h_s > 0:
+        diff_pct = abs(z_s - h_s) / h_s * 100.0
+    else:
+        diff_pct = 0.0
+    return {
+        "name": zebrac.name,
+        "zebrac_median_s": z_s,
+        "hyperfine_median_s": h_s,
+        "diff_pct": diff_pct,
+        "agrees": diff_pct <= 10.0,
+    }
+
+
+# ---------------------------------------------------------------------------
+# shared shell command builder
+# ---------------------------------------------------------------------------
 
 
 def zebrac_shell_command(command: list[str], stdout_path: Path | None = None) -> str:
@@ -638,4 +777,5 @@ def zebrac_shell_command(command: list[str], stdout_path: Path | None = None) ->
     cmd = " ".join(shlex.quote(str(c)) for c in command)
     if stdout_path is not None:
         cmd = f"{cmd} > {shlex.quote(str(stdout_path))}"
+    return cmd
     return cmd

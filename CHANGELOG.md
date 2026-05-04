@@ -3,6 +3,33 @@
 
 All notable changes to mzarc are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This project follows [Semantic Versioning](https://semver.org/).
 
+## [0.1.13] — 2026-05-04
+
+### Changed
+
+- Benchmarking overhaul: zebrac is now the primary timing tool for all internal
+  operations (encode, decode, mzML codec loops). The Python wall-clock timer
+  (`run_timed_command`, `run_timed_path_command`) is removed from
+  `benchmark_roundtrip` and the mzML codec loops.
+- `benchmark_core.py`: added `HyperfineResult` dataclass, `run_hyperfine()`,
+  `serialize_hyperfine_result()`, and `compare_wall_times()`. zebrac results now
+  carry `input_bytes`/`output_bytes` and emit throughput fields in serialized form.
+- `benchmark_v1.py`: `benchmark_roundtrip` no longer accepts `repeats`; zebrac
+  always runs. Added `--hyperfine-runs` CLI flag (default 10, 0 to skip). mzML
+  codec loops now use zebrac+hyperfine instead of the Python timer.
+- `benchmark_metrics.py`: `build_performance_rows` is now zebrac-primary with a
+  Python-timer fallback. Performance rows include `median_seconds` and
+  `timing_source`. Added `build_timing_validation_rows` to compare zebrac and
+  hyperfine wall-time medians per operation.
+- `benchmark_report.py`: Performance Overview table now shows median time and
+  timing source. Replaced "Timing Variability" section (Python-timer CI scatter)
+  with "Zebrac Statistics" (per-operation median/stddev/min/max) and a new
+  "Timing Validation" section (zebrac vs hyperfine wall-time comparison table).
+- `benchmark_plotting.py`: added `plot_timing_validation` (scatter: zebrac vs
+  hyperfine median, green=agree, red=disagree). `generate_plots` now calls it
+  when timing validation rows are present; `plot_timing_intervals` is no longer
+  called from `generate_plots`.
+
 ## [0.1.12] — 2026-05-04
 
 ### Changed

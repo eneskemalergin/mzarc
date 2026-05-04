@@ -57,12 +57,20 @@ def load_search_impact(path: Path | None) -> dict[str, dict[str, object]]:
 
 
 def build_performance_rows(
-    timings: list[dict[str, object]],
+    zebrac_results: list[dict[str, object]],
     *,
+    timings: list[dict[str, object]] | None = None,
     selected_quant: int,
     external_baselines: list[dict[str, object]],
 ) -> list[dict[str, object]]:
-    timing_by_name = {str(item["name"]): item for item in timings}
+    """Build performance rows with zebrac as the primary timing source.
+
+    For internal operations (dump codecs, mzML codecs, mzarc) zebrac's
+    wall_time_median_seconds is used. For external baselines and any operation
+    missing a zebrac entry, the Python-timer timings list is used as a fallback.
+    """
+    zebrac_by_name = {str(item["name"]): item for item in zebrac_results}
+    timing_by_name = {str(item["name"]): item for item in (timings or [])}
     rows: list[dict[str, object]] = []
 
     def add_row(
@@ -74,22 +82,63 @@ def build_performance_rows(
         status: str,
         notes: str | None = None,
     ) -> None:
-        item = timing_by_name.get(operation or "") if operation is not None else None
-        rows.append(
-            {
-                "artifact": artifact,
-                "direction": direction,
-                "operation": operation,
-                "source_format": source_format,
-                "status": status,
-                "throughput_mib_s": None if item is None else item["throughput_mib_s"],
-                "throughput_input_mib_s": None if item is None else item.get("throughput_input_mib_s"),
-                "throughput_output_mib_s": None if item is None else item.get("throughput_output_mib_s"),
-                "throughput_basis": None if item is None else item.get("throughput_basis"),
-                "mean_seconds": None if item is None else item["mean_seconds"],
-                "notes": notes,
-            }
-        )
+        zitem = zebrac_by_name.get(operation or "") if operation is not None else None
+        titem = timing_by_name.get(operation or "") if operation is not None else None
+        # Prefer zebrac; fall back to Python timer for operations without zebrac coverage
+        if zitem is not None:
+            rows.append(
+                {
+                    "artifact": artifact,
+                    "direction": direction,
+                    "operation": operation,
+                    "source_format": source_format,
+                    "status": status,
+                    "timing_source": "zebrac",
+                    "median_seconds": float(zitem["wall_time_median_seconds"]),
+                    "mean_seconds": float(zitem["wall_time_mean_seconds"]),
+                    "throughput_mib_s": zitem.get("throughput_mib_s"),
+                    "throughput_input_mib_s": zitem.get("throughput_input_mib_s"),
+                    "throughput_output_mib_s": zitem.get("throughput_output_mib_s"),
+                    "throughput_basis": zitem.get("throughput_basis"),
+                    "notes": notes,
+                }
+            )
+        elif titem is not None:
+            rows.append(
+                {
+                    "artifact": artifact,
+                    "direction": direction,
+                    "operation": operation,
+                    "source_format": source_format,
+                    "status": status,
+                    "timing_source": "python-timer",
+                    "median_seconds": titem.get("median_seconds"),
+                    "mean_seconds": titem.get("mean_seconds"),
+                    "throughput_mib_s": titem.get("throughput_mib_s"),
+                    "throughput_input_mib_s": titem.get("throughput_input_mib_s"),
+                    "throughput_output_mib_s": titem.get("throughput_output_mib_s"),
+                    "throughput_basis": titem.get("throughput_basis"),
+                    "notes": notes,
+                }
+            )
+        else:
+            rows.append(
+                {
+                    "artifact": artifact,
+                    "direction": direction,
+                    "operation": operation,
+                    "source_format": source_format,
+                    "status": status,
+                    "timing_source": None,
+                    "median_seconds": None,
+                    "mean_seconds": None,
+                    "throughput_mib_s": None,
+                    "throughput_input_mib_s": None,
+                    "throughput_output_mib_s": None,
+                    "throughput_basis": None,
+                    "notes": notes,
+                }
+            )
 
     internal_rows = [
         ("gzip dump", "compression", "dump -> gzip dump", "dump"),
@@ -306,6 +355,40 @@ def build_memory_rows(zebrac_results: list[dict[str, object]]) -> list[dict[str,
                 "instructions_median": float(item["instructions"]["median"]),
                 "cache_misses_median": float(item["cache_misses"]["median"]),
                 "sample_count": int(item["sample_count"]),
+            }
+        )
+    return rows
+
+
+def build_timing_validation_rows(
+    zebrac_results: list[dict[str, object]],
+    hyperfine_results: list[dict[str, object]],
+) -> list[dict[str, object]]:
+    """Compare zebrac and hyperfine wall-time medians for shared operations.
+
+    Returns one row per operation that appears in both result lists. Each row
+    includes both medians, the absolute percent difference, and a boolean
+    'agrees' flag (True when diff_pct <= 10%).
+    """
+    hyperfine_by_name = {str(item["name"]): item for item in hyperfine_results}
+    rows: list[dict[str, object]] = []
+    for zitem in zebrac_results:
+        name = str(zitem["name"])
+        hitem = hyperfine_by_name.get(name)
+        if hitem is None:
+            continue
+        z_s = float(zitem["wall_time_median_seconds"])
+        h_s = float(hitem["median_s"])
+        diff_pct = abs(z_s - h_s) / h_s * 100.0 if h_s > 0 else 0.0
+        rows.append(
+            {
+                "name": name,
+                "zebrac_median_s": z_s,
+                "hyperfine_median_s": h_s,
+                "diff_pct": diff_pct,
+                "agrees": diff_pct <= 10.0,
+                "zebrac_samples": int(zitem["sample_count"]),
+                "hyperfine_runs": int(hitem["runs"]),
             }
         )
     return rows

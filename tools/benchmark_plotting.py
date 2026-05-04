@@ -381,21 +381,71 @@ def plot_intensity_quantiles(quantile_rows: list[dict[str, object]], path: Path)
     plt.close(fig)
 
 
+def plot_timing_validation(validation_rows: list[dict[str, object]], path: Path) -> None:
+    """Scatter-plot comparing zebrac vs hyperfine wall-time medians.
+
+    Each point is one operation. Points colored green when they agree (diff <= 10%)
+    and red otherwise. The diagonal y=x reference line shows perfect agreement.
+    """
+    frame = pd.DataFrame(validation_rows)
+    if frame.empty:
+        fig, ax = plt.subplots(figsize=(7.0, 5.0))
+        ax.axis("off")
+        ax.text(0.5, 0.5, "No hyperfine comparison data available for this run", ha="center", va="center", fontsize=14)
+        fig.tight_layout()
+        fig.savefig(path, bbox_inches="tight")
+        plt.close(fig)
+        return
+
+    colors = ["#0f766e" if bool(a) else "#dc2626" for a in frame["agrees"]]
+    fig, ax = plt.subplots(figsize=(8.0, 7.0))
+    ax.scatter(frame["hyperfine_median_s"], frame["zebrac_median_s"], c=colors, s=90, zorder=3, edgecolors="#0f172a", linewidths=0.6)
+
+    all_vals = list(frame["zebrac_median_s"]) + list(frame["hyperfine_median_s"])
+    lo, hi = min(all_vals) * 0.9, max(all_vals) * 1.1
+    ax.plot([lo, hi], [lo, hi], color="#94a3b8", linestyle="--", linewidth=1.2, label="y = x (perfect agreement)")
+
+    for _, row in frame.iterrows():
+        ax.annotate(
+            str(row["name"]).replace("dump -> ", "").replace(" -> dump", ""),
+            (float(row["hyperfine_median_s"]), float(row["zebrac_median_s"])),
+            textcoords="offset points",
+            xytext=(5, 3),
+            fontsize=7,
+            color="#334155",
+        )
+
+    import matplotlib.patches as mpatches
+    legend_handles = [
+        mpatches.Patch(color="#0f766e", label="agrees (diff \u2264 10%)"),
+        mpatches.Patch(color="#dc2626", label="disagrees (diff > 10%)"),
+        plt.Line2D([0], [0], color="#94a3b8", linestyle="--", label="y = x"),
+    ]
+    ax.legend(handles=legend_handles, fontsize=9)
+    ax.set_title("Wall-Time Validation: zebrac vs hyperfine")
+    ax.set_xlabel("hyperfine median (s)")
+    ax.set_ylabel("zebrac median (s)")
+    ax.set_xlim(lo, hi)
+    ax.set_ylim(lo, hi)
+    fig.tight_layout()
+    fig.savefig(path, bbox_inches="tight")
+    plt.close(fig)
+
+
 def generate_plots(report: dict, plot_dir: Path) -> dict[str, str]:
     plot_dir.mkdir(parents=True, exist_ok=True)
 
     size_path = plot_dir / "size_comparison.png"
     performance_path = plot_dir / "performance_overview.png"
     fidelity_path = plot_dir / "fidelity_overview.png"
-    timing_path = plot_dir / "timing_intervals.png"
     tradeoff_path = plot_dir / "lossy_tradeoff.png"
     quantile_path = plot_dir / "intensity_relative_quantiles.png"
     memory_path = plot_dir / "memory_footprint.png"
+    validation_path = plot_dir / "timing_validation.png"
 
     plot_size_comparison(report["plot_rows"]["sizes"], size_path)
     plot_performance_overview(report["plot_rows"]["performance"], performance_path)
     plot_fidelity_overview(report["plot_rows"]["fidelity"], fidelity_path)
-    plot_timing_intervals(report["timings"], timing_path)
     plot_lossy_tradeoff(report["plot_rows"]["lossy_sweep"], report["selected_lossy_intensity_quant"], tradeoff_path)
     plot_intensity_quantiles(report["plot_rows"]["intensity_quantiles"], quantile_path)
 
@@ -403,7 +453,6 @@ def generate_plots(report: dict, plot_dir: Path) -> dict[str, str]:
         "size_comparison": size_path.name,
         "performance_overview": performance_path.name,
         "fidelity_overview": fidelity_path.name,
-        "timing_intervals": timing_path.name,
         "lossy_tradeoff": tradeoff_path.name,
         "intensity_relative_quantiles": quantile_path.name,
     }
@@ -412,5 +461,10 @@ def generate_plots(report: dict, plot_dir: Path) -> dict[str, str]:
     if memory_rows:
         plot_memory_footprint(memory_rows, memory_path)
         plots["memory_footprint"] = memory_path.name
+
+    validation_rows = report["plot_rows"].get("timing_validation", [])
+    if validation_rows:
+        plot_timing_validation(validation_rows, validation_path)
+        plots["timing_validation"] = validation_path.name
 
     return plots
