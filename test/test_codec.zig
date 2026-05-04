@@ -2,6 +2,7 @@ const std = @import("std");
 const binary_reader = @import("binary_reader");
 const block = @import("block");
 const codec = @import("codec");
+const quantize = @import("quantize");
 
 /// Assert every decoded m/z is within 0.001 ppm of the original.
 fn checkMzPpm(expected_mz: []const f64, actual_mz: []const f64) !void {
@@ -521,4 +522,233 @@ test "codec encode rejects block_size of zero" {
     };
 
     try std.testing.expectError(error.InvalidBlockSize, codec.encodeFileAlloc(std.testing.allocator, &input, .{ .block_size = 0 }));
+}
+
+test "empirical error bounds: lossless m/z error ≤ 0.5 / scale_factor" {
+    // Build a corpus that covers the full m/z range [50, 6000] with
+    // non-f32-exact values to force the fixed-point path.
+    var mz_buf: [1024]f64 = undefined;
+    var int_buf: [1024]f32 = undefined;
+    for (0..1024) |i| {
+        mz_buf[i] = 50.0 + @as(f64, @floatFromInt(i)) * (5950.0 / 1023.0) + 0.0000001 * @as(f64, @floatFromInt(i % 7));
+        int_buf[i] = @as(f32, @floatFromInt(10 * (i % 100 + 1)));
+    }
+
+    const spectra = [_]binary_reader.RawSpectrum{
+        .{ .scan_id = 1, .rt_seconds = 1.0, .ms_level = 2, .precursor_mz = 500.0, .mz = mz_buf[0..], .intensity = int_buf[0..] },
+    };
+
+    const encoded = try block.encodeBlock(std.testing.allocator, &spectra, .{ .mode = .lossless });
+    defer std.testing.allocator.free(encoded);
+
+    const decoded = try block.decodeBlock(std.testing.allocator, encoded);
+    defer binary_reader.freeSpectra(std.testing.allocator, decoded);
+
+    const max_allowed_error = 0.5 / @as(f64, @floatFromInt(1_000_000_000));
+    var max_actual_error: f64 = 0.0;
+    for (mz_buf[0..], decoded[0].mz) |orig, got| {
+        const err = @abs(got - orig);
+        if (err > max_actual_error) max_actual_error = err;
+    }
+
+    if (max_actual_error > max_allowed_error) {
+        std.debug.print("lossless m/z max error {e:.2} > allowed {e:.2}\n", .{ max_actual_error, max_allowed_error });
+        return error.TestExpectedLessThan;
+    }
+}
+
+test "empirical error bounds: lossy m/z error ≤ 0.5 / scale_factor" {
+    var mz_buf: [1024]f64 = undefined;
+    var int_buf: [1024]f32 = undefined;
+    for (0..1024) |i| {
+        mz_buf[i] = 50.0 + @as(f64, @floatFromInt(i)) * (5950.0 / 1023.0) + 0.0000001 * @as(f64, @floatFromInt(i % 7));
+        int_buf[i] = @as(f32, @floatFromInt(10 * (i % 100 + 1)));
+    }
+
+    const spectra = [_]binary_reader.RawSpectrum{
+        .{ .scan_id = 1, .rt_seconds = 1.0, .ms_level = 2, .precursor_mz = 500.0, .mz = mz_buf[0..], .intensity = int_buf[0..] },
+    };
+
+    const encoded = try block.encodeBlock(std.testing.allocator, &spectra, .{ .mode = .lossy });
+    defer std.testing.allocator.free(encoded);
+
+    const decoded = try block.decodeBlock(std.testing.allocator, encoded);
+    defer binary_reader.freeSpectra(std.testing.allocator, decoded);
+
+    const max_allowed_error = 0.5 / @as(f64, @floatFromInt(500_000));
+    var max_actual_error: f64 = 0.0;
+    for (mz_buf[0..], decoded[0].mz) |orig, got| {
+        const err = @abs(got - orig);
+        if (err > max_actual_error) max_actual_error = err;
+    }
+
+    if (max_actual_error > max_allowed_error) {
+        std.debug.print("lossy m/z max error {e:.2} > allowed {e:.2}\n", .{ max_actual_error, max_allowed_error });
+        return error.TestExpectedLessThan;
+    }
+}
+
+test "empirical error bounds: lossy intensity rel error ≤ exp(log_max/quant) - 1" {
+    // Sweep intensities from 1.0 to ~1e7 covering >7 decades of dynamic range.
+    var mz_buf: [512]f64 = undefined;
+    var int_buf: [512]f32 = undefined;
+    for (0..512) |i| {
+        mz_buf[i] = @as(f64, @floatFromInt(100 + i));
+        int_buf[i] = @floatCast(@exp(@as(f64, @floatFromInt(i)) * (16.0 / @as(f64, 512))));
+    }
+
+    const spectra = [_]binary_reader.RawSpectrum{
+        .{ .scan_id = 1, .rt_seconds = 1.0, .ms_level = 2, .precursor_mz = 500.0, .mz = mz_buf[0..], .intensity = int_buf[0..] },
+    };
+
+    const quant_factor: u16 = 16384;
+    const encoded = try block.encodeBlock(std.testing.allocator, &spectra, .{ .mode = .lossy, .intensity_quant = quant_factor });
+    defer std.testing.allocator.free(encoded);
+
+    const decoded = try block.decodeBlock(std.testing.allocator, encoded);
+    defer binary_reader.freeSpectra(std.testing.allocator, decoded);
+
+    // Compute theoretical max relative error.
+    // The quantization step in log space: Δ = log_max / quant_levels.
+    // max_rel_error ≤ exp(Δ) - 1.
+    var intensity_log_scale: f32 = 0.0;
+    for (int_buf[0..]) |v| {
+        const lm = quantize.intensityLogMax(&[_]f32{v});
+        if (lm > intensity_log_scale) intensity_log_scale = lm;
+    }
+    const delta = @as(f64, intensity_log_scale) / @as(f64, @floatFromInt(quant_factor));
+    const max_allowed_rel_error = std.math.exp(delta) - 1.0;
+
+    var max_actual_rel_error: f64 = 0.0;
+    for (int_buf[0..], decoded[0].intensity) |orig, got| {
+        if (orig == 0.0) continue;
+        const rel_err = @abs(@as(f64, got) - @as(f64, orig)) / @as(f64, orig);
+        if (rel_err > max_actual_rel_error) max_actual_rel_error = rel_err;
+    }
+
+    if (max_actual_rel_error > max_allowed_rel_error * 1.01) {
+        std.debug.print("lossy intensity max rel error {e:.2} > allowed {e:.2} (delta={e:.2})\n", .{ max_actual_rel_error, max_allowed_rel_error, delta });
+        return error.TestExpectedLessThan;
+    }
+}
+
+test "f32 bit-cast path produces exactly zero m/z error" {
+    // Values that are exactly representable as f32 must round-trip with zero error.
+    var mz_buf: [100]f64 = undefined;
+    var int_buf: [100]f32 = undefined;
+    for (0..100) |i| {
+        mz_buf[i] = @as(f64, @as(f32, @floatFromInt(100 + i)));
+        int_buf[i] = @floatFromInt(i);
+    }
+
+    const spectra = [_]binary_reader.RawSpectrum{
+        .{ .scan_id = 1, .rt_seconds = 1.0, .ms_level = 2, .precursor_mz = 500.0, .mz = mz_buf[0..], .intensity = int_buf[0..] },
+    };
+
+    const encoded = try block.encodeBlock(std.testing.allocator, &spectra, .{ .mode = .lossless });
+    defer std.testing.allocator.free(encoded);
+
+    const header = try block.parseHeader(encoded);
+    try std.testing.expect((header.flags & block.flag_lossless_mz_f32) != 0);
+
+    const decoded = try block.decodeBlock(std.testing.allocator, encoded);
+    defer binary_reader.freeSpectra(std.testing.allocator, decoded);
+
+    for (mz_buf[0..], decoded[0].mz) |orig, got| {
+        try std.testing.expectEqual(orig, got);
+    }
+}
+
+test "lossless m/z fixed-point path is used for non-f32 values" {
+    // Monotonically increasing values with sub-f32 precision.
+    var mz_buf: [50]f64 = undefined;
+    var int_buf: [50]f32 = undefined;
+    for (0..50) |i| {
+        mz_buf[i] = 100.0 + @as(f64, @floatFromInt(i)) * 123.4567890123456789;
+        int_buf[i] = @floatFromInt(i);
+    }
+
+    const spectra = [_]binary_reader.RawSpectrum{
+        .{ .scan_id = 1, .rt_seconds = 1.0, .ms_level = 2, .precursor_mz = 500.0, .mz = mz_buf[0..], .intensity = int_buf[0..] },
+    };
+
+    const encoded = try block.encodeBlock(std.testing.allocator, &spectra, .{ .mode = .lossless });
+    defer std.testing.allocator.free(encoded);
+
+    const header = try block.parseHeader(encoded);
+    try std.testing.expect((header.flags & block.flag_lossless_mz_f32) == 0);
+
+    const decoded = try block.decodeBlock(std.testing.allocator, encoded);
+    defer binary_reader.freeSpectra(std.testing.allocator, decoded);
+
+    const max_allowed = 0.5 / @as(f64, @floatFromInt(1_000_000_000));
+    var max_actual: f64 = 0.0;
+    for (mz_buf[0..], decoded[0].mz) |orig, got| {
+        const err = @abs(got - orig);
+        if (err > max_actual) max_actual = err;
+    }
+
+    try std.testing.expect(max_actual <= max_allowed);
+}
+
+test "lossy intensity extremes stay within error bound" {
+    var mz_buf: [100]f64 = undefined;
+    var int_buf: [100]f32 = undefined;
+    for (0..100) |i| {
+        mz_buf[i] = @as(f64, @floatFromInt(200 + i));
+        // Alternating near-zero and near-max intensities to stress error bounds.
+        int_buf[i] = if (i % 2 == 0) @as(f32, @floatCast(2.0)) else @as(f32, @floatCast(@exp(@as(f32, @floatFromInt(14 + (i % 5))))));
+    }
+
+    const quant_factor: u16 = 16384;
+    const spectra = [_]binary_reader.RawSpectrum{
+        .{ .scan_id = 1, .rt_seconds = 1.0, .ms_level = 2, .precursor_mz = 500.0, .mz = mz_buf[0..], .intensity = int_buf[0..] },
+    };
+
+    const encoded = try block.encodeBlock(std.testing.allocator, &spectra, .{ .mode = .lossy, .intensity_quant = quant_factor });
+    defer std.testing.allocator.free(encoded);
+
+    const decoded = try block.decodeBlock(std.testing.allocator, encoded);
+    defer binary_reader.freeSpectra(std.testing.allocator, decoded);
+
+    var log_max: f32 = 0.0;
+    for (int_buf[0..]) |v| {
+        const lm = quantize.intensityLogMax(&[_]f32{v});
+        if (lm > log_max) log_max = lm;
+    }
+    const delta = @as(f64, log_max) / @as(f64, @floatFromInt(quant_factor));
+    const max_allowed = std.math.exp(delta) - 1.0;
+
+    var max_actual: f64 = 0.0;
+    for (int_buf[0..], decoded[0].intensity) |orig, got| {
+        if (orig == 0.0) continue;
+        const rel = @abs(@as(f64, got) - @as(f64, orig)) / @as(f64, orig);
+        if (rel > max_actual) max_actual = rel;
+    }
+
+    try std.testing.expect(max_actual <= max_allowed * 1.01);
+}
+
+test "lossy smallest non-zero intensity has bounded relative error" {
+    // Single peak with intensity = smallest non-zero value above zero-cutoff.
+    var mz_buf = [_]f64{500.0};
+    var int_buf = [_]f32{1.0};
+
+    const quant_factor: u16 = 16384;
+    const spectra = [_]binary_reader.RawSpectrum{
+        .{ .scan_id = 1, .rt_seconds = 1.0, .ms_level = 2, .precursor_mz = 500.0, .mz = mz_buf[0..], .intensity = int_buf[0..] },
+    };
+
+    const encoded = try block.encodeBlock(std.testing.allocator, &spectra, .{ .mode = .lossy, .intensity_quant = quant_factor });
+    defer std.testing.allocator.free(encoded);
+
+    const decoded = try block.decodeBlock(std.testing.allocator, encoded);
+    defer binary_reader.freeSpectra(std.testing.allocator, decoded);
+
+    const rel_err = @abs(@as(f64, decoded[0].intensity[0]) - @as(f64, 1.0)) / 1.0;
+    const log1p_val = std.math.log1p(@as(f64, 1.0));
+    const delta = log1p_val / @as(f64, @floatFromInt(quant_factor));
+    const max_allowed = std.math.exp(delta) - 1.0;
+
+    try std.testing.expect(rel_err <= max_allowed * 1.01);
 }

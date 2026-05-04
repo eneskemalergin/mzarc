@@ -3,6 +3,10 @@ const std = @import("std");
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{ .preferred_optimize_mode = .ReleaseFast });
+    const force_scalar = b.option(bool, "force_scalar", "Force scalar code paths (disable SIMD)") orelse false;
+    const build_options = b.addOptions();
+    build_options.addOption(bool, "force_scalar", force_scalar);
+    const build_options_module = build_options.createModule();
     const binary_reader_module = b.createModule(.{
         .root_source_file = b.path("src/binary_reader.zig"),
         .target = target,
@@ -33,6 +37,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
         .imports = &.{
+            .{ .name = "build_options", .module = build_options_module },
             .{ .name = "binary_reader", .module = binary_reader_module },
             .{ .name = "quantize", .module = quantize_module },
             .{ .name = "bitpack", .module = bitpack_module },
@@ -44,6 +49,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
         .imports = &.{
+            .{ .name = "build_options", .module = build_options_module },
             .{ .name = "block_common", .module = block_common_module },
             .{ .name = "binary_reader", .module = binary_reader_module },
             .{ .name = "quantize", .module = quantize_module },
@@ -56,6 +62,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
         .imports = &.{
+            .{ .name = "build_options", .module = build_options_module },
             .{ .name = "block_common", .module = block_common_module },
             .{ .name = "binary_reader", .module = binary_reader_module },
             .{ .name = "quantize", .module = quantize_module },
@@ -125,6 +132,7 @@ pub fn build(b: *std.Build) void {
                 .target = target,
                 .optimize = optimize,
                 .imports = &.{
+                    .{ .name = "build_options", .module = build_options_module },
                     .{ .name = "binary_reader", .module = binary_reader_module },
                     .{ .name = "quantize", .module = quantize_module },
                     .{ .name = "delta", .module = delta_module },

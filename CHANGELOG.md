@@ -3,6 +3,31 @@
 
 All notable changes to mzarc are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This project follows [Semantic Versioning](https://semver.org/).
 
+## [0.1.10] — 2026-05-03
+
+### Added
+
+- `-Dforce_scalar` build option in `build.zig` (wired for v0.3.x SIMD, currently no-op).
+- Formal error analysis: proven error bounds for all encoding modes with empirical
+  verification. 7 new unit tests validate theory matches practice:
+    - lossless m/z: error ≤ 0.5 / scale_factor
+    - lossy m/z: error ≤ 0.5 / scale_factor
+    - lossy intensity: error ≤ exp(log_max / quant_levels) - 1
+    - f32 bit-cast path produces exactly zero error
+    - Fixed-point path flag verified for non-f32 values
+    - Intensity extremes stay within bound
+    - Smallest non-zero intensity error bounded
+- Format specification: complete block header layout documentation including all
+  flag bits, payload layouts, and rANS frequency table format.
+- Codebase audit: verified correctness of all encode/decode/rans/quantize logic.
+
+### Changed
+
+- Lossless m/z validation tolerance tightened from 1e-5 Da to 1e-9 Da (2× theoretical
+  max error, previously 20,000× too loose).
+
+---
+
 ## [0.1.9] — 2026-05-03
 
 ### Changed

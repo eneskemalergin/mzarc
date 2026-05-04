@@ -4,6 +4,11 @@ const binary_reader = @import("binary_reader");
 const quantize = @import("quantize");
 const bitpack = @import("bitpack");
 const rans = @import("rans");
+const build_options = @import("build_options");
+
+/// Force scalar code paths. Set via `-Dforce_scalar=true` in build.zig.
+/// Used by SIMD FOR unpack in v0.3.x.
+pub const force_scalar = build_options.force_scalar;
 
 pub const Allocator = std.mem.Allocator;
 

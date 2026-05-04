@@ -286,7 +286,7 @@ fn commandInspect(allocator: std.mem.Allocator, args: []const [:0]const u8) !voi
 // validate / validate-adversarial
 // ---------------------------------------------------------------------------
 
-const lossless_mz_tolerance_da: f64 = 1e-5;
+const lossless_mz_tolerance_da: f64 = 1e-9;
 const lossy_mz_max_error_da: f64 = 0.002;
 const lossy_intensity_p95_threshold: f64 = 0.001; // 0.1%
 
