@@ -3,6 +3,39 @@
 
 All notable changes to mzarc are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This project follows [Semantic Versioning](https://semver.org/).
 
+## [0.1.12] — 2026-05-04
+
+### Changed
+
+- `block_encode.zig`: `encodeBlockDetailed` now accepts a caller-owned `scratch:
+  Allocator` instead of creating an internal arena. `codec.zig` hot loop owns one
+  `ArenaAllocator` reset with `.retain_capacity` between blocks, eliminating
+  ~100 `mmap`/`munmap` pairs per encode. encode cache_misses −69%, peak_rss
+  101.8→93.8 MB.
+- `block_encode.zig:writeHeader`: 12 separate `append`/`appendIntLe` calls
+  replaced with a 40-byte stack buffer written via `std.mem.writeInt` and a
+  single `appendSlice`. Eliminates 11 redundant capacity checks per block.
+- `block_decode.zig`: introduced `decodeBlockWithScratch(allocator, scratch,
+  block_bytes)`. `decodeBlock` wraps it with a one-shot arena for standalone
+  callers. `codec.zig` decode hot loop uses a per-file arena reset with
+  `.retain_capacity`. decode cache_misses −79%, peak_rss 87.2→83.2 MB.
+- `block.zig`: re-exports `decodeBlockWithScratch` in the public API.
+- Added `--verbose-timing` flag to encode and decode subcommands for phase-level
+  wall time reporting (`clock_gettime` MONOTONIC).
+
+### Measured (no code change)
+
+- m/z double rANS trial: no redundant work; the per-spectrum branch never fires
+  on f32-exact data.
+- Adaptive m/z scale factor: mathematically unsound for f32-origin values. Current
+  f32 detection already handles benchmark data optimally.
+- rANS gain thresholds: well-calibrated. m/z min gain=20.4% (threshold 5%).
+- rANS decode inner loop: serial state dependency chain is the hard limit at ~24
+  cycles/symbol. Table rebuild=0.59ms (0.8% of rANS time). No viable optimization
+  without a format change. Deferred to v0.3.x.
+
+---
+
 ## [0.1.11] — 2026-05-04
 
 ### Fixed
