@@ -28,7 +28,6 @@ import argparse
 import dataclasses
 import random
 import struct
-import sys
 from pathlib import Path
 
 RECORD_HEADER = struct.Struct("<IfB3xdI4x")  # scan_id u32, rt f32, ms_level u8, pad3, precursor_mz f64, peak_count u32, pad4

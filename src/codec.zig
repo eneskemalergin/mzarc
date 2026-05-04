@@ -140,12 +140,6 @@ fn addBlockBytes(total: *FileByteBreakdown, block_bytes: block.BlockByteBreakdow
     total.total_bytes += block_bytes.total_bytes;
 }
 
-fn appendIntLe(list: *std.ArrayList(u8), allocator: Allocator, comptime T: type, value: T) !void {
-    var buffer: [@sizeOf(T)]u8 = undefined;
-    std.mem.writeInt(T, &buffer, value, .little);
-    try list.appendSlice(allocator, &buffer);
-}
-
 fn readIntLe(comptime T: type, bytes: []const u8) T {
     return std.mem.readInt(T, bytes[0..@sizeOf(T)], .little);
 }
@@ -183,10 +177,6 @@ fn writeHeaderInto(bytes: []u8, header: FileHeader) void {
     std.mem.writeInt(u32, bytes[16..20], header.spectrum_count, .little);
     std.mem.writeInt(u32, bytes[20..24], header.block_count, .little);
     std.mem.writeInt(u64, bytes[24..32], header.total_peaks, .little);
-}
-
-fn freeSpectrumRefs(allocator: Allocator, spectra: []binary_reader.RawSpectrum) void {
-    allocator.free(spectra);
 }
 
 fn writeOrderEntry(bytes: []u8, entry_index: usize, value: u32) void {
@@ -350,8 +340,7 @@ pub fn inspectAlloc(allocator: Allocator, bytes: []const u8) !Inspection {
     var ms2_spectra: usize = 0;
     var byte_breakdown = emptyFileByteBreakdown(initial_offset - header_len);
 
-    for (blocks, 0..) |*block_info, idx| {
-        _ = idx;
+    for (blocks) |*block_info| {
         if (bytes.len - offset < block.header_len) return error.UnexpectedEndOfStream;
         const block_header = try block.parseHeader(bytes[offset .. offset + block.header_len]);
         const total_bytes = block.header_len + @as(usize, block_header.payload_bytes);

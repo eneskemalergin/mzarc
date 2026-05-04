@@ -26,7 +26,6 @@ import dataclasses
 import hashlib
 import random
 import struct
-import sys
 from pathlib import Path
 
 TARGET_COUNT = 1_000

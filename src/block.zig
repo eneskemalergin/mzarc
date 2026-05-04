@@ -183,21 +183,6 @@ fn packedByteLen(bit_width: u8, count: usize) usize {
     return ((@as(usize, bit_width) * count) + 7) / 8;
 }
 
-const PerSpectrumMzPack = struct {
-    max_bit_width: u8,
-    bit_widths: []u8,
-    payload: []u8,
-
-    fn deinit(self: PerSpectrumMzPack, allocator: Allocator) void {
-        allocator.free(self.bit_widths);
-        allocator.free(self.payload);
-    }
-
-    fn totalRawBytes(self: PerSpectrumMzPack) usize {
-        return self.bit_widths.len + self.payload.len;
-    }
-};
-
 const PerSpectrumMzAnalysis = struct {
     max_bit_width: u8,
     bit_widths: []u8,
@@ -243,36 +228,6 @@ fn packForSliceFixedBase(payload: []u8, values: []const u64, base: u64, bit_widt
             remaining -= chunk_bits;
         }
     }
-}
-
-fn packMzPerSpectrumAlloc(
-    allocator: Allocator,
-    spectra: []const binary_reader.RawSpectrum,
-    mz_values: []const u64,
-    base: u64,
-) !PerSpectrumMzPack {
-    const analysis = try analyzeMzPerSpectrumAlloc(allocator, spectra, mz_values, base);
-    defer analysis.deinit(allocator);
-
-    const payload = try allocator.alloc(u8, analysis.payload_len);
-    errdefer allocator.free(payload);
-
-    var value_cursor: usize = 0;
-    var payload_cursor: usize = 0;
-    for (spectra, 0..) |spectrum, spectrum_idx| {
-        const spectrum_values = mz_values[value_cursor .. value_cursor + spectrum.mz.len];
-        const bit_width = analysis.bit_widths[spectrum_idx];
-        const payload_len = packedByteLen(bit_width, spectrum.mz.len);
-        packForSliceFixedBase(payload[payload_cursor .. payload_cursor + payload_len], spectrum_values, base, bit_width);
-        value_cursor += spectrum.mz.len;
-        payload_cursor += payload_len;
-    }
-
-    return .{
-        .max_bit_width = analysis.max_bit_width,
-        .bit_widths = try allocator.dupe(u8, analysis.bit_widths),
-        .payload = payload,
-    };
 }
 
 fn analyzeMzPerSpectrumAlloc(
