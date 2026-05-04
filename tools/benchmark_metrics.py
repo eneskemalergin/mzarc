@@ -287,3 +287,26 @@ def build_search_impact_rows(
 
     return rows
 
+
+def build_memory_rows(zebrac_results: list[dict[str, object]]) -> list[dict[str, object]]:
+    """Build per-operation memory and CPU metric rows from serialized zebrac results.
+
+    Each row covers one encode or decode command. Only the median values are
+    surfaced since they are robust to outliers and zebrac's sample counts are
+    high enough to make the median stable.
+    """
+    rows: list[dict[str, object]] = []
+    for item in zebrac_results:
+        rows.append(
+            {
+                "operation": str(item["name"]),
+                "wall_time_median_seconds": float(item["wall_time_median_seconds"]),
+                "peak_rss_median_mib": float(item["peak_rss_median_mib"]),
+                "peak_rss_min_mib": float(item["peak_rss_bytes"]["min"]) / (1024 * 1024),
+                "instructions_median": float(item["instructions"]["median"]),
+                "cache_misses_median": float(item["cache_misses"]["median"]),
+                "sample_count": int(item["sample_count"]),
+            }
+        )
+    return rows
+

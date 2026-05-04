@@ -13,6 +13,7 @@ from benchmark_core import (
     DEFAULT_LOSSY_LEVEL,
     REPO_ROOT,
     ProgressBar,
+    ZebracResult,
     collect_file_stats,
     compare_dumps,
     parse_lossy_sweep,
@@ -23,7 +24,10 @@ from benchmark_core import (
     run_timed_callable,
     run_timed_command,
     run_timed_path_command,
+    run_zebrac,
     serialize_timing_result,
+    serialize_zebrac_result,
+    zebrac_shell_command,
 )
 from benchmark_external import (
     estimate_external_steps,
@@ -32,6 +36,7 @@ from benchmark_external import (
 )
 from benchmark_metrics import (
     build_fidelity_metric_rows,
+    build_memory_rows,
     build_performance_rows,
     build_search_impact_rows,
     load_search_impact,
@@ -82,6 +87,7 @@ def benchmark_roundtrip(
     decode_output_bytes: int,
     encode_writes_file: bool = False,
     decode_writes_file: bool = False,
+    zebrac_duration_ms: int | None = None,
 ) -> dict[str, object]:
     encode_timing = timed_command(
         encode_name,
@@ -104,9 +110,35 @@ def benchmark_roundtrip(
         output_path=decode_path if decode_writes_file else None,
         stdout_path=None if decode_writes_file else decode_path,
     )
+
+    encode_zebrac: ZebracResult | None = None
+    decode_zebrac: ZebracResult | None = None
+    if zebrac_duration_ms is not None:
+        enc_stdout = None if encode_writes_file else encode_path
+        dec_stdout = None if decode_writes_file else decode_path
+        encode_zebrac = run_zebrac(
+            encode_name,
+            zebrac_shell_command(encode_command, enc_stdout),
+            duration_ms=zebrac_duration_ms,
+            progress_callback=progress.callback(f"{encode_progress} [zebrac]"),
+        )
+        decode_zebrac = run_zebrac(
+            decode_name,
+            zebrac_shell_command(decode_command, dec_stdout),
+            duration_ms=zebrac_duration_ms,
+            progress_callback=progress.callback(f"{decode_progress} [zebrac]"),
+        )
+
     fidelity = asdict(compare_dumps(fidelity_name, reference_dump, read_dump(decode_path)))
     progress.step(f"compare {artifact} fidelity")
-    return {"path": encode_path, "encode_timing": encode_timing, "decode_timing": decode_timing, "fidelity": fidelity}
+    return {
+        "path": encode_path,
+        "encode_timing": encode_timing,
+        "decode_timing": decode_timing,
+        "encode_zebrac": encode_zebrac,
+        "decode_zebrac": decode_zebrac,
+        "fidelity": fidelity,
+    }
 
 
 def lossy_sweep_row(*, quant: int, encoded_path: Path, encoded_rel: str, fidelity: dict[str, object]) -> dict[str, object]:
@@ -214,6 +246,13 @@ def build_parser() -> argparse.ArgumentParser:
         "--no-progress",
         action="store_true",
         help="Disable the terminal progress bar",
+    )
+    parser.add_argument(
+        "--zebrac-duration",
+        type=int,
+        default=5000,
+        help="Duration in milliseconds for each zebrac measurement window (default: 5000). "
+             "Set to 0 to skip zebrac measurements entirely.",
     )
     parser.add_argument(
         "--build",
@@ -431,10 +470,12 @@ def main() -> None:
         mscompress_to_dump_command_template=args.mscompress_to_dump_command_template,
         mscompress_benchmark_threaded=args.mscompress_benchmark_threaded,
     )
+    zebrac_steps_full = 24 if args.zebrac_duration > 0 else 0  # 10 dump + 10 mzML + 4 mzarc
+    zebrac_steps_mzarc_only = 4 if args.zebrac_duration > 0 else 0
     total_steps = (
-        (args.repeats * 4) + (2 * len(extra_sweep_levels)) + 8
+        (args.repeats * 4) + (2 * len(extra_sweep_levels)) + 8 + zebrac_steps_mzarc_only
         if args.mzarc_only
-        else (args.repeats * 25) + (2 * len(extra_sweep_levels)) + external_steps + 16
+        else (args.repeats * 25) + (2 * len(extra_sweep_levels)) + external_steps + 16 + zebrac_steps_full
     )
     progress = ProgressBar(total_steps, enabled=not args.no_progress)
 
@@ -473,6 +514,8 @@ def main() -> None:
         mzml_encode_timings: dict[str, object] = {}
         mzml_decode_timings: dict[str, object] = {}
 
+        zebrac_duration_ms = args.zebrac_duration if args.zebrac_duration > 0 else None
+
         if not args.mzarc_only:
             require_tool("gzip")
             require_tool("zstd")
@@ -506,6 +549,7 @@ def main() -> None:
                     progress=progress,
                     encode_input_bytes=dump_bytes,
                     decode_output_bytes=dump_bytes,
+                    zebrac_duration_ms=zebrac_duration_ms,
                 )
 
             # --- mzML-level compressors: raw inflate/deflate speed on the interchange format ---
@@ -516,10 +560,13 @@ def main() -> None:
                 ("lz4",   "lz4_mzml",   ["lz4", "-q", "-c"],   ["lz4", "-q", "-d", "-c"]),
                 ("xz",    "xz_mzml",    ["xz", "-c"],           ["xz", "-d", "-c"]),
             ]
+            mzml_zebrac: dict[str, dict[str, ZebracResult]] = {}
             for _c, _key, _enc, _dec in _MZML_CODECS:
                 _label = f"{_c} mzML"
+                _enc_name = f"mzML -> {_label}"
+                _dec_name = f"{_label} -> mzML"
                 mzml_encode_timings[_c] = timed_command(
-                    f"mzML -> {_label}",
+                    _enc_name,
                     _enc + [mzml_rel],
                     repeats=args.repeats,
                     progress=progress,
@@ -528,7 +575,7 @@ def main() -> None:
                     stdout_path=paths[_key],
                 )
                 mzml_decode_timings[_c] = timed_command(
-                    f"{_label} -> mzML",
+                    _dec_name,
                     _dec + [rp(_key)],
                     repeats=args.repeats,
                     progress=progress,
@@ -537,6 +584,21 @@ def main() -> None:
                     output_bytes=mzml_bytes,
                     stdout_path=paths[f"{_key}_roundtrip"],
                 )
+                if zebrac_duration_ms is not None:
+                    mzml_zebrac[_c] = {
+                        "encode": run_zebrac(
+                            _enc_name,
+                            zebrac_shell_command(_enc + [mzml_rel], paths[_key]),
+                            duration_ms=zebrac_duration_ms,
+                            progress_callback=progress.callback(f"mzML -> {_label} [zebrac]"),
+                        ),
+                        "decode": run_zebrac(
+                            _dec_name,
+                            zebrac_shell_command(_dec + [rp(_key)], paths[f"{_key}_roundtrip"]),
+                            duration_ms=zebrac_duration_ms,
+                            progress_callback=progress.callback(f"{_label} -> mzML [zebrac]"),
+                        ),
+                    }
             progress.step("record gzip/zstd/bzip2/lz4/xz mzML sizes")
 
         lossless_result = benchmark_roundtrip(
@@ -557,6 +619,7 @@ def main() -> None:
             decode_output_bytes=dump_bytes,
             encode_writes_file=True,
             decode_writes_file=True,
+            zebrac_duration_ms=zebrac_duration_ms,
         )
         lossy_result = benchmark_roundtrip(
             artifact=f"mzarc lossy q={selected_quant}",
@@ -576,6 +639,7 @@ def main() -> None:
             decode_output_bytes=dump_bytes,
             encode_writes_file=True,
             decode_writes_file=True,
+            zebrac_duration_ms=zebrac_duration_ms,
         )
 
         lossless_fidelity = lossless_result["fidelity"]
@@ -702,6 +766,15 @@ def main() -> None:
                 serialize_timing_result(lossy_result["encode_timing"]),
                 serialize_timing_result(lossy_result["decode_timing"]),
             ]
+
+            serialized_zebrac = list(existing_report.get("zebrac_results", []))
+            mzarc_zebrac_names = mzarc_timing_names
+            serialized_zebrac = [r for r in serialized_zebrac if str(r.get("name")) not in mzarc_zebrac_names]
+            for _result in [lossless_result, lossy_result]:
+                if _result.get("encode_zebrac") is not None:
+                    serialized_zebrac.append(serialize_zebrac_result(_result["encode_zebrac"]))
+                if _result.get("decode_zebrac") is not None:
+                    serialized_zebrac.append(serialize_zebrac_result(_result["decode_zebrac"]))
         else:
             fidelity_rows = [
                 {"artifact": f"{_c} dump", "data": dump_results[_c]["fidelity"]}
@@ -729,6 +802,28 @@ def main() -> None:
             ]
             serialized_timings.extend(serialize_timing_result(item) for item in external_results["timings"])
 
+            serialized_zebrac: list[dict[str, object]] = []
+            # dump codecs
+            for _c in ["gzip", "zstd", "bzip2", "lz4", "xz"]:
+                _dr = dump_results[_c]
+                if _dr.get("encode_zebrac") is not None:
+                    serialized_zebrac.append(serialize_zebrac_result(_dr["encode_zebrac"]))
+                if _dr.get("decode_zebrac") is not None:
+                    serialized_zebrac.append(serialize_zebrac_result(_dr["decode_zebrac"]))
+            # mzML codecs
+            for _c in ["gzip", "zstd", "bzip2", "lz4", "xz"]:
+                _mz = mzml_zebrac.get(_c, {})
+                if _mz.get("encode") is not None:
+                    serialized_zebrac.append(serialize_zebrac_result(_mz["encode"]))
+                if _mz.get("decode") is not None:
+                    serialized_zebrac.append(serialize_zebrac_result(_mz["decode"]))
+            # mzarc
+            for _result in [lossless_result, lossy_result]:
+                if _result.get("encode_zebrac") is not None:
+                    serialized_zebrac.append(serialize_zebrac_result(_result["encode_zebrac"]))
+                if _result.get("decode_zebrac") is not None:
+                    serialized_zebrac.append(serialize_zebrac_result(_result["decode_zebrac"]))
+
         performance_rows = build_performance_rows(
             serialized_timings,
             selected_quant=selected_quant,
@@ -745,10 +840,12 @@ def main() -> None:
             search_impact_data=search_impact_data,
             fidelity_metric_rows=fidelity_metric_rows,
         )
+        memory_metric_rows = build_memory_rows(serialized_zebrac)
         plot_rows = {
             "sizes": [{"artifact": name, "size_mib": item["bytes"] / (1024 * 1024)} for name, item in sizes.items()],
             "performance": performance_rows,
             "fidelity": fidelity_metric_rows,
+            "memory_metrics": memory_metric_rows,
             "lossy_sweep": [
                 {
                     "intensity_quant": row["intensity_quant"],
@@ -784,6 +881,7 @@ def main() -> None:
                 f"mzarc lossy q={selected_quant}": lossy_layout["byte_breakdown"],
             },
             "timings": serialized_timings,
+            "zebrac_results": serialized_zebrac,
             "fidelity": {
                 "mzarc_lossless": lossless_fidelity,
                 "mzarc_lossy": lossy_fidelity,
@@ -791,6 +889,7 @@ def main() -> None:
             "fidelity_rows": fidelity_rows,
             "fidelity_metrics": fidelity_metric_rows,
             "performance_rows": performance_rows,
+            "memory_metric_rows": memory_metric_rows,
             "search_impact_rows": search_impact_rows,
             "lossy_sweep": lossy_sweep_rows,
             "plot_rows": plot_rows,

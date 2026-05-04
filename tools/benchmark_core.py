@@ -2,13 +2,16 @@ from __future__ import annotations
 
 import contextlib
 import io
+import json
 import math
 import os
+import shlex
 import shutil
 import statistics
 import struct
 import subprocess
 import sys
+import tempfile
 import time
 from collections.abc import Callable
 from dataclasses import asdict, dataclass
@@ -542,3 +545,97 @@ def parse_lossy_sweep(levels: str | None, selected_level: int) -> tuple[int, ...
         values.append(selected_level)
 
     return tuple(sorted(set(values)))
+
+
+# ---------------------------------------------------------------------------
+# zebrac integration
+# ---------------------------------------------------------------------------
+
+ZEBRAC_BIN = REPO_ROOT / "tools" / "zebrac"
+
+
+def _zebrac_stat_fields(metric: dict) -> dict[str, float]:
+    return {k: float(metric[k]) for k in ("mean", "median", "std_dev", "min", "max", "q1", "q3")}
+
+
+@dataclass(slots=True)
+class ZebracResult:
+    name: str
+    shell_command: str
+    sample_count: int
+    wall_time_ns: dict[str, float]
+    peak_rss_bytes: dict[str, float]
+    instructions: dict[str, float]
+    cache_misses: dict[str, float]
+
+
+def run_zebrac(
+    name: str,
+    shell_command: str,
+    *,
+    duration_ms: int = 5000,
+    progress_callback: Callable[[str, int, int], None] | None = None,
+) -> ZebracResult:
+    """Run a shell command under zebrac and return structured metrics.
+
+    zebrac writes its progress UI directly to /dev/tty, so it appears on the
+    terminal regardless of stdout/stderr redirection. The JSON results are
+    written to a temporary file and parsed here.
+    """
+    if not ZEBRAC_BIN.exists():
+        raise FileNotFoundError(f"zebrac binary not found at {ZEBRAC_BIN}")
+    json_file = Path(tempfile.mktemp(suffix=".json", prefix="zebrac_"))
+    try:
+        try:
+            subprocess.run(
+                [str(ZEBRAC_BIN), "--duration", str(duration_ms), "--json", str(json_file), shell_command],
+                check=True,
+                cwd=REPO_ROOT,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
+            )
+        except subprocess.CalledProcessError as exc:
+            stderr = exc.stderr.decode("utf-8", errors="replace") if exc.stderr else ""
+            raise RuntimeError(f"zebrac failed for {name!r}: {shell_command}\n{stderr}") from exc
+        data = json.loads(json_file.read_text(encoding="utf-8"))
+        result = data["results"][0]
+        return ZebracResult(
+            name=name,
+            shell_command=shell_command,
+            sample_count=int(result["sample_count"]),
+            wall_time_ns=_zebrac_stat_fields(result["wall_time"]),
+            peak_rss_bytes=_zebrac_stat_fields(result["peak_rss"]),
+            instructions=_zebrac_stat_fields(result["instructions"]),
+            cache_misses=_zebrac_stat_fields(result["cache_misses"]),
+        )
+    finally:
+        json_file.unlink(missing_ok=True)
+        if progress_callback is not None:
+            progress_callback(name, 1, 1)
+
+
+def serialize_zebrac_result(result: ZebracResult) -> dict[str, object]:
+    return {
+        "name": result.name,
+        "shell_command": result.shell_command,
+        "sample_count": result.sample_count,
+        "wall_time_ns": result.wall_time_ns,
+        "peak_rss_bytes": result.peak_rss_bytes,
+        "instructions": result.instructions,
+        "cache_misses": result.cache_misses,
+        "wall_time_median_seconds": result.wall_time_ns["median"] / 1e9,
+        "peak_rss_median_mib": result.peak_rss_bytes["median"] / (1024 * 1024),
+    }
+
+
+def zebrac_shell_command(command: list[str], stdout_path: Path | None = None) -> str:
+    """Build a shell command string for zebrac from a command list.
+
+    When stdout_path is given, appends "> path" so commands that normally
+    write to stdout produce their output file consistently across zebrac runs.
+    Paths are quoted with shlex.quote to handle spaces and special chars.
+    """
+    cmd = " ".join(shlex.quote(str(c)) for c in command)
+    if stdout_path is not None:
+        cmd = f"{cmd} > {shlex.quote(str(stdout_path))}"
+    return cmd

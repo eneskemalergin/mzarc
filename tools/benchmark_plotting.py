@@ -308,6 +308,54 @@ def plot_lossy_tradeoff(lossy_rows: list[dict[str, object]], selected_quant: int
     plt.close(fig)
 
 
+def plot_memory_footprint(memory_rows: list[dict[str, object]], path: Path) -> None:
+    frame = pd.DataFrame(memory_rows)
+    if frame.empty:
+        fig, ax = plt.subplots(figsize=(10.0, 3.2))
+        ax.axis("off")
+        ax.text(0.5, 0.5, "No zebrac memory rows available for this run", ha="center", va="center", fontsize=16)
+        fig.tight_layout()
+        fig.savefig(path, bbox_inches="tight")
+        plt.close(fig)
+        return
+
+    # Split into encode and decode rows for side-by-side display.
+    def _is_encode(name: str) -> bool:
+        lower = name.lower()
+        return "encode" in lower or ("-> mzarc" in lower) or ("-> gzip" in lower) or ("-> zstd" in lower) or ("-> bzip2" in lower) or ("-> lz4" in lower) or ("-> xz" in lower) or ("mzml ->" in lower) or ("dump ->" in lower)
+
+    frame["direction"] = frame["operation"].apply(lambda n: "encode / compress" if _is_encode(str(n)) else "decode / decompress")
+    palette_map = {
+        "encode / compress": "#0f766e",
+        "decode / decompress": "#2563eb",
+    }
+    colors = [palette_map[d] for d in frame["direction"]]
+
+    fig, ax = plt.subplots(figsize=(10.5, max(4.0, 0.55 * len(frame) + 1.6)))
+    ax.barh(frame["operation"], frame["peak_rss_median_mib"], color=colors)
+    max_rss = float(frame["peak_rss_median_mib"].max())
+    for patch, (_, row) in zip(ax.patches, frame.iterrows(), strict=True):
+        ax.text(
+            patch.get_width() + max(max_rss * 0.015, 0.1),
+            patch.get_y() + patch.get_height() / 2,
+            f"{row['peak_rss_median_mib']:.1f} MiB",
+            va="center",
+            ha="left",
+            fontsize=10,
+        )
+    ax.set_title("Peak RSS by Operation (zebrac median)")
+    ax.set_xlabel("peak RSS (MiB)")
+    ax.set_ylabel("")
+    ax.margins(x=0.18)
+    # Legend patches
+    import matplotlib.patches as mpatches
+    legend_handles = [mpatches.Patch(color=v, label=k) for k, v in palette_map.items()]
+    ax.legend(handles=legend_handles, loc="lower right", fontsize=10)
+    fig.tight_layout()
+    fig.savefig(path, bbox_inches="tight")
+    plt.close(fig)
+
+
 def plot_intensity_quantiles(quantile_rows: list[dict[str, object]], path: Path) -> None:
     frame = pd.DataFrame(quantile_rows)
 
@@ -342,6 +390,7 @@ def generate_plots(report: dict, plot_dir: Path) -> dict[str, str]:
     timing_path = plot_dir / "timing_intervals.png"
     tradeoff_path = plot_dir / "lossy_tradeoff.png"
     quantile_path = plot_dir / "intensity_relative_quantiles.png"
+    memory_path = plot_dir / "memory_footprint.png"
 
     plot_size_comparison(report["plot_rows"]["sizes"], size_path)
     plot_performance_overview(report["plot_rows"]["performance"], performance_path)
@@ -350,7 +399,7 @@ def generate_plots(report: dict, plot_dir: Path) -> dict[str, str]:
     plot_lossy_tradeoff(report["plot_rows"]["lossy_sweep"], report["selected_lossy_intensity_quant"], tradeoff_path)
     plot_intensity_quantiles(report["plot_rows"]["intensity_quantiles"], quantile_path)
 
-    return {
+    plots = {
         "size_comparison": size_path.name,
         "performance_overview": performance_path.name,
         "fidelity_overview": fidelity_path.name,
@@ -358,3 +407,10 @@ def generate_plots(report: dict, plot_dir: Path) -> dict[str, str]:
         "lossy_tradeoff": tradeoff_path.name,
         "intensity_relative_quantiles": quantile_path.name,
     }
+
+    memory_rows = report["plot_rows"].get("memory_metrics", [])
+    if memory_rows:
+        plot_memory_footprint(memory_rows, memory_path)
+        plots["memory_footprint"] = memory_path.name
+
+    return plots

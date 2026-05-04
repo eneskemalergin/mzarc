@@ -207,6 +207,34 @@ def render_markdown(report: dict) -> str:
         ["left", "left", "left", "right", "right", "left", "left", "left"],
     )
 
+    memory_metric_rows = report.get("memory_metric_rows", [])
+    if memory_metric_rows:
+        section("Memory and CPU Metrics")
+        paragraph(
+            "The following metrics were collected by zebrac, which runs each command repeatedly "
+            "over a fixed duration window using Linux perf counters. Reported values are medians "
+            "across all samples in the window. Peak RSS is the highest resident set size observed "
+            "for that process. Instructions and cache misses are per-run hardware counter readings."
+        )
+        if "memory_footprint" in report.get("plots", {}):
+            image("Peak RSS Comparison", f"plots/{report['plots']['memory_footprint']}")
+        table(
+            ["operation", "wall time (median)", "peak RSS (median)", "peak RSS (min)", "instructions (median)", "cache misses (median)", "samples"],
+            [
+                [
+                    row["operation"],
+                    _format_optional_number(row["wall_time_median_seconds"], precision=4, suffix="s"),
+                    f"{row['peak_rss_median_mib']:.1f} MiB",
+                    f"{row['peak_rss_min_mib']:.1f} MiB",
+                    f"{row['instructions_median']:.3g}",
+                    f"{row['cache_misses_median']:.3g}",
+                    str(row["sample_count"]),
+                ]
+                for row in memory_metric_rows
+            ],
+            ["left", "right", "right", "right", "right", "right", "right"],
+        )
+
     section("Timing Variability")
     image("Timing Variability Across Runs", f"plots/{report['plots']['timing_intervals']}")
     paragraph(
