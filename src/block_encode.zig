@@ -147,7 +147,9 @@ fn buildRtDeltas(allocator: Allocator, spectra: []const binary_reader.RawSpectru
         if (spectrum.rt_seconds < spectra[idx - 1].rt_seconds) return error.NonMonotonicRt;
         const cur_bits: u32 = @bitCast(spectrum.rt_seconds);
         const prev_bits: u32 = @bitCast(spectra[idx - 1].rt_seconds);
-        result[idx] = cur_bits - prev_bits;
+        // cur_bits < prev_bits only when prev = -0.0 (0x80000000) and cur = +0.0 (0x00000000).
+        // The floats are equal (RT is non-decreasing), so the delta is 0.
+        result[idx] = if (cur_bits >= prev_bits) cur_bits - prev_bits else 0;
     }
     return result;
 }
@@ -456,8 +458,29 @@ pub fn encodeBlockDetailed(allocator: Allocator, spectra: []const binary_reader.
             flags |= common.flag_lossless_intensity_raw;
             stats.intensity_mode = .raw_plain;
             stats.intensity_base_bytes = raw_plain_bytes;
-            stats.intensity_stored_bytes = raw_plain_bytes;
-            try appendRawIntensityBytes(&payload, tmp, spectra);
+
+            var raw_intensity: std.ArrayList(u8) = .empty;
+            defer raw_intensity.deinit(tmp);
+            try appendRawIntensityBytes(&raw_intensity, tmp, spectra);
+
+            const raw_candidate = try common.maybeEncodeRansAlloc(tmp, raw_intensity.items, options.intensity_rans_min_gain_percent);
+            defer raw_candidate.deinit(tmp);
+
+            stats.intensity_estimated_rans_bytes = if (raw_candidate.estimated_total_bytes == 0)
+                raw_plain_bytes
+            else
+                @sizeOf(u32) + raw_candidate.estimated_total_bytes;
+
+            if (raw_candidate.encoded) |rans_payload| {
+                flags |= common.flag_rans_intensity;
+                stats.intensity_rans_used = true;
+                stats.intensity_stored_bytes = @sizeOf(u32) + rans_payload.len;
+                try common.appendIntLe(&payload, tmp, u32, @intCast(rans_payload.len));
+                try payload.appendSlice(tmp, rans_payload);
+            } else {
+                stats.intensity_stored_bytes = raw_intensity.items.len;
+                try payload.appendSlice(tmp, raw_intensity.items);
+            }
         }
     } else {
         const quantized_intensity = try flattenIntensityLossyToU64(

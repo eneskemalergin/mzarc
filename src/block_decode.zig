@@ -402,6 +402,15 @@ pub fn decodeBlock(allocator: Allocator, block_bytes: []const u8) ![]binary_read
 
     if (offset != payload.len) return error.TrailingBlockPayload;
 
+    if (header.decompressed_bytes != 0) {
+        const expected_decompressed: usize =
+            (@as(usize, spectrum_count) * (@sizeOf(u32) + @sizeOf(f32) + @sizeOf(f64) + @sizeOf(u32))) +
+            (@as(usize, total_peaks) * (@sizeOf(f64) + @sizeOf(f32)));
+        if (expected_decompressed <= std.math.maxInt(u32) and
+            header.decompressed_bytes != @as(u32, @intCast(expected_decompressed)))
+            return error.DecompressedBytesMismatch;
+    }
+
     const spectra = try allocator.alloc(binary_reader.RawSpectrum, spectrum_count);
     var initialized: usize = 0;
     errdefer {

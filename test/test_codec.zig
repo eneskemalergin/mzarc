@@ -752,3 +752,23 @@ test "lossy smallest non-zero intensity has bounded relative error" {
 
     try std.testing.expect(rel_err <= max_allowed * 1.01);
 }
+
+test "encodeFileAlloc with zero spectra produces a valid decodable empty file" {
+    // The zero-spectrum path was untested. It must not return error.TooManySpectra
+    // or any other spurious error, and the round-trip must return an empty slice.
+    const empty: []const binary_reader.RawSpectrum = &.{};
+
+    const encoded = try codec.encodeFileAlloc(std.testing.allocator, empty, .{ .block_options = .{ .mode = .lossless }, .block_size = 16 });
+    defer std.testing.allocator.free(encoded);
+
+    const inspection = try codec.inspectAlloc(std.testing.allocator, encoded);
+    defer codec.freeInspection(std.testing.allocator, inspection);
+
+    try std.testing.expectEqual(@as(u32, 0), inspection.header.spectrum_count);
+    try std.testing.expectEqual(@as(u32, 0), inspection.header.block_count);
+
+    const decoded = try codec.decodeFileAlloc(std.testing.allocator, encoded);
+    defer binary_reader.freeSpectra(std.testing.allocator, decoded);
+
+    try std.testing.expectEqual(@as(usize, 0), decoded.len);
+}
