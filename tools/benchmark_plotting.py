@@ -381,52 +381,70 @@ def plot_intensity_quantiles(quantile_rows: list[dict[str, object]], path: Path)
     plt.close(fig)
 
 
-def plot_timing_validation(validation_rows: list[dict[str, object]], path: Path) -> None:
-    """Scatter-plot comparing zebrac vs hyperfine wall-time medians.
+def plot_stat_comparisons(comparisons: list[dict], path: Path) -> None:
+    """Bar chart of speed ratios from Mann-Whitney U and Wilcoxon comparisons.
 
-    Each point is one operation. Points colored green when they agree (diff <= 10%)
-    and red otherwise. The diagonal y=x reference line shows perfect agreement.
+    Speed ratio = mzarc_median / baseline_median (or encode_median / decode_median).
+    Bars < 1.0 mean mzarc is faster.  Color by statistical significance:
+    green = significant and mzarc faster, red = significant and mzarc slower,
+    gray = not significant.
     """
-    frame = pd.DataFrame(validation_rows)
-    if frame.empty:
-        fig, ax = plt.subplots(figsize=(7.0, 5.0))
+    if not comparisons:
+        fig, ax = plt.subplots(figsize=(7.0, 4.0))
         ax.axis("off")
-        ax.text(0.5, 0.5, "No hyperfine comparison data available for this run", ha="center", va="center", fontsize=14)
+        ax.text(0.5, 0.5, "No statistical comparison data available", ha="center", va="center", fontsize=13)
         fig.tight_layout()
         fig.savefig(path, bbox_inches="tight")
         plt.close(fig)
         return
 
-    colors = ["#0f766e" if bool(a) else "#dc2626" for a in frame["agrees"]]
-    fig, ax = plt.subplots(figsize=(8.0, 7.0))
-    ax.scatter(frame["hyperfine_median_s"], frame["zebrac_median_s"], c=colors, s=90, zorder=3, edgecolors="#0f172a", linewidths=0.6)
+    labels, ratios, colors = [], [], []
+    for c in comparisons:
+        ratio = c.get("speed_ratio")
+        if ratio is None:
+            continue
+        sig = bool(c.get("significant", False))
+        name_a = str(c.get("name_a", c.get("operation_a", "")))
+        name_b = str(c.get("name_b", c.get("operation_b", "")))
+        label = f"{name_a}\nvs {name_b}"
+        p_val = c.get("p_value")
+        p_str = f" (p={p_val:.3f})" if p_val is not None else ""
+        labels.append(label + p_str)
+        ratios.append(float(ratio))
+        if sig and ratio < 1.0:
+            colors.append("#0f766e")   # green: mzarc faster, significant
+        elif sig and ratio > 1.0:
+            colors.append("#dc2626")   # red: mzarc slower, significant
+        else:
+            colors.append("#94a3b8")   # gray: not significant
 
-    all_vals = list(frame["zebrac_median_s"]) + list(frame["hyperfine_median_s"])
-    lo, hi = min(all_vals) * 0.9, max(all_vals) * 1.1
-    ax.plot([lo, hi], [lo, hi], color="#94a3b8", linestyle="--", linewidth=1.2, label="y = x (perfect agreement)")
+    if not labels:
+        fig, ax = plt.subplots(figsize=(7.0, 4.0))
+        ax.axis("off")
+        ax.text(0.5, 0.5, "All comparisons missing speed_ratio", ha="center", va="center", fontsize=13)
+        fig.tight_layout()
+        fig.savefig(path, bbox_inches="tight")
+        plt.close(fig)
+        return
 
-    for _, row in frame.iterrows():
-        ax.annotate(
-            str(row["name"]).replace("dump -> ", "").replace(" -> dump", ""),
-            (float(row["hyperfine_median_s"]), float(row["zebrac_median_s"])),
-            textcoords="offset points",
-            xytext=(5, 3),
-            fontsize=7,
-            color="#334155",
-        )
+    fig_height = max(4.0, len(labels) * 0.9 + 1.5)
+    fig, ax = plt.subplots(figsize=(9.0, fig_height))
+    y_pos = range(len(labels))
+    bars = ax.barh(list(y_pos), ratios, color=colors, edgecolor="#0f172a", linewidth=0.5, height=0.6)
+    ax.axvline(1.0, color="#475569", linestyle="--", linewidth=1.2, label="ratio = 1 (equal)")
+    ax.set_yticks(list(y_pos))
+    ax.set_yticklabels(labels, fontsize=8)
+    ax.set_xlabel("speed ratio (mzarc time / baseline time — lower is faster for mzarc)")
+    ax.set_title("Statistical Comparisons: mzarc vs Baselines (Mann-Whitney U)")
 
     import matplotlib.patches as mpatches
     legend_handles = [
-        mpatches.Patch(color="#0f766e", label="agrees (diff \u2264 10%)"),
-        mpatches.Patch(color="#dc2626", label="disagrees (diff > 10%)"),
-        plt.Line2D([0], [0], color="#94a3b8", linestyle="--", label="y = x"),
+        mpatches.Patch(color="#0f766e", label="mzarc faster (significant)"),
+        mpatches.Patch(color="#dc2626", label="mzarc slower (significant)"),
+        mpatches.Patch(color="#94a3b8", label="not significant"),
+        plt.Line2D([0], [0], color="#475569", linestyle="--", label="ratio = 1"),
     ]
-    ax.legend(handles=legend_handles, fontsize=9)
-    ax.set_title("Wall-Time Validation: zebrac vs hyperfine")
-    ax.set_xlabel("hyperfine median (s)")
-    ax.set_ylabel("zebrac median (s)")
-    ax.set_xlim(lo, hi)
-    ax.set_ylim(lo, hi)
+    ax.legend(handles=legend_handles, fontsize=8, loc="lower right")
     fig.tight_layout()
     fig.savefig(path, bbox_inches="tight")
     plt.close(fig)
@@ -441,7 +459,7 @@ def generate_plots(report: dict, plot_dir: Path) -> dict[str, str]:
     tradeoff_path = plot_dir / "lossy_tradeoff.png"
     quantile_path = plot_dir / "intensity_relative_quantiles.png"
     memory_path = plot_dir / "memory_footprint.png"
-    validation_path = plot_dir / "timing_validation.png"
+    stat_comparisons_path = plot_dir / "stat_comparisons.png"
 
     plot_size_comparison(report["plot_rows"]["sizes"], size_path)
     plot_performance_overview(report["plot_rows"]["performance"], performance_path)
@@ -462,9 +480,9 @@ def generate_plots(report: dict, plot_dir: Path) -> dict[str, str]:
         plot_memory_footprint(memory_rows, memory_path)
         plots["memory_footprint"] = memory_path.name
 
-    validation_rows = report["plot_rows"].get("timing_validation", [])
-    if validation_rows:
-        plot_timing_validation(validation_rows, validation_path)
-        plots["timing_validation"] = validation_path.name
+    stat_rows = report["plot_rows"].get("stat_comparisons", [])
+    if stat_rows:
+        plot_stat_comparisons(stat_rows, stat_comparisons_path)
+        plots["stat_comparisons"] = stat_comparisons_path.name
 
     return plots

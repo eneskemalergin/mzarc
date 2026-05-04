@@ -3,7 +3,7 @@
 
 Reads:
   benchmark/baseline_v0.1.1.json  — frozen baseline (never changes after v0.1.1)
-  benchmark/report.json           — current benchmark output (updated by benchmark_v1.py)
+  benchmark/report.json           — current benchmark output (updated by collect_report.py)
 
 Asserts:
     lossless file size  has not increased by > 1 %
@@ -41,10 +41,12 @@ def _lossless_size(data: dict) -> int | None:
 
 
 def _lossless_decode_median(data: dict) -> float | None:
-    timings = data.get("timings", [])
-    for entry in timings:
-        if entry.get("name") in DECODE_NAME_ALIASES:
-            return entry.get("median_seconds")
+    # New flow (collect_report.py) writes zebrac_results; old flow wrote timings.
+    for key in ("zebrac_results", "timings"):
+        for entry in data.get(key, []):
+            if entry.get("name") in DECODE_NAME_ALIASES:
+                # zebrac_results uses wall_time_median_seconds; timings used median_seconds
+                return entry.get("wall_time_median_seconds") or entry.get("median_seconds")
     return None
 
 
@@ -76,7 +78,7 @@ def main() -> int:
         return 0
 
     if not CURRENT_PATH.exists():
-        print(f"SKIP no current report at {CURRENT_PATH} — run benchmark_v1.py first")
+        print(f"SKIP no current report at {CURRENT_PATH} — run benchmark.sh + collect_report.py first")
         return 0
 
     baseline = json.loads(BASELINE_PATH.read_text())

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from benchmark_core import format_bytes, format_interval, format_percent
+from benchmark_core import format_bytes, format_percent
 
 FUTURE_BASELINES = [
     {
@@ -243,50 +243,55 @@ def render_markdown(report: dict) -> str:
             "All internal operations are timed by zebrac, which runs each command repeatedly "
             "over a fixed duration window using Linux perf counters. "
             "Reported wall times are medians across all samples in the window. "
-            "These replace the old Python-timer runs."
+            "CI 95% bounds are bootstrap confidence intervals on the median, "
+            "synthesised from a log-normal distribution fitted to zebrac's summary statistics."
         )
         table(
-            ["operation", "wall time (median)", "wall time (stddev)", "min", "max", "samples"],
+            ["operation", "median", "stddev", "CI 95% lo", "CI 95% hi", "IQR", "min", "max", "n"],
             [
                 [
                     str(item["name"]),
                     _format_optional_number(item.get("wall_time_median_seconds"), precision=4, suffix="s"),
                     _format_optional_number(item.get("wall_time_stddev_seconds"), precision=4, suffix="s"),
+                    _format_optional_number(item.get("ci95_lo_seconds"), precision=4, suffix="s"),
+                    _format_optional_number(item.get("ci95_hi_seconds"), precision=4, suffix="s"),
+                    _format_optional_number(item.get("iqr_seconds"), precision=4, suffix="s"),
                     _format_optional_number(item.get("wall_time_min_seconds"), precision=4, suffix="s"),
                     _format_optional_number(item.get("wall_time_max_seconds"), precision=4, suffix="s"),
                     str(item.get("sample_count", "n/a")),
                 ]
                 for item in zebrac_results
             ],
-            ["left", "right", "right", "right", "right", "right"],
+            ["left", "right", "right", "right", "right", "right", "right", "right", "right"],
         )
 
-    timing_validation_rows = report.get("timing_validation_rows", [])
-    if timing_validation_rows:
-        section("Timing Validation")
+    stat_comparisons = report.get("stat_comparisons", [])
+    if stat_comparisons:
+        section("Statistical Comparisons")
         paragraph(
-            "Wall-time medians from zebrac and hyperfine are compared for each shared operation. "
-            "Agreement is defined as |zebrac - hyperfine| / hyperfine ≤ 10%. "
-            "Agreement confirms that zebrac's richer metrics (RSS, instructions, cache misses) "
-            "are collected under conditions consistent with an independent wall-time reference."
+            "Mann-Whitney U tests compare mzarc lossless encode wall-time distributions against "
+            "each general-purpose codec baseline. "
+            "Wilcoxon signed-rank test compares mzarc encode vs decode. "
+            "Distributions are synthesised from zebrac summary statistics via log-normal sampling "
+            "(log-normal is appropriate for execution-time data). "
+            "p-values below 0.05 are considered significant."
         )
-        if "timing_validation" in report.get("plots", {}):
-            image("Zebrac vs Hyperfine Wall Time", f"plots/{report['plots']['timing_validation']}")
+        if "stat_comparisons" in report.get("plots", {}):
+            image("Speed Ratio: mzarc vs Baselines", f"plots/{report['plots']['stat_comparisons']}")
         table(
-            ["operation", "zebrac median", "hyperfine median", "diff %", "agrees", "zebrac samples", "hyperfine runs"],
+            ["operation A", "operation B", "type", "speed ratio", "p-value", "significant"],
             [
                 [
-                    row["name"],
-                    f"{row['zebrac_median_s']:.4f}s",
-                    f"{row['hyperfine_median_s']:.4f}s",
-                    f"{row['diff_pct']:.2f}%",
-                    "yes" if row["agrees"] else "NO",
-                    str(row["zebrac_samples"]),
-                    str(row["hyperfine_runs"]),
+                    str(c.get("name_a", c.get("operation_a", ""))),
+                    str(c.get("name_b", c.get("operation_b", ""))),
+                    str(c.get("comparison_type", "")),
+                    _format_optional_number(c.get("speed_ratio"), precision=3),
+                    _format_optional_number(c.get("p_value"), precision=4),
+                    "yes" if c.get("significant") else "no",
                 ]
-                for row in timing_validation_rows
+                for c in stat_comparisons
             ],
-            ["left", "right", "right", "right", "left", "right", "right"],
+            ["left", "left", "left", "right", "right", "left"],
         )
 
     section("External Baselines")
