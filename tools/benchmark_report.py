@@ -81,7 +81,7 @@ def render_markdown(report: dict) -> str:
             line("| " + " | ".join(row) + " |")
         blank()
 
-    benchmarked_external = [item["name"] for item in external_baselines if item["status"] == "benchmarked"]
+    benchmarked_external = [item["name"] for item in external_baselines if item["status"] == "measured"]
     mzml_bytes = report["sizes"]["mzML"]["bytes"]
     dump_bytes = report["sizes"]["dump"]["bytes"]
 
@@ -99,16 +99,22 @@ def render_markdown(report: dict) -> str:
 
     section("Story")
     paragraph(
-        "The flat dump is smaller than mzML because it strips almost all interchange overhead: XML structure, controlled-vocabulary markup, base64 wrapping, and general-purpose metadata that this prototype does not need for codec bring-up. That makes the dump a useful internal floor, not a format competitor by itself."
+        "mzarc is a domain-specific MS codec: it reads mass spectrometry spectra, "
+        "strips the mzML interchange overhead, and applies a pipeline of "
+        "delta coding, frame-of-reference packing, and rANS entropy coding tuned "
+        "to the statistical structure of m/z and intensity arrays. "
+        "The benchmarks are organised into three groups. "
+        "MS-domain codecs (mzarc, mzMLb, MScompress, MS-Numpress) all understand spectrum structure. "
+        "Generic-on-mzML rows show what you get by applying a general-purpose compressor "
+        "to the standard XML interchange format. "
+        "Generic-on-dump rows are an internal reference floor: the same compressors applied "
+        "to the stripped binary dump, which removes XML and base64 overhead but is not "
+        "a viable interchange format on its own."
     )
     paragraph(
-        "This benchmark focuses on two things that matter right now: whether the current `.mzarc` path buys meaningful size reduction over the interchange format, and whether encode and decode stay fast and stable across repeated runs."
-    )
-
-    paragraph(
-        f"External formats that actually ran end-to-end in this benchmark: {', '.join(benchmarked_external)}."
-        if benchmarked_external
-        else "No external formats ran end-to-end in this benchmark."
+        f"External MS-domain formats that ran end-to-end in this benchmark: "
+        f"{', '.join(benchmarked_external)}." if benchmarked_external else
+        "No external MS-domain formats ran end-to-end in this benchmark."
     )
 
     section("Dataset")
@@ -178,49 +184,69 @@ def render_markdown(report: dict) -> str:
     section("Performance Overview")
     image("Throughput Overview", f"plots/{report['plots']['performance_overview']}")
     table(
-        ["artifact", "direction", "status", "throughput", "median time", "timing source", "source format", "notes"],
+        ["artifact", "category", "direction", "status", "throughput", "median time", "samples", "source format", "notes"],
         [
             [
                 item["artifact"],
+                item.get("category_label") or "",
                 item["direction"],
                 item["status"],
                 _format_optional_number(item["throughput_mib_s"], precision=4, suffix=" MiB/s"),
                 _format_optional_number(item["median_seconds"], precision=5, suffix="s"),
-                item.get("timing_source") or "n/a",
+                str(item["sample_count"]) if item.get("sample_count") else "n/a",
                 item["source_format"] or "n/a",
                 item["notes"] or "",
             ]
             for item in performance_rows
         ],
-        ["left", "left", "left", "right", "right", "left", "left", "left"],
+        ["left", "left", "left", "left", "right", "right", "right", "left", "left"],
     )
 
     memory_metric_rows = report.get("memory_metric_rows", [])
     if memory_metric_rows:
         section("Memory and CPU Metrics")
         paragraph(
-            "The following metrics were collected by zebrac, which runs each command repeatedly "
-            "over a fixed duration window using Linux perf counters. Reported values are medians "
-            "across all samples in the window. Peak RSS is the highest resident set size observed "
-            "for that process. Instructions and cache misses are per-run hardware counter readings."
+            "zebrac collects Linux perf counters for each command across all samples "
+            "in the measurement window. All values are medians. "
+            "IPC (instructions per cycle) measures compute density: higher means the CPU "
+            "is doing useful work rather than stalling on cache misses. "
+            "Cache miss rate = cache_misses / cache_references; lower is better. "
+            "Branch misses indicate prediction failures; a high count relative to instructions "
+            "suggests data-dependent branching that limits pipelining."
         )
         if "memory_footprint" in report.get("plots", {}):
             image("Peak RSS Comparison", f"plots/{report['plots']['memory_footprint']}")
+        if "hardware_efficiency" in report.get("plots", {}):
+            image("Hardware Algorithm Efficiency", f"plots/{report['plots']['hardware_efficiency']}")
         table(
-            ["operation", "wall time (median)", "peak RSS (median)", "peak RSS (min)", "instructions (median)", "cache misses (median)", "samples"],
+            [
+                "operation",
+                "wall time (med)",
+                "peak RSS (med)",
+                "instructions",
+                "IPC",
+                "cache misses",
+                "cache miss rate",
+                "cpu cycles",
+                "branch misses",
+                "n",
+            ],
             [
                 [
                     row["operation"],
                     _format_optional_number(row["wall_time_median_seconds"], precision=4, suffix="s"),
                     f"{row['peak_rss_median_mib']:.1f} MiB",
-                    f"{row['peak_rss_min_mib']:.1f} MiB",
                     f"{row['instructions_median']:.3g}",
+                    _format_optional_number(row.get("ipc"), precision=3),
                     f"{row['cache_misses_median']:.3g}",
+                    _format_optional_percent(row.get("cache_miss_rate") * 100 if row.get("cache_miss_rate") is not None else None),
+                    _format_optional_number(row.get("cpu_cycles_median"), precision=4),
+                    _format_optional_number(row.get("branch_misses_median"), precision=4),
                     str(row["sample_count"]),
                 ]
                 for row in memory_metric_rows
             ],
-            ["left", "right", "right", "right", "right", "right", "right"],
+            ["left", "right", "right", "right", "right", "right", "right", "right", "right", "right"],
         )
 
     zebrac_results = report.get("zebrac_results", [])

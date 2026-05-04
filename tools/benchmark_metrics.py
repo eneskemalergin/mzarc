@@ -9,24 +9,79 @@ SEARCH_IMPACT_NOT_MEASURED = (
 )
 
 
+# --------------------------------------------------------------------------- #
+# Category classification                                                      #
+# --------------------------------------------------------------------------- #
+
+_MS_CODEC_ARTIFACTS = frozenset([
+    "mzMLb",
+    "MS-Numpress in mzML",
+    "MScompress",
+    "MScompress (1T)",
+])
+
+
+def _artifact_category(artifact: str) -> str:
+    """Return display category for an artifact name.
+
+    Categories:
+      ms_codec       -- domain-aware MS codecs (mzarc, mzMLb, MScompress, ...)
+      generic_mzml   -- generic compression applied to mzML interchange
+      generic_dump   -- generic compression applied to the binary dump
+      parallel       -- multi-threaded generic variants (pigz, zstd -T0)
+    """
+    if artifact.startswith("mzarc") or artifact in _MS_CODEC_ARTIFACTS:
+        return "ms_codec"
+    lc = artifact.lower()
+    is_mt = "mt" in lc or lc.startswith("pigz")
+    is_mzml = "mzml" in lc or "mzML" in artifact
+    is_dump = "dump" in lc
+    if is_mt and (is_mzml or is_dump):
+        return "parallel"
+    if is_mzml:
+        return "generic_mzml"
+    if is_dump:
+        return "generic_dump"
+    return "other"
+
+
+_CATEGORY_LABEL: dict[str, str] = {
+    "ms_codec":     "MS-domain codec",
+    "generic_mzml": "Generic (on mzML)",
+    "generic_dump": "Generic (on dump)",
+    "parallel":     "Parallel (multi-thread)",
+    "other":        "Other",
+}
+
+
+def artifact_category_label(artifact: str) -> str:
+    return _CATEGORY_LABEL.get(_artifact_category(artifact), "Other")
+
+
 def comparison_artifact_order(selected_quant: int, external_baselines: list[dict[str, object]]) -> list[str]:
+    # MS-domain codecs first (the core story), then generic mzML, then generic
+    # dump (reference floor), then parallel variants.
     names = [
-        "lz4 dump",
-        "lz4 mzML",
-        "gzip dump",
-        "gzip mzML",
-        "pigz dump",
-        "pigz mzML",
-        "zstd dump",
-        "zstd mzML",
-        "zstd mt dump",
-        "zstd mt mzML",
-        "bzip2 dump",
-        "bzip2 mzML",
-        "xz dump",
-        "xz mzML",
         "mzarc lossless",
         f"mzarc lossy q={selected_quant}",
+        "mzMLb",
+        "MScompress",
+        "MScompress (1T)",
+        "MS-Numpress in mzML",
+        "gzip mzML",
+        "zstd mzML",
+        "bzip2 mzML",
+        "lz4 mzML",
+        "xz mzML",
+        "pigz mzML",
+        "zstd mt mzML",
+        "gzip dump",
+        "zstd dump",
+        "bzip2 dump",
+        "lz4 dump",
+        "xz dump",
+        "pigz dump",
+        "zstd mt dump",
     ]
     for item in external_baselines:
         name = str(item["name"])
@@ -91,6 +146,8 @@ def build_performance_rows(
         zitem = zebrac_by_name.get(operation or "") if operation is not None else None
         row: dict[str, object] = {
             "artifact": artifact,
+            "category": _artifact_category(artifact),
+            "category_label": artifact_category_label(artifact),
             "direction": direction,
             "operation": operation,
             "source_format": source_format,
@@ -316,23 +373,43 @@ def build_search_impact_rows(
 
 
 def build_memory_rows(zebrac_results: list[dict[str, object]]) -> list[dict[str, object]]:
-    """Build per-operation memory and CPU metric rows from serialized zebrac results.
+    """Build per-operation memory and hardware counter rows from zebrac results.
 
-    Each row covers one encode or decode command. Only the median values are
-    surfaced since they are robust to outliers and zebrac's sample counts are
-    high enough to make the median stable.
+    Rows include median wall time, peak RSS, and all hardware performance
+    counters provided by zebrac (instructions, cache misses, cpu cycles,
+    cache references, branch misses).  Derived metrics IPC
+    (instructions-per-cycle) and cache_miss_rate are also computed when the
+    necessary counters are available.
     """
     rows: list[dict[str, object]] = []
     for item in zebrac_results:
+        instr   = float(item["instructions"]["median"])
+        c_miss  = float(item["cache_misses"]["median"])
+        cycles_data = item.get("cpu_cycles")
+        c_refs_data = item.get("cache_references")
+        b_miss_data = item.get("branch_misses")
+
+        cpu_cycles_med  = float(cycles_data["median"])  if cycles_data  is not None else None
+        c_refs_med      = float(c_refs_data["median"])  if c_refs_data  is not None else None
+        b_miss_med      = float(b_miss_data["median"])  if b_miss_data  is not None else None
+
+        ipc             = (instr / cpu_cycles_med)   if cpu_cycles_med and cpu_cycles_med > 0 else None
+        cache_miss_rate = (c_miss / c_refs_med)      if c_refs_med     and c_refs_med     > 0 else None
+
         rows.append(
             {
-                "operation": str(item["name"]),
+                "operation":                str(item["name"]),
                 "wall_time_median_seconds": float(item["wall_time_median_seconds"]),
-                "peak_rss_median_mib": float(item["peak_rss_median_mib"]),
-                "peak_rss_min_mib": float(item["peak_rss_bytes"]["min"]) / (1024 * 1024),
-                "instructions_median": float(item["instructions"]["median"]),
-                "cache_misses_median": float(item["cache_misses"]["median"]),
-                "sample_count": int(item["sample_count"]),
+                "peak_rss_median_mib":      float(item["peak_rss_median_mib"]),
+                "peak_rss_min_mib":         float(item["peak_rss_bytes"]["min"]) / (1024 * 1024),
+                "instructions_median":      instr,
+                "cache_misses_median":      c_miss,
+                "cpu_cycles_median":        cpu_cycles_med,
+                "cache_references_median":  c_refs_med,
+                "branch_misses_median":     b_miss_med,
+                "ipc":                      ipc,
+                "cache_miss_rate":          cache_miss_rate,
+                "sample_count":             int(item["sample_count"]),
             }
         )
     return rows

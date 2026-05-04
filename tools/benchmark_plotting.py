@@ -385,6 +385,89 @@ def plot_stat_comparisons(comparisons: list[dict], path: Path) -> None:
     plt.close(fig)
 
 
+def plot_hardware_efficiency(memory_rows: list[dict[str, object]], path: Path) -> None:
+    """Two-panel bar chart: IPC (left) and cache miss rate (right) per operation.
+
+    IPC (instructions per CPU cycle) measures computation density.  Higher
+    means the CPU is doing useful work rather than stalling on memory.
+
+    Cache miss rate (cache_misses / cache_references) measures data locality.
+    Lower is better; a value near 1 means nearly every cache access is a miss.
+    """
+    rows_with_hw = [
+        r for r in memory_rows
+        if r.get("ipc") is not None and r.get("cache_miss_rate") is not None
+    ]
+    if not rows_with_hw:
+        fig, ax = plt.subplots(figsize=(10.0, 3.2))
+        ax.axis("off")
+        ax.text(0.5, 0.5, "No hardware counter data available for this run",
+                ha="center", va="center", fontsize=16)
+        fig.tight_layout()
+        fig.savefig(path, bbox_inches="tight")
+        plt.close(fig)
+        return
+
+    frame = pd.DataFrame(rows_with_hw)
+
+    def _direction(name: str) -> str:
+        lower = name.lower()
+        return "encode / compress" if (
+            "encode" in lower or "mzml ->" in lower or "dump ->" in lower
+        ) else "decode / decompress"
+
+    frame["direction"] = frame["operation"].apply(_direction)
+    dir_palette = {
+        "encode / compress":   "#0f766e",
+        "decode / decompress": "#2563eb",
+    }
+    colors = [dir_palette[d] for d in frame["direction"]]
+
+    fig, axes = plt.subplots(1, 2, figsize=(18, max(4.0, 0.45 * len(frame) + 1.8)))
+
+    # Left: IPC
+    ax_ipc = axes[0]
+    ax_ipc.barh(frame["operation"], frame["ipc"].astype(float), color=colors)
+    max_ipc = float(frame["ipc"].max())
+    for patch, (_, row) in zip(ax_ipc.patches, frame.iterrows(), strict=True):
+        ax_ipc.text(
+            patch.get_width() + max(max_ipc * 0.015, 0.01),
+            patch.get_y() + patch.get_height() / 2,
+            f"{float(row['ipc']):.2f}",
+            va="center", ha="left", fontsize=9,
+        )
+    ax_ipc.set_title("IPC (instructions / cycle)\nhigher = more compute-efficient")
+    ax_ipc.set_xlabel("IPC")
+    ax_ipc.set_ylabel("")
+    ax_ipc.margins(x=0.22)
+    ax_ipc.invert_yaxis()
+
+    # Right: Cache miss rate
+    ax_cmr = axes[1]
+    ax_cmr.barh(frame["operation"], (frame["cache_miss_rate"].astype(float) * 100), color=colors)
+    max_cmr = float(frame["cache_miss_rate"].max()) * 100
+    for patch, (_, row) in zip(ax_cmr.patches, frame.iterrows(), strict=True):
+        ax_cmr.text(
+            patch.get_width() + max(max_cmr * 0.015, 0.01),
+            patch.get_y() + patch.get_height() / 2,
+            f"{float(row['cache_miss_rate']) * 100:.1f}%",
+            va="center", ha="left", fontsize=9,
+        )
+    ax_cmr.set_title("Cache miss rate (misses / references)\nlower = better data locality")
+    ax_cmr.set_xlabel("cache miss rate (%)")
+    ax_cmr.set_ylabel("")
+    ax_cmr.margins(x=0.22)
+    ax_cmr.invert_yaxis()
+
+    legend_handles = [mpatches.Patch(color=v, label=k) for k, v in dir_palette.items()]
+    fig.legend(handles=legend_handles, loc="lower center", ncol=2, fontsize=10,
+               bbox_to_anchor=(0.5, -0.02))
+    fig.suptitle("Hardware Algorithm Efficiency", fontsize=18, fontweight="bold")
+    fig.tight_layout()
+    fig.savefig(path, bbox_inches="tight")
+    plt.close(fig)
+
+
 def generate_plots(report: dict, plot_dir: Path) -> dict[str, str]:
     plot_dir.mkdir(parents=True, exist_ok=True)
 
@@ -394,6 +477,7 @@ def generate_plots(report: dict, plot_dir: Path) -> dict[str, str]:
     tradeoff_path = plot_dir / "lossy_tradeoff.png"
     quantile_path = plot_dir / "intensity_relative_quantiles.png"
     memory_path = plot_dir / "memory_footprint.png"
+    hw_efficiency_path = plot_dir / "hardware_efficiency.png"
     stat_comparisons_path = plot_dir / "stat_comparisons.png"
 
     plot_size_comparison(report["plot_rows"]["sizes"], size_path)
@@ -414,6 +498,8 @@ def generate_plots(report: dict, plot_dir: Path) -> dict[str, str]:
     if memory_rows:
         plot_memory_footprint(memory_rows, memory_path)
         plots["memory_footprint"] = memory_path.name
+        plot_hardware_efficiency(memory_rows, hw_efficiency_path)
+        plots["hardware_efficiency"] = hw_efficiency_path.name
 
     stat_rows = report["plot_rows"].get("stat_comparisons", [])
     if stat_rows:

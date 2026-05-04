@@ -6,11 +6,19 @@
 #
 # Options:
 #   --duration MS      zebrac window per operation in ms (default: 5000)
+#   --min-samples N    zebrac minimum samples per operation (default: 10)
+#   --max-samples N    zebrac maximum samples per operation (default: 300)
+#   --warmup N         zebrac warmup runs per operation (default: 3)
 #   --quant N          selected lossy intensity quant (default: 16384)
 #   --lossy-sweep L    comma-separated quant levels (default: 256,1024,4096,16384)
 #   --build            build mzarc release binary before running
 #   --workdir DIR      directory for generated intermediate files
 #   --output-dir DIR   directory for benchmark output (default: benchmark)
+#
+# Sampling profiles (set automatically per operation speed class):
+#   slow  (xz/bzip2 encode, ~5-15s/run): --min-samples 3 --max-samples 15
+#   fast  (lz4/decode ops,  <0.15s/run): --min-samples 20 --max-samples 1000
+#   default: CLI --min-samples / --max-samples
 #
 # Each timing measurement is written as a separate zebrac JSON file to
 # <output-dir>/raw/.  After all runs, write_manifest.py assembles the
@@ -27,6 +35,9 @@ cd "$(dirname "$0")/.."
 # defaults                                                                    #
 # --------------------------------------------------------------------------- #
 DURATION=5000
+MIN_SAMPLES=10
+MAX_SAMPLES=300
+WARMUP=3
 QUANT=16384
 LOSSY_SWEEP="256,1024,4096,16384"
 BUILD=0
@@ -39,12 +50,15 @@ MZML=""
 # --------------------------------------------------------------------------- #
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --duration)   DURATION="$2";   shift 2 ;;
-        --quant)      QUANT="$2";      shift 2 ;;
-        --lossy-sweep) LOSSY_SWEEP="$2"; shift 2 ;;
-        --build)      BUILD=1;         shift   ;;
-        --workdir)    WORKDIR="$2";    shift 2 ;;
-        --output-dir) OUTPUT_DIR="$2"; shift 2 ;;
+        --duration)    DURATION="$2";     shift 2 ;;
+        --min-samples) MIN_SAMPLES="$2";  shift 2 ;;
+        --max-samples) MAX_SAMPLES="$2";  shift 2 ;;
+        --warmup)      WARMUP="$2";       shift 2 ;;
+        --quant)       QUANT="$2";        shift 2 ;;
+        --lossy-sweep) LOSSY_SWEEP="$2";  shift 2 ;;
+        --build)       BUILD=1;           shift   ;;
+        --workdir)     WORKDIR="$2";      shift 2 ;;
+        --output-dir)  OUTPUT_DIR="$2";   shift 2 ;;
         --help|-h)
             grep '^#' "$0" | head -15 | sed 's/^# \{0,2\}//'
             exit 0 ;;
@@ -96,14 +110,33 @@ mkdir -p "$WORKDIR" "$RAW"
 # helpers                                                                     #
 # --------------------------------------------------------------------------- #
 log()  { echo "[benchmark] $*" >&2; }
+
+# Per-section sampling profile variables.  Override these before a bench()
+# call to tune zebrac's statistical guarantees for fast or slow operations.
+# Reset them to the CLI defaults after each specialised group.
+_BENCH_MIN=$MIN_SAMPLES
+_BENCH_MAX=$MAX_SAMPLES
+_BENCH_WARMUP=$WARMUP
+
+_bench_reset() {
+    _BENCH_MIN=$MIN_SAMPLES
+    _BENCH_MAX=$MAX_SAMPLES
+    _BENCH_WARMUP=$WARMUP
+}
+
 bench() {
     # bench <slug> <shell_command_string>
     local out="$RAW/$1.json"
     local tmp; tmp=$(mktemp /tmp/mzarc_bench_XXXXXX.sh)
     printf '#!/bin/sh\n%s\n' "$2" > "$tmp"
     chmod +x "$tmp"
-    log "$1"
-    "$ZEBRAC" --duration "$DURATION" --json "$out" "$tmp"
+    log "$1  [min=$_BENCH_MIN max=$_BENCH_MAX warmup=$_BENCH_WARMUP]"
+    "$ZEBRAC" \
+        --duration    "$DURATION" \
+        --min-samples "$_BENCH_MIN" \
+        --max-samples "$_BENCH_MAX" \
+        --warmup      "$_BENCH_WARMUP" \
+        --json "$out" "$tmp"
     rm -f "$tmp"
 }
 
@@ -152,58 +185,89 @@ MZARC_LOSSY_RT="$WORKDIR/$SAMPLE.lossy.q${QUANT}.roundtrip.bin"
 
 # --------------------------------------------------------------------------- #
 # 1. mzML dump (Python wrapped in zebrac)                                     #
+# Use fewer warmup runs since Python startup dominates the first invocation.  #
 # --------------------------------------------------------------------------- #
+_BENCH_MIN=5; _BENCH_MAX=50; _BENCH_WARMUP=2
 bench "mzml_dump" "python3 tools/mzml_dump.py $MZML -o $DUMP"
+_bench_reset
 
 # --------------------------------------------------------------------------- #
 # 2. dump-level compressors                                                   #
 # --------------------------------------------------------------------------- #
+# --- gzip dump (medium speed) ---
 bench "gzip_dump_encode"  "gzip -n -c $DUMP > $GZIP_DUMP"
 bench "gzip_dump_decode"  "gzip -d -c $GZIP_DUMP > $GZIP_DUMP_RT"
 
+# --- zstd dump (fast encode/decode: more samples) ---
+_BENCH_MIN=20; _BENCH_MAX=600; _BENCH_WARMUP=$WARMUP
 bench "zstd_dump_encode"  "zstd -q -c $DUMP > $ZSTD_DUMP"
 bench "zstd_dump_decode"  "zstd -q -d -c $ZSTD_DUMP > $ZSTD_DUMP_RT"
+_bench_reset
 
+# --- bzip2 dump (slow encode, medium decode) ---
+_BENCH_MIN=3; _BENCH_MAX=15; _BENCH_WARMUP=2
 bench "bzip2_dump_encode" "bzip2 -c $DUMP > $BZIP2_DUMP"
+_bench_reset
 bench "bzip2_dump_decode" "bzip2 -d -c $BZIP2_DUMP > $BZIP2_DUMP_RT"
 
+# --- lz4 dump (very fast: many samples) ---
+_BENCH_MIN=30; _BENCH_MAX=1000; _BENCH_WARMUP=$WARMUP
 bench "lz4_dump_encode"   "lz4 -q -c $DUMP > $LZ4_DUMP"
 bench "lz4_dump_decode"   "lz4 -q -d -c $LZ4_DUMP > $LZ4_DUMP_RT"
+_bench_reset
 
+# --- xz dump (very slow encode, medium decode) ---
+_BENCH_MIN=3; _BENCH_MAX=8; _BENCH_WARMUP=1
 bench "xz_dump_encode"    "xz -c $DUMP > $XZ_DUMP"
+_bench_reset
 bench "xz_dump_decode"    "xz -d -c $XZ_DUMP > $XZ_DUMP_RT"
 
-# multi-threaded dump variants
+# --- multi-threaded dump variants (fast: many samples) ---
+_BENCH_MIN=20; _BENCH_MAX=600; _BENCH_WARMUP=$WARMUP
 bench "pigz_dump_encode"     "pigz -n -c $DUMP > $PIGZ_DUMP"
 bench "pigz_dump_decode"     "pigz -d -c $PIGZ_DUMP > $PIGZ_DUMP_RT"
-
 bench "zstd_mt_dump_encode"  "zstd -T0 -q -c $DUMP > $ZSTD_MT_DUMP"
 bench "zstd_mt_dump_decode"  "zstd -q -d -c $ZSTD_MT_DUMP > $ZSTD_MT_DUMP_RT"
+_bench_reset
 
 # --------------------------------------------------------------------------- #
 # 3. mzML-level compressors                                                   #
 # --------------------------------------------------------------------------- #
+# --- gzip mzML ---
 bench "gzip_mzml_encode"  "gzip -n -c $MZML > $GZIP_MZML"
 bench "gzip_mzml_decode"  "gzip -d -c $GZIP_MZML > $GZIP_MZML_RT"
 
+# --- zstd mzML (fast) ---
+_BENCH_MIN=20; _BENCH_MAX=600; _BENCH_WARMUP=$WARMUP
 bench "zstd_mzml_encode"  "zstd -q -c $MZML > $ZSTD_MZML"
 bench "zstd_mzml_decode"  "zstd -q -d -c $ZSTD_MZML > $ZSTD_MZML_RT"
+_bench_reset
 
+# --- bzip2 mzML (slow encode) ---
+_BENCH_MIN=3; _BENCH_MAX=10; _BENCH_WARMUP=2
 bench "bzip2_mzml_encode" "bzip2 -c $MZML > $BZIP2_MZML"
+_bench_reset
 bench "bzip2_mzml_decode" "bzip2 -d -c $BZIP2_MZML > $BZIP2_MZML_RT"
 
+# --- lz4 mzML (very fast) ---
+_BENCH_MIN=30; _BENCH_MAX=1000; _BENCH_WARMUP=$WARMUP
 bench "lz4_mzml_encode"   "lz4 -q -c $MZML > $LZ4_MZML"
 bench "lz4_mzml_decode"   "lz4 -q -d -c $LZ4_MZML > $LZ4_MZML_RT"
+_bench_reset
 
+# --- xz mzML (very slow encode) ---
+_BENCH_MIN=3; _BENCH_MAX=6; _BENCH_WARMUP=1
 bench "xz_mzml_encode"    "xz -c $MZML > $XZ_MZML"
+_bench_reset
 bench "xz_mzml_decode"    "xz -d -c $XZ_MZML > $XZ_MZML_RT"
 
-# multi-threaded mzML variants
+# --- multi-threaded mzML variants (fast) ---
+_BENCH_MIN=20; _BENCH_MAX=600; _BENCH_WARMUP=$WARMUP
 bench "pigz_mzml_encode"     "pigz -n -c $MZML > $PIGZ_MZML"
 bench "pigz_mzml_decode"     "pigz -d -c $PIGZ_MZML > $PIGZ_MZML_RT"
-
 bench "zstd_mt_mzml_encode"  "zstd -T0 -q -c $MZML > $ZSTD_MT_MZML"
 bench "zstd_mt_mzml_decode"  "zstd -q -d -c $ZSTD_MT_MZML > $ZSTD_MT_MZML_RT"
+_bench_reset
 
 # --------------------------------------------------------------------------- #
 # 4. mzarc lossless                                                           #
