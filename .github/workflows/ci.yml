@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Zig 0.16.0
+        uses: mlugg/setup-zig@v1
+        with:
+          version: "0.16.0"
+
+      - name: Build
+        run: zig build -Drelease=true
+
+      - name: Unit tests
+        run: zig build test
+
+      - name: Fixture integrity
+        run: zig build check-fixture
+
+      - name: Codec roundtrips and adversarial
+        run: bash tools/smoke_test.sh

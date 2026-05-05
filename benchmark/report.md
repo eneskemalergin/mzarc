@@ -61,8 +61,8 @@ External MS-domain codecs benchmarked in this run: mzMLb, MS-Numpress in mzML, M
 
 | artifact | category | direction | throughput | median | n |
 | --- | --- | --- | ---: | ---: | ---: |
-| gzip dump | Generic (on dump) | compression | 12.03 MiB/s | 1.647s | 3 |
-| gzip dump | Generic (on dump) | decompression | 141.5 MiB/s | 0.2175s | 14 |
+| gzip dump | Generic (on dump) | compression | 11.99 MiB/s | 1.653s | 10 |
+| gzip dump | Generic (on dump) | decompression | 140.1 MiB/s | 0.2197s | 23 |
 | zstd dump | Generic (on dump) | compression | 92.86 MiB/s | 0.1923s | 16 |
 | zstd dump | Generic (on dump) | decompression | 478.7 MiB/s | 0.06429s | 46 |
 | bzip2 dump | Generic (on dump) | compression | 7.075 MiB/s | 2.658s | 3 |
@@ -112,9 +112,9 @@ All values are zebrac medians from Linux perf counters. IPC = instructions / cyc
 
 | operation | wall time | peak RSS | instructions | IPC | cache miss rate | n |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| mzml dump | 4.918s | 76.7 MiB | 3.17e+10 | 1.79 | 16.571% | 3 |
-| dump -> gzip dump | 1.647s | 1.9 MiB | 9.86e+09 | 1.65 | 0.397% | 3 |
-| gzip dump -> dump | 0.2175s | 1.6 MiB | 1.26e+09 | 1.82 | 4.571% | 14 |
+| mzml dump | 4.993s | 76.8 MiB | 3.18e+10 | 1.78 | 16.733% | 5 |
+| dump -> gzip dump | 1.653s | 1.9 MiB | 9.86e+09 | 1.64 | 0.621% | 10 |
+| gzip dump -> dump | 0.2197s | 1.6 MiB | 1.26e+09 | 1.81 | 5.160% | 23 |
 | dump -> zstd dump | 0.1923s | 45.2 MiB | 1.35e+09 | 2.15 | 39.343% | 16 |
 | zstd dump -> dump | 0.06429s | 6.4 MiB | 5.22e+08 | 2.86 | 10.619% | 46 |
 | dump -> bzip2 dump | 2.658s | 7.6 MiB | 1.91e+10 | 1.98 | 27.126% | 3 |
@@ -162,7 +162,7 @@ Mann-Whitney U tests on log-normal samples drawn from zebrac summary statistics.
 
 | operation A | operation B | speed ratio | p-value | significant |
 | --- | --- | ---: | ---: | --- |
-| dump -> mzarc lossless | dump -> gzip dump | 0.178 | 0.005495 | yes |
+| dump -> mzarc lossless | dump -> gzip dump | 0.178 | 0.0001242 | yes |
 | dump -> mzarc lossless | dump -> zstd dump | 1.54 | 1.576e-05 | yes |
 
 ## Data Fidelity

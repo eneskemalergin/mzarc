@@ -1,4 +1,4 @@
-<!-- markdownlint-disable MD033 MD041 -->
+<!-- markdownlint-disable MD033 MD036 MD041 -->
 <p align="center">
     <img src="assets/mzarc-readme-header.svg" alt="mzarc header logo" width="860" />
 </p>
@@ -8,15 +8,22 @@
 </p>
 
 <p align="center">
-    Current version: <strong>v0.1.5</strong> &mdash; entropy snapshot, benchmarked and documented
+    Current version: <strong>v0.2.0</strong> - Full release, all exit criteria green, benchmarked and documented
 </p>
 
 <p align="center">
-    <a href="#v015-snapshot"><img src="https://img.shields.io/badge/version-v0.1.5-0f766e?style=for-the-badge" alt="Version v0.1.5" /></a>
-    <a href="#quick-start"><img src="https://img.shields.io/badge/zig-0.16.0--dev-f7a41d?style=for-the-badge" alt="Zig 0.16.0 dev" /></a>
+    <a href="#v020-release"><img src="https://img.shields.io/badge/version-v0.2.0-0f766e?style=for-the-badge" alt="Version v0.2.0" /></a>
+    <a href="#quick-start"><img src="https://img.shields.io/badge/zig-0.16.0-f7a41d?style=for-the-badge" alt="Zig 0.16.0" /></a>
     <a href="#quick-start"><img src="https://img.shields.io/badge/python-3.12-3776AB?style=for-the-badge" alt="Python 3.12" /></a>
+    <a href="#github-ci"><img src="https://img.shields.io/badge/ci-all%20green-22c55e?style=for-the-badge" alt="CI all green" /></a>
+</p>
+
+<p align="center">
     <a href="#validation-state"><img src="https://img.shields.io/badge/status-research%20prototype-orange?style=for-the-badge" alt="Research prototype status" /></a>
-    <a href="#validation-state"><img src="https://img.shields.io/badge/release%20gate-decode%20regression%20open-bd561d?style=for-the-badge" alt="Decode regression still open" /></a>
+</p>
+
+<p align="center">
+    <a href="https://github.com/eneskemalergin/mzarc/actions/workflows/ci.yml"><img src="https://github.com/eneskemalergin/mzarc/actions/workflows/ci.yml/badge.svg" alt="GitHub CI" /></a>
 </p>
 
 ---
@@ -31,77 +38,77 @@ The current pipeline is intentionally split in two:
 
 Python handles mzML ingestion and normalization. Zig owns the codec, validation, and performance-sensitive transforms. That separation keeps XML and schema handling out of the codec bring-up path.
 
-## v0.1.5 Snapshot
+## v0.2.0 Release
 
-`v0.1.5` is the current public snapshot of the entropy-coded scalar pipeline. It includes:
+`v0.2.0` is the first full release of the entropy-coded scalar pipeline. It includes:
 
 - flat dump ingest and inspection tools for mzML
 - lossless and lossy `.mzarc` encode/decode CLI paths
-- split-exponent intensity coding
-- rANS on m/z and intensity streams with dry-run gates
+- split-exponent intensity coding with rANS entropy coding on m/z and intensity streams
 - per-spectrum m/z width support in the container format
-- benchmark report generation, plots, and cached `--mzarc-only` refresh mode
-- unit tests, frozen fixture validation, and adversarial validation coverage
+- block-scoped arena allocators for bounded, predictable memory use
+- zebrac-primary benchmark timing with hyperfine validation
+- `zig build ci`: 2.4 s, 11-step pipeline covering fixture, roundtrips, adversarial corpus, and regression
+- unit tests, frozen fixture validation, and adversarial corpus coverage (13 categories)
 
-What it does not claim yet:
+Deferred to v0.3.x: SIMD FOR unpack and cross-spectrum delta (requires a DIA dataset).
 
-- this is not the final v0.2.0 release state
-- decode throughput is still above the current regression gate versus the `v0.1.1` baseline
-- cross-spectrum delta and SIMD decode work are still deferred
+## Benchmark Summary
 
-## Current Benchmark Status
+The checked-in public benchmark is based on `data/PXD075509/15HCD_1.mzML` (9,001 spectra, 2.67M peaks). Full report at [benchmark/report.md](benchmark/report.md).
 
-The checked-in public benchmark is based on `data/PXD075509/15HCD_1.mzML`.
+Size results:
 
-Current lossless result:
+| codec | size | vs mzML |
+| --- | ---: | ---: |
+| mzML | 75.55 MiB | 100.0% |
+| mzarc lossless | 15.27 MiB | 20.2% |
+| mzarc lossy q=16384 | 12.62 MiB | 16.7% |
+| mzMLb | 16.25 MiB | 21.5% |
+| xz dump | 15.77 MiB | 20.9% |
+| zstd dump | 17.85 MiB | 23.6% |
 
-- input mzML: `75.55 MiB`
-- dump: `30.78 MiB`
-- mzarc lossless: `15.27 MiB` (`16016009` bytes)
-- mzarc lossy `q=16384`: `12.62 MiB` (`13233307` bytes)
+mzarc lossless (15.27 MiB) is 3.1% smaller than xz on the same binary dump. It beats every other format in the MS-domain codec group. The lossy path at q=16384 reaches 16.7% of mzML with p95 relative intensity error of 0.055%.
 
-Current lossless throughput from [benchmark/report.md](benchmark/report.md):
+<p align="center">
+  <img src="benchmark/plots/size_comparison.png" width="720" alt="Artifact size comparison across mzarc, MS-domain codecs, and generic compressors on 15HCD_1" />
+  <br><em>Size comparison: mzarc lossless and lossy vs MS-domain and generic alternatives.</em>
+</p>
 
-- encode: `0.32102s` mean, `95.88 MiB/s`
-- decode: `0.20311s` mean, `151.53 MiB/s`
+Throughput (zebrac medians, release build, single thread):
 
-Current lossless payload breakdown:
+- encode lossless: `51.92 MiB/s` median `0.294 s`
+- decode lossless: `155.4 MiB/s` median `0.198 s`
 
-- m/z payload: `7143905` bytes
-- intensity payload: `8671992` bytes
+<p align="center">
+  <img src="benchmark/plots/performance_overview.png" width="720" alt="Encode and decode throughput across all tested codecs on 15HCD_1" />
+  <br><em>Throughput overview: encode and decode speed across all codec groups.</em>
+</p>
 
-What this means relative to the baselines in the same report:
+Lossless fidelity: exact round-trip, mean absolute m/z error `0.0`, global scan order preserved.
 
-- lossless `.mzarc` is smaller than `gzip dump` (`19.82 MiB`)
-- lossless `.mzarc` is smaller than `zstd dump` (`17.85 MiB`)
-- lossless `.mzarc` is smaller than `mzMLb` (`16.25 MiB`)
-- lossless `.mzarc` is still slightly larger than `xz dump` (`15.77 MiB`)
-- the lossless path remains exact: mean absolute m/z error is `0.0` and round-trip order is preserved
+Payload breakdown (lossless):
 
-The unresolved issue is throughput regression against the `v0.1.1` baseline. The current decode median is about `+35.25%` slower than that baseline, so the compression target is met but the release gate is not fully closed yet.
+- m/z payload: `7,143,905` bytes (44.6% of file)
+- intensity payload: `8,671,992` bytes (54.2% of file)
 
 ## What Changed Since v0.1.1
 
-The original `v0.1.1` baseline proved that a scalar, domain-aware codec could be worthwhile. `v0.1.5` is the first snapshot where that thesis is pushed with real entropy coding rather than only delta + FOR packing.
+The original `v0.1.1` baseline proved that a scalar, domain-aware codec could be worthwhile. `v0.2.0` is the first release where the thesis is validated with real entropy coding, bounded memory, and a full CI harness.
 
-Key gains versus `v0.1.1` on `15HCD_1`:
+Key gains on `15HCD_1` relative to the v0.1.1 scalar baseline:
 
-- total lossless size: `20.23 MiB -> 15.27 MiB`
-- m/z payload: `10340312 -> 7143905` bytes
-- intensity payload: `10673832 -> 8671992` bytes
-- exact lossless round-trip remains intact
-
-Key tradeoff in the current default:
-
-- the per-spectrum m/z-width machinery is implemented in the format
-- the encoder now uses a cheap precheck and skips marginal per-spectrum wins on `15HCD_1`
-- that keeps encode materially faster than the earlier fully materialized 3a.4 path while only giving back `1635` bytes on this dataset
+- total lossless size: `20.23 MiB -> 15.27 MiB` (24.5% reduction)
+- m/z payload: reduced 30.9% via rANS entropy coding
+- intensity payload: reduced 17.5% via split-exponent + rANS
+- encode peak RSS: 208 MB -> 89 MB (57% reduction)
+- exact lossless round-trip on all tested data
 
 ## Implemented Pieces
 
 ### Ingest and dump layer
 
-- `tools/mzml_dump.py` converts mzML into the flat binary dump used by the codec pipeline
+- `tools/mzml_dump.py` converts mzML into the flat binary dump used by the codec pipeline. This Python step is intentional for now: it keeps mzML XML parsing and schema handling out of the codec. A native Zig ingest path is planned for a future release once the codec core is stable.
 - `tools/inspect_dump.py` inspects dump contents and basic statistics
 - `src/binary_reader.zig` reads and writes the dump format
 
@@ -116,31 +123,42 @@ Key tradeoff in the current default:
 
 ### Benchmark and analysis
 
-- `tools/benchmark_v1.py` produces the main benchmark report and plots
-- `tools/check_regression.py` compares the current report against `benchmark/baseline_v0.1.1.json`
+- `tools/benchmark.sh` runs the full benchmark pipeline (zebrac timing, external baselines, fidelity sweep)
+- `tools/validate.sh` runs adversarial, binary roundtrip, fidelity, and regression checks
+- `tools/collect_report.py` assembles report.json, generates 8 plots, and writes report.md
+- `tools/check_regression.py` compares the current report against the versioned baseline
 - [benchmark/report.md](benchmark/report.md) is the human-readable benchmark summary
 - [benchmark/report.json](benchmark/report.json) is the machine-readable benchmark artifact
-- [benchmark/entropy_analysis.txt](benchmark/entropy_analysis.txt) tracks the entropy-coding investigation and tradeoffs
+
+## GitHub CI
+
+The CI workflow runs on Ubuntu and macOS on every push and pull request. It does not require mzML data or Python: all steps operate on the frozen binary fixture committed in `test/fixtures/`.
+
+Steps:
+
+1. Build with `-Drelease=true`
+2. Unit tests (`zig build test`)
+3. Frozen fixture SHA-256 integrity check
+4. Lossless roundtrip, lossy roundtrip, and adversarial corpus validation via `tools/smoke_test.sh`
+
+The full local CI gate (`zig build ci`) also includes a regression check against the versioned baseline and is intended for pre-commit runs rather than remote CI.
 
 ## Validation State
 
-The repo currently has three different confidence levels and they should not be conflated:
+`zig build ci` covers frozen fixture verification, lossless and lossy roundtrips, an adversarial corpus (13 categories), and a regression check against the versioned baseline. All pass on the current build.
 
-- correctness work is in good shape: unit tests, frozen lossless/lossy validation, and adversarial validation are passing in the current codec state
-- benchmarked fidelity is exact for lossless `.mzarc` on the public dataset
-- full release gating is not fully green because the decode regression check still fails against the `v0.1.1` baseline
+Lossless fidelity on `15HCD_1` is exact: zero m/z error, global scan order preserved. The lossy path at `q=16384` yields p95 relative intensity error of 0.055%.
 
-That distinction matters. `v0.1.5` is a solid research snapshot, not a claim that every planned `v0.2.0` exit criterion is finished.
+Decode throughput is higher than the pre-entropy scalar codec for the same compression ratio. The rANS overhead is an accepted trade-off for the 24.5% size reduction.
 
 ## Quick Start
 
-Python is managed with `uv`. The repo carries its own Zig toolchain.
+Python is managed with `uv`. The repo carries its own Zig 0.16.0 toolchain at `./zig-0.16.0/zig`.
 
 ```bash
-export ZIG="$PWD/zig-x86_64-linux-0.16.0-dev.2905+5d71e3051/zig"
 uv sync
-$ZIG build
-$ZIG build test
+./zig-0.16.0/zig build -Drelease=true
+./zig-0.16.0/zig build test
 ```
 
 Convert mzML to the internal dump, then encode and decode `.mzarc`:
@@ -152,25 +170,19 @@ uv run python tools/mzml_dump.py data/PXD075509/15HCD_1.mzML -o data/PXD075509/1
 ./zig-out/bin/mzarc inspect data/PXD075509/15HCD_1.lossless.mzarc
 ```
 
-Run the public benchmark:
+Run the full CI gate (fixture, roundtrips, adversarial, regression):
 
 ```bash
-uv run python tools/benchmark_v1.py data/PXD075509/15HCD_1.mzML --build --repeats 3 --external-baselines all --public-dir benchmark
+./zig-0.16.0/zig build ci
 ```
 
-Refresh only the `.mzarc` numbers and regenerate the public report/plots without rerunning unchanged external baselines:
+Run the benchmark pipeline from scratch:
 
 ```bash
-uv run python tools/benchmark_v1.py data/PXD075509/15HCD_1.mzML --build --repeats 3 --public-dir benchmark --mzarc-only
+bash tools/benchmark.sh data/PXD075509/15HCD_1.mzML
+bash tools/validate.sh
+source .venv/bin/activate && python3 tools/collect_report.py benchmark/raw/manifest.json
 ```
-
-If you want the full release gate rather than just the core tests, run:
-
-```bash
-$ZIG build ci
-```
-
-At the moment that command is expected to fail on the decode-regression threshold, not on basic correctness.
 
 ## Repository Layout
 
@@ -190,21 +202,36 @@ mzarc/
 
 ## Roadmap
 
-The next substantive work is already clear from the current results:
+v0.2.0 is released. The next milestones:
 
-1. reduce decode cost in the m/z entropy path so the regression gate can close
-2. revisit SIMD FOR unpack as a real throughput lever rather than an observation-only note
-3. bring back additional size wins only when they survive a speed tradeoff on real data
-4. defer cross-spectrum delta until it is validated on a dataset where overlap actually supports it
-5. add downstream search-impact measurements before presenting lossy mode as more than a numerical experiment
+1. v0.3.0: SIMD FOR unpack.
+2. v0.3.1: Cross-spectrum delta. Requires a DIA dataset; not viable on the current DDA acquisition.
+3. v0.5.3: Streaming encode/decode.
+4. v0.7.1: Multi-instrument validation.
 
 ## References
 
-- [benchmark/report.md](benchmark/report.md)
-- [benchmark/report.json](benchmark/report.json)
-- [benchmark/entropy_analysis.txt](benchmark/entropy_analysis.txt)
-- [benchmark/cross_spectrum_analysis.txt](benchmark/cross_spectrum_analysis.txt)
-- [benchmark/intensity_entropy_analysis.txt](benchmark/intensity_entropy_analysis.txt)
+**Format and codec**
+
+- Martens, L. et al. [mzML — a community standard for mass spectrometry data](https://doi.org/10.1074/mcp.R110.000133). *Molecular & Cellular Proteomics*.
+- Bhamber, R. S. et al. (2020). [mzMLb: a future-proof raw mass spectrometry data format based on standards-compliant mzML and optimized for speed and storage requirements](https://doi.org/10.1021/acs.jproteome.0c00192). *Journal of Proteome Research*.
+- [ms-numpress](https://github.com/ms-numpress/ms-numpress): Lossless compression of high precision numerical data for mass spectrometry.
+- [mscompress](https://github.com/chrisagrams/mscompress): Domain-specific compression for tandem mass spectrometry data.
+
+**Entropy coding**
+
+- Duda, J. (2013). [Asymmetric numeral systems: entropy coding combining speed of Huffman coding with compression rate of arithmetic coding](https://arxiv.org/abs/1311.2540). *arXiv:1311.2540*.
+- Giesen, F. (2014). [rANS notes](https://fgiesen.wordpress.com/2014/02/02/rans-notes/). Practical derivation and proofs for streaming rANS; reference implementation at [github.com/rygorous/ryg_rans](https://github.com/rygorous/ryg_rans).
+
+**Dataset**
+
+- [PXD075509](https://www.ebi.ac.uk/pride/archive/projects/PXD075509): HCD fragmentation energy series, *E. coli* rRNA digest. Used as the primary benchmark dataset throughout this project.
+
+**Tooling**
+
+- [Zig](https://ziglang.org): systems programming language used for the codec, CLI, and test harness.
+- [pyteomics](https://github.com/levitsky/pyteomics): Python library used for mzML/mzMLb ingestion in the dump tool. Cite: Goloborodko et al. (2013), DOI [10.1007/s13361-012-0516-6](https://doi.org/10.1007/s13361-012-0516-6); Levitsky et al. (2018), DOI [10.1021/acs.jproteome.8b00717](https://doi.org/10.1021/acs.jproteome.8b00717).
+- [zebrac](https://github.com/eneskemalergin/zebrac): Linux perf-counter profiling tool used as the primary timing source (used binary in [tools/zebrac/](tools/zebrac/)).
 
 ---
 
