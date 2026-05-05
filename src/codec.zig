@@ -6,9 +6,16 @@ pub const Allocator = std.mem.Allocator;
 const io = std.Io.Threaded.global_single_threaded.io();
 
 fn monotonic_ns() u64 {
-    var ts: std.os.linux.timespec = undefined;
-    _ = std.os.linux.clock_gettime(std.os.linux.CLOCK.MONOTONIC, &ts);
-    return @as(u64, @intCast(ts.sec)) * 1_000_000_000 + @as(u64, @intCast(ts.nsec));
+    return @truncate(@as(u96, @bitCast(std.Io.Clock.now(.awake, io).nanoseconds)));
+}
+
+fn ns_to_ms(ns: u64) f64 {
+    return @as(f64, @floatFromInt(ns)) / 1_000_000.0;
+}
+
+fn ns_pct(part: u64, total: u64) f64 {
+    if (total == 0) return 0.0;
+    return @as(f64, @floatFromInt(part)) * 100.0 / @as(f64, @floatFromInt(total));
 }
 
 pub const magic = "MZAR".*;
@@ -240,6 +247,22 @@ fn totalPeaks(spectra: []const binary_reader.RawSpectrum) usize {
     return total;
 }
 
+fn flushBlock(
+    file_bytes: *std.ArrayList(u8),
+    allocator: Allocator,
+    scratch_arena: *std.heap.ArenaAllocator,
+    spectra: []const binary_reader.RawSpectrum,
+    options: EncodeOptions,
+    block_count: *u32,
+) !void {
+    const encoded = try block.encodeBlockDetailed(allocator, scratch_arena.allocator(), spectra, options.block_options);
+    defer encoded.deinit(allocator);
+    _ = scratch_arena.reset(.retain_capacity);
+    maybePrintBlockStats(block_count.*, encoded.stats, options);
+    try file_bytes.appendSlice(allocator, encoded.bytes);
+    block_count.* += 1;
+}
+
 fn appendFilteredStreamBlocks(
     file_bytes: *std.ArrayList(u8),
     allocator: Allocator,
@@ -268,24 +291,14 @@ fn appendFilteredStreamBlocks(
             order_cursor.* += 1;
 
             if (used == block_capacity) {
-                const encoded = try block.encodeBlockDetailed(allocator, scratch_arena.allocator(), block_spectra[0..used], options.block_options);
-                defer encoded.deinit(allocator);
-                _ = scratch_arena.reset(.retain_capacity);
-                maybePrintBlockStats(block_count.*, encoded.stats, options);
-                try file_bytes.appendSlice(allocator, encoded.bytes);
-                block_count.* += 1;
+                try flushBlock(file_bytes, allocator, &scratch_arena, block_spectra[0..used], options, block_count);
                 used = 0;
             }
         }
     }
 
     if (used != 0) {
-        const encoded = try block.encodeBlockDetailed(allocator, scratch_arena.allocator(), block_spectra[0..used], options.block_options);
-        defer encoded.deinit(allocator);
-        _ = scratch_arena.reset(.retain_capacity);
-        maybePrintBlockStats(block_count.*, encoded.stats, options);
-        try file_bytes.appendSlice(allocator, encoded.bytes);
-        block_count.* += 1;
+        try flushBlock(file_bytes, allocator, &scratch_arena, block_spectra[0..used], options, block_count);
     }
 
     return matched;
@@ -355,17 +368,12 @@ pub fn encodeFileAlloc(allocator: Allocator, spectra: []const binary_reader.RawS
         const ms1_ns = t2 - t1;
         const ms2_ns = t3 - t2;
         const finalize_ns = t4 - t3;
-        const ms = struct {
-            fn f(ns: u64) f64 {
-                return @as(f64, @floatFromInt(ns)) / 1_000_000.0;
-            }
-        };
         std.debug.print(
             "[encode timing] setup={d:.2}ms  ms1_blocks={d:.2}ms  ms2_blocks={d:.2}ms  finalize={d:.2}ms  total={d:.2}ms\n" ++
                 "[encode timing] setup={d:.1}%  ms1_blocks={d:.1}%  ms2_blocks={d:.1}%  finalize={d:.1}%\n",
             .{
-                ms.f(setup_ns),                                                                ms.f(ms1_ns),                                                                ms.f(ms2_ns),                                                                ms.f(finalize_ns),                                                                ms.f(total_ns),
-                @as(f64, @floatFromInt(setup_ns)) * 100.0 / @as(f64, @floatFromInt(total_ns)), @as(f64, @floatFromInt(ms1_ns)) * 100.0 / @as(f64, @floatFromInt(total_ns)), @as(f64, @floatFromInt(ms2_ns)) * 100.0 / @as(f64, @floatFromInt(total_ns)), @as(f64, @floatFromInt(finalize_ns)) * 100.0 / @as(f64, @floatFromInt(total_ns)),
+                ns_to_ms(setup_ns),         ns_to_ms(ms1_ns),         ns_to_ms(ms2_ns),         ns_to_ms(finalize_ns),         ns_to_ms(total_ns),
+                ns_pct(setup_ns, total_ns), ns_pct(ms1_ns, total_ns), ns_pct(ms2_ns, total_ns), ns_pct(finalize_ns, total_ns),
             },
         );
     }
@@ -477,17 +485,12 @@ pub fn decodeFileAlloc(allocator: Allocator, bytes: []const u8, options: DecodeO
             const total_ns = t2 - t0;
             const setup_ns = t1 - t0;
             const blocks_ns = t2 - t1;
-            const ms = struct {
-                fn f(ns: u64) f64 {
-                    return @as(f64, @floatFromInt(ns)) / 1_000_000.0;
-                }
-            };
             std.debug.print(
                 "[decode timing] setup={d:.2}ms  block_loop={d:.2}ms  reorder=0.00ms  total={d:.2}ms\n" ++
                     "[decode timing] setup={d:.1}%  block_loop={d:.1}%  reorder=0.0%\n",
                 .{
-                    ms.f(setup_ns),                                                                ms.f(blocks_ns),                                                                ms.f(total_ns),
-                    @as(f64, @floatFromInt(setup_ns)) * 100.0 / @as(f64, @floatFromInt(total_ns)), @as(f64, @floatFromInt(blocks_ns)) * 100.0 / @as(f64, @floatFromInt(total_ns)),
+                    ns_to_ms(setup_ns),         ns_to_ms(blocks_ns),         ns_to_ms(total_ns),
+                    ns_pct(setup_ns, total_ns), ns_pct(blocks_ns, total_ns),
                 },
             );
         }
@@ -506,17 +509,12 @@ pub fn decodeFileAlloc(allocator: Allocator, bytes: []const u8, options: DecodeO
         const setup_ns = t1 - t0;
         const blocks_ns = t2 - t1;
         const reorder_ns = t3 - t2;
-        const ms = struct {
-            fn f(ns: u64) f64 {
-                return @as(f64, @floatFromInt(ns)) / 1_000_000.0;
-            }
-        };
         std.debug.print(
             "[decode timing] setup={d:.2}ms  block_loop={d:.2}ms  reorder={d:.2}ms  total={d:.2}ms\n" ++
                 "[decode timing] setup={d:.1}%  block_loop={d:.1}%  reorder={d:.1}%\n",
             .{
-                ms.f(setup_ns),                                                                ms.f(blocks_ns),                                                                ms.f(reorder_ns),                                                                ms.f(total_ns),
-                @as(f64, @floatFromInt(setup_ns)) * 100.0 / @as(f64, @floatFromInt(total_ns)), @as(f64, @floatFromInt(blocks_ns)) * 100.0 / @as(f64, @floatFromInt(total_ns)), @as(f64, @floatFromInt(reorder_ns)) * 100.0 / @as(f64, @floatFromInt(total_ns)),
+                ns_to_ms(setup_ns),         ns_to_ms(blocks_ns),         ns_to_ms(reorder_ns),         ns_to_ms(total_ns),
+                ns_pct(setup_ns, total_ns), ns_pct(blocks_ns, total_ns), ns_pct(reorder_ns, total_ns),
             },
         );
     }
