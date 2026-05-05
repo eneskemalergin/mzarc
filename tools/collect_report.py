@@ -40,7 +40,7 @@ from benchmark_metrics import (  # noqa: E402
     load_search_impact,
 )
 from benchmark_plotting import generate_plots  # noqa: E402
-from benchmark_report import FUTURE_BASELINES, render_markdown  # noqa: E402
+from benchmark_report import render_markdown  # noqa: E402
 from benchmark_stats import compute_stats, run_all_comparisons  # noqa: E402
 
 
@@ -352,7 +352,6 @@ def main() -> None:
         "lossy_sweep":        lossy_sweep_rows,
         "plot_rows":          plot_rows,
         "external_baselines": external_baselines,
-        "comparison_candidates": FUTURE_BASELINES,
     }
 
     if not args.no_plots:

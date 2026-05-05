@@ -25,7 +25,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from benchmark_core import compare_dumps, read_dump
 from benchmark_metrics import build_fidelity_metric_rows
-from benchmark_report import FUTURE_BASELINES, render_markdown
+from benchmark_report import render_markdown
 
 
 def main() -> None:

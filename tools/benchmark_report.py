@@ -2,28 +2,9 @@ from __future__ import annotations
 
 from benchmark_core import format_bytes, format_percent
 
-FUTURE_BASELINES = [
-    {
-        "name": "MScompress",
-        "core_idea": "Multi-threaded mzML to MSZ compressor with random-access decode support and configurable lossless or lossy encoding.",
-        "why_it_matters": "It is a modern practical systems baseline with explicit focus on speed, threading, and usable compressed-file access.",
-        "source": "chrisagrams/mscompress",
-    },
-    {
-        "name": "MS-Numpress in mzML",
-        "core_idea": "Array-level compression inside the mzML ecosystem: linear prediction for smooth m/z arrays and logged or integer schemes for intensities.",
-        "why_it_matters": "It is the closest standard-adjacent baseline for testing whether mzarc beats established PSI-compatible spectrum array compression.",
-        "source": "ms-numpress project",
-    },
-    {
-        "name": "mzMLb",
-        "core_idea": "Keeps standards-compliant mzML metadata while moving bulk numeric arrays into HDF5 for better speed and storage efficiency.",
-        "why_it_matters": "It is a direct standard-preserving answer to the same problem mzarc is addressing: less storage and faster access without giving up open-format interoperability.",
-        "source": "PMID: 32864978",
-    },
-]
 
-def _format_optional_number(value: object, *, precision: int = 6, suffix: str = "") -> str:
+def _fmt(value: object, *, precision: int = 4, suffix: str = "") -> str:
+    """Format an optional numeric value; returns 'n/a' for None."""
     if value is None:
         return "n/a"
     number = float(value)
@@ -33,24 +14,32 @@ def _format_optional_number(value: object, *, precision: int = 6, suffix: str = 
         return f"{int(round(number))}{suffix}"
     return f"{number:.{precision}g}{suffix}"
 
-def _format_optional_percent(value: object, *, precision: int = 3) -> str:
+
+def _pct(value: object, *, precision: int = 3) -> str:
+    """Format a value that is already in percent units (0-100 scale)."""
     if value is None:
         return "n/a"
     return f"{float(value):.{precision}f}%"
 
+
 def render_markdown(report: dict) -> str:
-    dataset = report["dataset"]
-    selected_quant = report["selected_lossy_intensity_quant"]
-    external_baselines = report.get("external_baselines", [])
-    performance_rows = report.get("performance_rows", [])
-    fidelity_metrics = report.get("fidelity_metrics", [])
-    fidelity_rows = report.get("fidelity_rows", [])
-    search_impact_rows = report.get("search_impact_rows", [])
+    dataset              = report["dataset"]
+    selected_quant       = report["selected_lossy_intensity_quant"]
+    external_baselines   = report.get("external_baselines", [])
+    performance_rows     = report.get("performance_rows", [])
+    fidelity_metrics     = report.get("fidelity_metrics", [])
+    fidelity_rows        = report.get("fidelity_rows", [])
     codec_byte_breakdown = report.get("codec_byte_breakdown", {})
+    memory_metric_rows   = report.get("memory_metric_rows", [])
+    stat_comparisons     = report.get("stat_comparisons", [])
+
+    mzml_bytes           = report["sizes"]["mzML"]["bytes"]
+    dump_bytes           = report["sizes"]["dump"]["bytes"]
+    benchmarked_external = [b["name"] for b in external_baselines if b["status"] == "measured"]
 
     lines: list[str] = []
-
     line = lines.append
+
     def blank() -> None:
         if not lines or lines[-1] != "":
             lines.append("")
@@ -58,10 +47,6 @@ def render_markdown(report: dict) -> str:
     def section(title: str, *, level: int = 2) -> None:
         blank()
         line(f"{'#' * level} {title}")
-        blank()
-
-    def bullets(items: list[str]) -> None:
-        lines.extend(f"- {item}" for item in items)
         blank()
 
     def paragraph(text: str) -> None:
@@ -72,348 +57,341 @@ def render_markdown(report: dict) -> str:
         line(f"![{alt}]({path})")
         blank()
 
-    def table(headers: list[str], rows: list[list[str]], alignments: list[str] | None = None) -> None:
+    def table(
+        headers: list[str],
+        rows: list[list[str]],
+        alignments: list[str] | None = None,
+    ) -> None:
         alignments = alignments or ["left"] * len(headers)
         markers = {"left": "---", "right": "---:", "center": ":---:"}
         line("| " + " | ".join(headers) + " |")
-        line("| " + " | ".join(markers.get(item, "---") for item in alignments) + " |")
+        line("| " + " | ".join(markers.get(a, "---") for a in alignments) + " |")
         for row in rows:
             line("| " + " | ".join(row) + " |")
         blank()
 
-    benchmarked_external = [item["name"] for item in external_baselines if item["status"] == "measured"]
-    mzml_bytes = report["sizes"]["mzML"]["bytes"]
-    dump_bytes = report["sizes"]["dump"]["bytes"]
-
+    # ---------------------------------------------------------------------- #
+    # Header                                                                   #
+    # ---------------------------------------------------------------------- #
     line(f"# Benchmark Report: {report['sample_name']}")
     blank()
-    bullets(
-        [
-            f"mzML input: {report['paths']['mzml']}",
-            f"private workdir: {report['paths']['private_workdir']}",
-            f"public output dir: {report['paths']['public_dir']}",
-            f"repeats: {report.get('repeats', 'n/a')}",
-            f"selected lossy intensity quantization: q={selected_quant}",
-        ]
+    line(
+        f"**Dataset:** `{report['paths']['mzml']}`  |  "
+        f"{dataset['spectra']:,} spectra "
+        f"({dataset['ms1_spectra']:,} MS1 / {dataset['ms2_spectra']:,} MS2)  |  "
+        f"{dataset['total_peaks']:,} total peaks  |  "
+        f"lossy q={selected_quant}"
     )
-
-    section("Story")
+    blank()
     paragraph(
-        "mzarc is a domain-specific MS codec: it reads mass spectrometry spectra, "
-        "strips the mzML interchange overhead, and applies a pipeline of "
-        "delta coding, frame-of-reference packing, and rANS entropy coding tuned "
-        "to the statistical structure of m/z and intensity arrays. "
-        "The benchmarks are organised into three groups. "
-        "MS-domain codecs (mzarc, mzMLb, MScompress, MS-Numpress) all understand spectrum structure. "
-        "Generic-on-mzML rows show what you get by applying a general-purpose compressor "
-        "to the standard XML interchange format. "
-        "Generic-on-dump rows are an internal reference floor: the same compressors applied "
-        "to the stripped binary dump, which removes XML and base64 overhead but is not "
-        "a viable interchange format on its own."
-    )
-    paragraph(
-        f"External MS-domain formats that ran end-to-end in this benchmark: "
-        f"{', '.join(benchmarked_external)}." if benchmarked_external else
-        "No external MS-domain formats ran end-to-end in this benchmark."
+        "mzarc is a domain-specific MS codec: it strips mzML interchange overhead "
+        "and applies delta coding, frame-of-reference packing, and rANS entropy coding "
+        "tuned to the statistical structure of m/z and intensity arrays. "
+        "Three comparison groups are used: MS-domain codecs (mzarc, mzMLb, MScompress, "
+        "MS-Numpress) that understand spectrum structure; generic compressors applied to "
+        "the mzML XML interchange format; and generic compressors applied to the stripped "
+        "binary dump (a lower-bound reference that is not a viable interchange format)."
     )
 
-    section("Dataset")
-    bullets(
+    # ---------------------------------------------------------------------- #
+    # Key Results                                                              #
+    # ---------------------------------------------------------------------- #
+    section("Key Results")
+
+    # Lookup encode/decode throughput keyed by artifact name.
+    perf: dict[str, dict[str, float | None]] = {}
+    for row in performance_rows:
+        art = row["artifact"]
+        if art not in perf:
+            perf[art] = {"compress": None, "decompress": None}
+        if row["direction"] == "compression" and row.get("throughput_mib_s") is not None:
+            perf[art]["compress"] = float(row["throughput_mib_s"])
+        elif row["direction"] == "decompression" and row.get("throughput_mib_s") is not None:
+            perf[art]["decompress"] = float(row["throughput_mib_s"])
+
+    def _is_exact(artifact: str) -> str:
+        for item in fidelity_metrics:
+            if item["artifact"] == artifact:
+                return (
+                    "exact"
+                    if float(item.get("max_abs_mz_error") or 0) == 0
+                    and float(item.get("max_abs_intensity_error") or 0) == 0
+                    else "lossy"
+                )
+        return "n/a"
+
+    ms_codecs = [
+        "mzarc lossless",
+        f"mzarc lossy q={selected_quant}",
+        "mzMLb",
+        "MScompress",
+        "MScompress (1T)",
+        "MS-Numpress in mzML",
+    ]
+    table(
+        ["codec", "size", "vs mzML", "encode MiB/s", "decode MiB/s", "fidelity"],
         [
-            f"spectra: {dataset['spectra']}",
-            f"total peaks: {dataset['total_peaks']}",
-            f"ms1 spectra: {dataset['ms1_spectra']}",
-            f"ms2 spectra: {dataset['ms2_spectra']}",
-        ]
+            [
+                art,
+                format_bytes(report["sizes"][art]["bytes"]) if art in report["sizes"] else "n/a",
+                f"{report['sizes'][art]['bytes'] / mzml_bytes * 100:.1f}%"
+                if art in report["sizes"]
+                else "n/a",
+                _fmt((perf.get(art) or {}).get("compress"), precision=4),
+                _fmt((perf.get(art) or {}).get("decompress"), precision=4),
+                _is_exact(art),
+            ]
+            for art in ms_codecs
+            if art in report["sizes"] or art in perf
+        ],
+        ["left", "right", "right", "right", "right", "left"],
     )
 
+    # Generic baseline context.
+    best_dump_entry = min(
+        (
+            (k, v)
+            for k, v in report["sizes"].items()
+            if "dump" in k.lower() and k not in {"dump", "mzML"}
+        ),
+        key=lambda kv: kv[1]["bytes"],
+        default=None,
+    )
+    mzarc_lossless_bytes = report["sizes"].get("mzarc lossless", {}).get("bytes")
+    if best_dump_entry and mzarc_lossless_bytes:
+        best_name, best_val = best_dump_entry
+        delta_pct = (best_val["bytes"] - mzarc_lossless_bytes) / best_val["bytes"] * 100
+        paragraph(
+            f"Best single-thread generic size on the binary dump: "
+            f"`{best_name}` at {format_bytes(best_val['bytes'])} "
+            f"({best_val['bytes'] / mzml_bytes * 100:.1f}% of mzML). "
+            f"mzarc lossless is {delta_pct:.1f}% smaller."
+        )
+
+    if benchmarked_external:
+        paragraph(
+            f"External MS-domain codecs benchmarked in this run: {', '.join(benchmarked_external)}."
+        )
+
+    # ---------------------------------------------------------------------- #
+    # Size Comparison                                                          #
+    # ---------------------------------------------------------------------- #
     section("Size Comparison")
     image("Artifact Size Comparison", f"plots/{report['plots']['size_comparison']}")
     table(
-        ["artifact", "bytes", "size", "vs mzML", "vs dump"],
+        ["artifact", "size", "vs mzML", "vs dump"],
         [
             [
                 artifact,
-                str(item["bytes"]),
                 format_bytes(item["bytes"]),
-                f"{(item['bytes'] / mzml_bytes) * 100:.2f}%",
-                f"{(item['bytes'] / dump_bytes) * 100:.2f}%",
+                f"{item['bytes'] / mzml_bytes * 100:.2f}%",
+                f"{item['bytes'] / dump_bytes * 100:.2f}%",
             ]
             for artifact, item in report["sizes"].items()
         ],
-        ["left", "right", "right", "right", "right"],
-    )
-    paragraph(
-        "Lossless `.mzarc` is already materially smaller than mzML on this sample, and it slightly beats `gzip` on the dump baseline while still trailing `zstd` on the dump. The selected lossy mode gives a controlled next step down in size without the catastrophic saturation behavior that the earlier intensity quantizer had."
+        ["left", "right", "right", "right"],
     )
 
     if codec_byte_breakdown:
-        section("Byte Composition")
+        section("Internal Byte Breakdown", level=3)
         table(
-            ["artifact", "structural bytes", "spectrum metadata", "m/z stream", "intensity stream", "total"],
+            ["artifact", "structural", "spectrum metadata", "m/z stream", "intensity stream", "total"],
             [
                 [
                     artifact,
-                    *[f"{format_bytes(n)} ({n / data['total_bytes'] * 100:.2f}%)" for n in [
-                        data['file_header_bytes'] + data['global_order_bytes'] + data['block_header_bytes'],
-                        data['scan_id_bytes'] + data['rt_bytes'] + data['precursor_bytes'] + data['peak_count_bytes'],
-                        data['mz_metadata_bytes'] + data['mz_payload_bytes'],
-                        data['intensity_metadata_bytes'] + data['intensity_payload_bytes'],
-                    ]],
-                    format_bytes(data['total_bytes']),
+                    *[
+                        f"{format_bytes(n)} ({n / data['total_bytes'] * 100:.1f}%)"
+                        for n in [
+                            data["file_header_bytes"] + data["global_order_bytes"] + data["block_header_bytes"],
+                            data["scan_id_bytes"] + data["rt_bytes"] + data["precursor_bytes"] + data["peak_count_bytes"],
+                            data["mz_metadata_bytes"] + data["mz_payload_bytes"],
+                            data["intensity_metadata_bytes"] + data["intensity_payload_bytes"],
+                        ]
+                    ],
+                    format_bytes(data["total_bytes"]),
                 ]
                 for artifact, data in codec_byte_breakdown.items()
             ],
             ["left", "right", "right", "right", "right", "right"],
         )
 
-        lossless_bytes = codec_byte_breakdown.get("mzarc lossless")
-        if lossless_bytes is not None:
-            d = lossless_bytes
-            components = [
-                ("structural overhead",    d["file_header_bytes"] + d["global_order_bytes"] + d["block_header_bytes"]),
-                ("per-spectrum metadata",  d["scan_id_bytes"] + d["rt_bytes"] + d["precursor_bytes"] + d["peak_count_bytes"]),
-                ("the m/z stream",         d["mz_metadata_bytes"] + d["mz_payload_bytes"]),
-                ("the intensity stream",   d["intensity_metadata_bytes"] + d["intensity_payload_bytes"]),
-            ]
-            dominant_component = max(components, key=lambda item: item[1])
-            paragraph(
-                f"The lossless byte breakdown shows whether the size regression is real payload or container overhead. On this run, {dominant_component[0]} is the largest component at {format_bytes(dominant_component[1])}, which keeps the diagnosis grounded in actual encoded bytes rather than guesswork."
-            )
-
-    section("Performance Overview")
+    # ---------------------------------------------------------------------- #
+    # Throughput                                                               #
+    # ---------------------------------------------------------------------- #
+    section("Throughput")
     image("Throughput Overview", f"plots/{report['plots']['performance_overview']}")
     table(
-        ["artifact", "category", "direction", "status", "throughput", "median time", "samples", "source format", "notes"],
+        ["artifact", "category", "direction", "throughput", "median", "n"],
         [
             [
                 item["artifact"],
                 item.get("category_label") or "",
                 item["direction"],
-                item["status"],
-                _format_optional_number(item["throughput_mib_s"], precision=4, suffix=" MiB/s"),
-                _format_optional_number(item["median_seconds"], precision=5, suffix="s"),
+                _fmt(item["throughput_mib_s"], precision=4, suffix=" MiB/s"),
+                _fmt(item["median_seconds"], precision=4, suffix="s"),
                 str(item["sample_count"]) if item.get("sample_count") else "n/a",
-                item["source_format"] or "n/a",
-                item["notes"] or "",
             ]
             for item in performance_rows
+            if item.get("status") == "measured"
         ],
-        ["left", "left", "left", "left", "right", "right", "right", "left", "left"],
+        ["left", "left", "left", "right", "right", "right"],
     )
 
-    memory_metric_rows = report.get("memory_metric_rows", [])
+    # ---------------------------------------------------------------------- #
+    # Memory and CPU                                                           #
+    # ---------------------------------------------------------------------- #
     if memory_metric_rows:
-        section("Memory and CPU Metrics")
+        section("Memory and CPU")
         paragraph(
-            "zebrac collects Linux perf counters for each command across all samples "
-            "in the measurement window. All values are medians. "
-            "IPC (instructions per cycle) measures compute density: higher means the CPU "
-            "is doing useful work rather than stalling on cache misses. "
-            "Cache miss rate = cache_misses / cache_references; lower is better. "
-            "Branch misses indicate prediction failures; a high count relative to instructions "
-            "suggests data-dependent branching that limits pipelining."
+            "All values are zebrac medians from Linux perf counters. "
+            "IPC = instructions / cycle (higher = more compute-efficient). "
+            "Cache miss rate = cache_misses / cache_references (lower = better data locality)."
         )
         if "memory_footprint" in report.get("plots", {}):
-            image("Peak RSS Comparison", f"plots/{report['plots']['memory_footprint']}")
+            image("Peak RSS", f"plots/{report['plots']['memory_footprint']}")
         if "hardware_efficiency" in report.get("plots", {}):
             image("Hardware Algorithm Efficiency", f"plots/{report['plots']['hardware_efficiency']}")
         table(
-            [
-                "operation",
-                "wall time (med)",
-                "peak RSS (med)",
-                "instructions",
-                "IPC",
-                "cache misses",
-                "cache miss rate",
-                "cpu cycles",
-                "branch misses",
-                "n",
-            ],
+            ["operation", "wall time", "peak RSS", "instructions", "IPC", "cache miss rate", "n"],
             [
                 [
                     row["operation"],
-                    _format_optional_number(row["wall_time_median_seconds"], precision=4, suffix="s"),
+                    _fmt(row["wall_time_median_seconds"], precision=4, suffix="s"),
                     f"{row['peak_rss_median_mib']:.1f} MiB",
                     f"{row['instructions_median']:.3g}",
-                    _format_optional_number(row.get("ipc"), precision=3),
-                    f"{row['cache_misses_median']:.3g}",
-                    _format_optional_percent(row.get("cache_miss_rate") * 100 if row.get("cache_miss_rate") is not None else None),
-                    _format_optional_number(row.get("cpu_cycles_median"), precision=4),
-                    _format_optional_number(row.get("branch_misses_median"), precision=4),
+                    _fmt(row.get("ipc"), precision=3),
+                    _pct(
+                        row["cache_miss_rate"] * 100
+                        if row.get("cache_miss_rate") is not None
+                        else None
+                    ),
                     str(row["sample_count"]),
                 ]
                 for row in memory_metric_rows
             ],
-            ["left", "right", "right", "right", "right", "right", "right", "right", "right", "right"],
+            ["left", "right", "right", "right", "right", "right", "right"],
         )
 
-    zebrac_results = report.get("zebrac_results", [])
-    if zebrac_results:
-        section("Zebrac Statistics")
-        paragraph(
-            "All internal operations are timed by zebrac, which runs each command repeatedly "
-            "over a fixed duration window using Linux perf counters. "
-            "Reported wall times are medians across all samples in the window. "
-            "CI 95% bounds are bootstrap confidence intervals on the median, "
-            "synthesised from a log-normal distribution fitted to zebrac's summary statistics."
-        )
-        table(
-            ["operation", "median", "stddev", "CI 95% lo", "CI 95% hi", "IQR", "min", "max", "n"],
-            [
-                [
-                    str(item["name"]),
-                    _format_optional_number(item.get("wall_time_median_seconds"), precision=4, suffix="s"),
-                    _format_optional_number(item.get("wall_time_stddev_seconds"), precision=4, suffix="s"),
-                    _format_optional_number(item.get("ci95_lo_seconds"), precision=4, suffix="s"),
-                    _format_optional_number(item.get("ci95_hi_seconds"), precision=4, suffix="s"),
-                    _format_optional_number(item.get("iqr_seconds"), precision=4, suffix="s"),
-                    _format_optional_number(item.get("wall_time_min_seconds"), precision=4, suffix="s"),
-                    _format_optional_number(item.get("wall_time_max_seconds"), precision=4, suffix="s"),
-                    str(item.get("sample_count", "n/a")),
-                ]
-                for item in zebrac_results
-            ],
-            ["left", "right", "right", "right", "right", "right", "right", "right", "right"],
-        )
-
-    stat_comparisons = report.get("stat_comparisons", [])
-    if stat_comparisons:
+    # ---------------------------------------------------------------------- #
+    # Statistical Comparisons                                                  #
+    # ---------------------------------------------------------------------- #
+    rows_with_ratio = [c for c in stat_comparisons if c.get("speed_ratio") is not None]
+    if rows_with_ratio:
         section("Statistical Comparisons")
         paragraph(
-            "Mann-Whitney U tests compare mzarc lossless encode wall-time distributions against "
-            "each general-purpose codec baseline. "
-            "Wilcoxon signed-rank test compares mzarc encode vs decode. "
-            "Distributions are synthesised from zebrac summary statistics via log-normal sampling "
-            "(log-normal is appropriate for execution-time data). "
-            "p-values below 0.05 are considered significant."
+            "Mann-Whitney U tests on log-normal samples drawn from zebrac summary statistics. "
+            "Speed ratio = mzarc time / baseline time; ratio < 1 means mzarc is faster. "
+            "p < 0.05 is significant."
         )
         if "stat_comparisons" in report.get("plots", {}):
             image("Speed Ratio: mzarc vs Baselines", f"plots/{report['plots']['stat_comparisons']}")
         table(
-            ["operation A", "operation B", "type", "speed ratio", "p-value", "significant"],
+            ["operation A", "operation B", "speed ratio", "p-value", "significant"],
             [
                 [
                     str(c.get("name_a", c.get("operation_a", ""))),
                     str(c.get("name_b", c.get("operation_b", ""))),
-                    str(c.get("comparison_type", "")),
-                    _format_optional_number(c.get("speed_ratio"), precision=3),
-                    _format_optional_number(c.get("p_value"), precision=4),
+                    _fmt(c.get("speed_ratio"), precision=3),
+                    _fmt(c.get("p_value"), precision=4),
                     "yes" if c.get("significant") else "no",
                 ]
-                for c in stat_comparisons
+                for c in rows_with_ratio
             ],
-            ["left", "left", "left", "right", "right", "left"],
+            ["left", "left", "right", "right", "left"],
         )
 
-    section("External Baselines")
-    if external_baselines:
-        table(
-            ["baseline", "status", "size", "encode", "decode", "notes"],
-            [
-                [
-                    item["name"],
-                    item["status"],
-                    format_bytes(report["sizes"][item["name"]]["bytes"]) if item["name"] in report.get("sizes", {}) else "n/a",
-                    item["encode_operation"] or "n/a",
-                    item["decode_operation"] or "n/a",
-                    item.get("reason") or "",
-                ]
-                for item in external_baselines
-            ],
-            ["left", "left", "right", "left", "left", "left"],
-        )
-    else:
-        paragraph("No external baselines were requested for this run.")
-
+    # ---------------------------------------------------------------------- #
+    # Data Fidelity                                                            #
+    # ---------------------------------------------------------------------- #
     section("Data Fidelity")
     image("Data Fidelity Overview", f"plots/{report['plots']['fidelity_overview']}")
+
+    # p99 from fidelity_rows is a raw fraction; format_percent handles it.
+    p99_by_artifact: dict[str, float] = {
+        row["artifact"]: float(row["data"]["intensity_rel"]["p99"])
+        for row in fidelity_rows
+        if row["data"].get("intensity_rel", {}).get("p99") is not None
+    }
+
     table(
-        ["artifact", "status", "global order", "max abs m/z", "max ppm m/z", "mean abs intensity", "max abs intensity", "p95 rel intensity", "notes"],
+        ["artifact", "exact", "global order", "max ppm m/z", "p95 rel intensity", "p99 rel intensity"],
         [
             [
                 item["artifact"],
-                item["status"],
-                str(item["global_order_preserved"]).lower() if item["global_order_preserved"] is not None else "n/a",
-                _format_optional_number(item["max_abs_mz_error"], precision=9),
-                _format_optional_number(item.get("max_ppm_mz_error"), precision=6),
-                _format_optional_number(item["mean_abs_intensity_error"], precision=9),
-                _format_optional_number(item["max_abs_intensity_error"], precision=9),
-                _format_optional_percent(item["p95_rel_intensity_error_pct"]),
-                item["notes"] or "",
+                "yes"
+                if (
+                    float(item.get("max_abs_mz_error") or 0) == 0
+                    and float(item.get("max_abs_intensity_error") or 0) == 0
+                )
+                else "no",
+                str(item["global_order_preserved"]).lower()
+                if item["global_order_preserved"] is not None
+                else "n/a",
+                _fmt(item.get("max_ppm_mz_error"), precision=5),
+                _pct(item["p95_rel_intensity_error_pct"]),
+                format_percent(p99_by_artifact[item["artifact"]])
+                if item["artifact"] in p99_by_artifact
+                else "n/a",
             ]
             for item in fidelity_metrics
         ],
-        ["left", "left", "right", "right", "right", "right", "right", "right", "left"],
+        ["left", "left", "left", "right", "right", "right"],
     )
 
-    section("Fidelity Summary")
-    table(
-        ["artifact", "global order", "ms1 order", "ms2 order", "mean abs mz", "max abs mz", "max ppm mz", "mean abs intensity", "rmse intensity", "p95 rel intensity", "p99 rel intensity", "mean abs log1p intensity"],
-        [
-            [
-                row["artifact"],
-                str(row["data"]["global_order_preserved"]).lower(),
-                str(row["data"]["ms1_relative_order_preserved"]).lower(),
-                str(row["data"]["ms2_relative_order_preserved"]).lower(),
-                f"{row['data']['mz_abs']['mean']:.9g}",
-                f"{row['data']['mz_abs']['max']:.9g}",
-                f"{row['data'].get('mz_ppm', {}).get('max', 0.0):.6g}",
-                f"{row['data']['intensity_abs']['mean']:.9g}",
-                f"{row['data']['intensity_abs']['rmse']:.9g}",
-                format_percent(row["data"]["intensity_rel"]["p95"]),
-                format_percent(row["data"]["intensity_rel"]["p99"]),
-                f"{row['data']['intensity_log1p_abs']['mean']:.9g}",
-            ]
-            for row in fidelity_rows
-        ],
-        ["left", "right", "right", "right", "right", "right", "right", "right", "right", "right", "right", "right"],
+    # Narrative summary.
+    exact_artifacts = [
+        f"`{item['artifact']}`"
+        for item in fidelity_metrics
+        if float(item.get("max_abs_mz_error") or 0) == 0
+        and float(item.get("max_abs_intensity_error") or 0) == 0
+    ]
+    lossless_row = next(
+        (r["data"] for r in fidelity_rows if r["artifact"] == "mzarc lossless"), None
     )
-    exact_artifacts = [f"`{item['artifact']}`" for item in fidelity_metrics if item["status"] == "measured" and float(item.get("max_abs_mz_error") or 0.0) == 0.0 and float(item.get("max_abs_intensity_error") or 0.0) == 0.0]
-    lossless_row = next((row["data"] for row in fidelity_rows if row["artifact"] == "mzarc lossless"), None)
-    lossy_row = next((row["data"] for row in fidelity_rows if str(row["artifact"]).startswith("mzarc lossy q=")), None)
-
-    lossless_summary = "`mzarc lossless` was not included in this run."
-    if lossless_row is not None:
-        lossless_exact = (
-            float(lossless_row["mz_abs"]["max"]) == 0.0 and
-            float(lossless_row["intensity_abs"]["max"]) == 0.0
+    lossy_row = next(
+        (r["data"] for r in fidelity_rows if str(r["artifact"]).startswith("mzarc lossy q=")),
+        None,
+    )
+    parts: list[str] = []
+    if exact_artifacts:
+        exact_list = (
+            ", ".join(exact_artifacts[:-1]) + " and " + exact_artifacts[-1]
+            if len(exact_artifacts) > 1
+            else exact_artifacts[0]
         )
-        if lossless_exact and bool(lossless_row["global_order_preserved"]):
-            lossless_summary = "`mzarc lossless` round-trips exactly, including m/z values and original scan order."
-        elif lossless_exact:
-            lossless_summary = "`mzarc lossless` is numerically exact but still does not preserve original global scan order."
-        else:
-            lossless_summary = "`mzarc lossless` still carries measurable round-trip error and needs more work before it can be treated as exact."
-
-    lossy_summary = "`mzarc lossy` was not included in this run."
+        parts.append(f"{exact_list} round-trip exactly.")
+    if lossless_row is not None and (
+        float(lossless_row["mz_abs"]["max"]) == 0
+        and float(lossless_row["intensity_abs"]["max"]) == 0
+        and lossless_row["global_order_preserved"]
+    ):
+        parts.append("`mzarc lossless` is numerically exact and preserves global scan order.")
     if lossy_row is not None:
-        lossy_summary = (
-            "`mzarc lossy` preserves original scan order while keeping m/z and intensity error within the current quantization bounds."
-            if bool(lossy_row["global_order_preserved"])
-            else "`mzarc lossy` keeps m/z and intensity error within the current quantization bounds, but it still does not preserve original global scan order."
-        )
+        p95_str = format_percent(lossy_row["intensity_rel"]["p95"])
+        if lossy_row["global_order_preserved"]:
+            parts.append(
+                f"`mzarc lossy` preserves scan order; p95 relative intensity error is {p95_str}."
+            )
+        else:
+            parts.append(
+                f"`mzarc lossy` p95 relative intensity error is {p95_str}, "
+                f"but does not preserve global scan order."
+            )
+    if parts:
+        paragraph(" ".join(parts))
 
-    exact_sentence = (
-        f"On the current run, {', '.join(exact_artifacts[:-1]) + ' and ' + exact_artifacts[-1] if len(exact_artifacts) > 1 else exact_artifacts[0]} round-trip exactly."
-        if exact_artifacts
-        else "On the current run, no measured artifact round-trips exactly."
-    )
-
-    paragraph(
-        f"{exact_sentence} {lossless_summary} {lossy_summary}"
-    )
-
-    section("Lossy Sweep")
+    # ---------------------------------------------------------------------- #
+    # Lossy Quantization Sweep                                                 #
+    # ---------------------------------------------------------------------- #
+    section("Lossy Quantization Sweep")
     image("Lossy Tradeoff", f"plots/{report['plots']['lossy_tradeoff']}")
     table(
-        ["q", "bytes", "size", "p95 rel intensity err", "p99 rel intensity err", "mean rel intensity err"],
+        ["q", "size", "vs mzML", "p95 rel intensity err", "p99 rel intensity err", "mean"],
         [
             [
                 str(item["intensity_quant"]),
-                str(item["bytes"]),
                 format_bytes(item["bytes"]),
+                f"{item['bytes'] / mzml_bytes * 100:.1f}%",
                 format_percent(item["fidelity"]["intensity_rel"]["p95"]),
                 format_percent(item["fidelity"]["intensity_rel"]["p99"]),
                 format_percent(item["fidelity"]["intensity_rel"]["mean"]),
@@ -422,54 +400,22 @@ def render_markdown(report: dict) -> str:
         ],
         ["right", "right", "right", "right", "right", "right"],
     )
-    paragraph(
-        "The selected `q` stays user-controlled. Higher `q` means more preserved log-intensity precision and usually a larger file; lower `q` buys size at the cost of broader relative error tails."
-    )
-    image("Relative Intensity Error Quantiles", f"plots/{report['plots']['intensity_relative_quantiles']}")
-
-    section("Search Impact")
-    table(
-        ["artifact", "status", "peptide ID difference", "peptide ID change", "FDR change", "notes"],
-        [
-            [
-                item["artifact"],
-                item["status"],
-                _format_optional_number(item["peptide_identification_difference"], precision=0),
-                _format_optional_percent(item["peptide_identification_pct_change"]),
-                _format_optional_percent(item["fdr_change_pct_points"]),
-                item["notes"] or "",
-            ]
-            for item in search_impact_rows
-        ],
-        ["left", "left", "right", "right", "right", "left"],
+    selected_p95 = next(
+        (
+            format_percent(item["fidelity"]["intensity_rel"]["p95"])
+            for item in report["lossy_sweep"]
+            if item["intensity_quant"] == selected_quant
+        ),
+        "n/a",
     )
     paragraph(
-        "Measured search-impact rows were supplied externally for this run."
-        if any(item["status"] == "measured" for item in search_impact_rows)
-        else "Search-impact metrics are not measured by the current benchmark pipeline yet. They remain listed here so the report does not imply numerical equivalence where no downstream search experiment has actually been run."
+        f"Higher q = more preserved log-intensity precision at the cost of a larger file. "
+        f"Selected q={selected_quant} gives p95 relative intensity error of {selected_p95}. "
+        f"Relative error = abs(delta) / original, evaluated over strictly positive peaks after round-trip decode."
     )
-
-    section("How The Error Numbers Are Computed")
-    paragraph("The reported means are computed over every matched peak after round-trip decode. They are not inferred from min and max.")
-    bullets(
-        [
-            "Mean absolute error: average absolute per-peak error.",
-            "RMSE: square root of the average squared per-peak error.",
-            "Relative intensity error: absolute error divided by the original intensity, evaluated only on strictly positive peaks.",
-            "log1p intensity error: absolute error after applying `log1p`, which keeps the metric useful across large dynamic range.",
-        ]
+    image(
+        "Relative Intensity Error Quantiles",
+        f"plots/{report['plots']['intensity_relative_quantiles']}",
     )
-
-    benchmarked_names = {item["name"] for item in external_baselines if item["status"] != "unavailable"}
-    remaining_candidates = [item for item in report["comparison_candidates"] if item["name"] not in benchmarked_names]
-    section("Future Comparison Candidates")
-    if remaining_candidates:
-        paragraph("These are the remaining or still-blocked comparison candidates after the current benchmark run.")
-        table(
-            ["candidate", "core idea", "why test it next", "source"],
-            [[item["name"], item["core_idea"], item["why_it_matters"], item["source"]] for item in remaining_candidates],
-        )
-    else:
-        paragraph("All named comparison candidates are wired into the current benchmark run in some form.")
 
     return "\n".join(lines).rstrip() + "\n"
