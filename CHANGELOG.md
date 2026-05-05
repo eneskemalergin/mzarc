@@ -3,6 +3,39 @@
 
 All notable changes to mzarc are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This project follows [Semantic Versioning](https://semver.org/).
 
+## [0.2.0] — 2026-05-04 `tagged`
+
+### Fixed
+
+- `src/codec.zig`: `monotonic_ns()` was using `std.os.linux.timespec` and
+  `std.os.linux.clock_gettime`, which are Linux-only. Replaced with
+  `std.Io.Clock.now(.awake, io)` — the correct Zig 0.16.0 cross-platform API.
+  Fixes a panic on macOS CI (`integer does not fit in destination type`).
+- `src/codec.zig`: `@intCast` on `i96` timestamp replaced with `@truncate` to
+  avoid safety-checked-build panic if the value were ever negative.
+- `src/codec.zig`: percentage divisions in all three timing print blocks were
+  raw f64 divides — produced `inf` when `total_ns == 0`. Guarded with zero-check.
+
+### Changed
+
+- `src/codec.zig`: `ns_to_ms` and `ns_pct` extracted as module-level functions
+  instead of being duplicated as anonymous structs in each timing block.
+- `src/codec.zig`: `flushBlock` extracted from `appendFilteredStreamBlocks` to
+  eliminate the duplicated encode-append-count body between the mid-loop flush
+  and the post-loop flush.
+- `.github/workflows/ci.yml`: `mlugg/setup-zig@v1` replaced with `@v2`; v1
+  mirrors returned 404 for all platforms.
+- `README.md`: restructured for public impact — leads with result numbers,
+  adds "why not mzMLb/xz" context, honest prototype status section.
+- `benchmark/baseline_v0.2.0.json`: new regression baseline. Old
+  `baseline_v0.1.1.json` removed.
+
+### Added
+
+- `LICENSE`: MIT license, copyright 2026 Enes Kemal Ergin.
+
+---
+
 ## [0.1.13] — 2026-05-04
 
 ### Added
@@ -337,5 +370,6 @@ All notable changes to mzarc are documented here. The format follows [Keep a Cha
 - Basic block encoder/decoder skeleton in Zig.
 - `build.zig` project scaffold.
 
+[0.2.0]: https://github.com/eneskemalergin/mzarc/releases/tag/v0.2.0
 [0.1.5]: https://github.com/eneskemalergin/mzarc/releases/tag/v0.1.5
 [0.1.0]: https://github.com/eneskemalergin/mzarc/releases/tag/v0.1.0
