@@ -104,10 +104,6 @@ def _color(name: str) -> str:
     return _COLORS.get(key, "#475569")
 
 
-def _artifact_palette(artifact_names: list[str]) -> list[str]:
-    return [_color(n) for n in artifact_names]
-
-
 def _display_label(name: str) -> str:
     """Return display label, appending [MT] for multi-threaded artifacts."""
     if name in _MULTI_THREAD:
@@ -375,33 +371,62 @@ def plot_fidelity_overview(fidelity_rows: list[dict[str, object]], path: Path) -
 
 
 def plot_lossy_tradeoff(lossy_rows: list[dict[str, object]], selected_quant: int, path: Path) -> None:
+    """Size vs intensity error tradeoff across mzarc lossy quantization levels.
+
+    The currently-selected quantization level is highlighted in vivid amber;
+    other sweep points are shown in lighter amber.  An annotation on each
+    point shows the quantization step and the p95 error value.
+    """
+    if not lossy_rows:
+        fig, ax = plt.subplots(figsize=(9.8, 5.8))
+        ax.axis("off")
+        ax.text(0.5, 0.5, "No lossy sweep data available",
+                ha="center", va="center", fontsize=16)
+        fig.tight_layout()
+        fig.savefig(path, bbox_inches="tight")
+        plt.close(fig)
+        return
+
     frame = pd.DataFrame(lossy_rows)
     frame["selected"] = frame["intensity_quant"].astype(int) == int(selected_quant)
 
-    fig, ax = plt.subplots(figsize=(9.8, 5.8))
-    sns.lineplot(data=frame, x="size_mib", y="p95_rel_intensity_error_pct", color="#c2410c", linewidth=2.5, ax=ax)
-    sns.scatterplot(
-        data=frame,
-        x="size_mib",
-        y="p95_rel_intensity_error_pct",
-        hue="selected",
-        palette={True: "#b91c1c", False: "#7c3aed"},
-        s=110,
-        legend=False,
-        ax=ax,
-    )
+    unsel_color = "#fcd34d"   # light amber for other sweep points
+    sel_color   = _COLORS["mzarc_lossy"]  # vivid amber for selected
 
+    fig, ax = plt.subplots(figsize=(9.8, 5.8))
+    ax.plot(
+        frame["size_mib"], frame["p95_rel_intensity_error_pct"],
+        color=sel_color, linewidth=2.2, zorder=1,
+    )
     for _, row in frame.iterrows():
+        is_sel = bool(row["selected"])
+        ax.scatter(
+            float(row["size_mib"]), float(row["p95_rel_intensity_error_pct"]),
+            color=sel_color if is_sel else unsel_color,
+            edgecolors="#78350f",
+            s=140 if is_sel else 90,
+            linewidths=1.2,
+            zorder=2,
+        )
         ax.text(
             float(row["size_mib"]) + 0.03,
-            float(row["p95_rel_intensity_error_pct"]) + 0.03,
-            f"q={int(row['intensity_quant'])}",
-            fontsize=10,
+            float(row["p95_rel_intensity_error_pct"]) + 0.005,
+            f"q={int(row['intensity_quant'])}\n({float(row['p95_rel_intensity_error_pct']):.3f}%)",
+            fontsize=9.5,
+            color="#78350f" if is_sel else "#92400e",
+            fontweight="bold" if is_sel else "normal",
         )
 
-    ax.set_title("Lossy Tradeoff")
+    ax.set_title("mzarc Lossy Quantization Tradeoff", fontsize=16, fontweight="bold")
     ax.set_xlabel("encoded size (MiB)")
     ax.set_ylabel("p95 relative intensity error (%)")
+    legend_items = [
+        plt.scatter([], [], color=sel_color, edgecolors="#78350f", s=140, linewidths=1.2,
+                    label=f"selected  (q={selected_quant})"),
+        plt.scatter([], [], color=unsel_color, edgecolors="#78350f", s=90, linewidths=1.2,
+                    label="other sweep points"),
+    ]
+    ax.legend(handles=legend_items, fontsize=10)
     fig.tight_layout()
     fig.savefig(path, bbox_inches="tight")
     plt.close(fig)
@@ -485,42 +510,61 @@ def plot_memory_footprint(memory_rows: list[dict[str, object]], path: Path) -> N
 
 
 def plot_intensity_quantiles(quantile_rows: list[dict[str, object]], path: Path) -> None:
+    """Relative intensity error at each quantile for mzarc lossless and selected lossy.
+
+    Lossless is shown in vivid teal (error is zero everywhere).
+    The selected lossy configuration uses amber to match the lossy color scheme.
+    """
+    if not quantile_rows:
+        fig, ax = plt.subplots(figsize=(10.0, 5.4))
+        ax.axis("off")
+        ax.text(0.5, 0.5, "No quantile data available",
+                ha="center", va="center", fontsize=16)
+        fig.tight_layout()
+        fig.savefig(path, bbox_inches="tight")
+        plt.close(fig)
+        return
+
     frame = pd.DataFrame(quantile_rows)
+    palette = {
+        "lossless":      _COLORS["mzarc_lossless"],
+        "selected lossy": _COLORS["mzarc_lossy"],
+    }
+    marker_map = {"lossless": "o", "selected lossy": "s"}
 
     fig, ax = plt.subplots(figsize=(10.0, 5.4))
-    sns.lineplot(
-        data=frame,
-        x="quantile_label",
-        y="value_pct",
-        hue="artifact",
-        style="artifact",
-        markers=True,
-        dashes=False,
-        linewidth=2.5,
-        palette={"lossless": "#2563eb", "selected lossy": "#b91c1c"},
-        ax=ax,
-    )
+    for artifact, group in frame.groupby("artifact", sort=False):
+        color  = palette.get(str(artifact), "#94a3b8")
+        marker = marker_map.get(str(artifact), "o")
+        ax.plot(
+            group["quantile_label"], group["value_pct"],
+            color=color, linewidth=2.5, marker=marker, markersize=8,
+            label=str(artifact),
+        )
 
-    ax.set_title("Relative Intensity Error Quantiles")
+    ax.set_title("Relative Intensity Error Quantiles", fontsize=16, fontweight="bold")
     ax.set_xlabel("quantile")
     ax.set_ylabel("relative intensity error (%)")
+    ax.legend(fontsize=11)
     fig.tight_layout()
     fig.savefig(path, bbox_inches="tight")
     plt.close(fig)
 
 
 def plot_stat_comparisons(comparisons: list[dict], path: Path) -> None:
-    """Bar chart of speed ratios from Mann-Whitney U and Wilcoxon comparisons.
+    """Speed-ratio bar chart from Mann-Whitney U / Wilcoxon comparisons.
 
-    Speed ratio = mzarc_median / baseline_median (or encode_median / decode_median).
-    Bars < 1.0 mean mzarc is faster.  Color by statistical significance:
-    green = significant and mzarc faster, red = significant and mzarc slower,
+    Only comparisons that carry a speed_ratio are plotted (encode vs decode
+    comparisons have no meaningful ratio, so they are omitted here).
+    Bars < 1.0 mean mzarc is faster.  Colour by statistical significance:
+    teal = significant and mzarc faster, rose = significant and mzarc slower,
     gray = not significant.
     """
     if not comparisons:
         fig, ax = plt.subplots(figsize=(7.0, 4.0))
         ax.axis("off")
-        ax.text(0.5, 0.5, "No statistical comparison data available", ha="center", va="center", fontsize=13)
+        ax.text(0.5, 0.5, "No statistical comparison data available",
+                ha="center", va="center", fontsize=13)
         fig.tight_layout()
         fig.savefig(path, bbox_inches="tight")
         plt.close(fig)
@@ -530,48 +574,49 @@ def plot_stat_comparisons(comparisons: list[dict], path: Path) -> None:
     for c in comparisons:
         ratio = c.get("speed_ratio")
         if ratio is None:
-            continue
+            continue   # skip encode-vs-decode entries (no meaningful ratio)
         sig = bool(c.get("significant", False))
         name_a = str(c.get("name_a", c.get("operation_a", "")))
         name_b = str(c.get("name_b", c.get("operation_b", "")))
-        label = f"{name_a}\nvs {name_b}"
-        p_val = c.get("p_value")
-        p_str = f" (p={p_val:.3f})" if p_val is not None else ""
-        labels.append(label + p_str)
+        p_val  = c.get("p_value")
+        p_str  = f"  (p={p_val:.3f})" if p_val is not None else ""
+        labels.append(f"{name_a}\nvs {name_b}{p_str}")
         ratios.append(float(ratio))
         if sig and ratio < 1.0:
-            colors.append("#0f766e")   # green: mzarc faster, significant
+            colors.append(_COLORS["mzarc_lossless"])   # teal: mzarc faster
         elif sig and ratio > 1.0:
-            colors.append("#dc2626")   # red: mzarc slower, significant
+            colors.append("#e11d48")                    # rose: mzarc slower
         else:
-            colors.append("#94a3b8")   # gray: not significant
+            colors.append("#94a3b8")                    # gray: not significant
 
     if not labels:
         fig, ax = plt.subplots(figsize=(7.0, 4.0))
         ax.axis("off")
-        ax.text(0.5, 0.5, "All comparisons missing speed_ratio", ha="center", va="center", fontsize=13)
+        ax.text(0.5, 0.5, "All comparisons missing speed_ratio",
+                ha="center", va="center", fontsize=13)
         fig.tight_layout()
         fig.savefig(path, bbox_inches="tight")
         plt.close(fig)
         return
 
-    fig_height = max(4.0, len(labels) * 0.9 + 1.5)
-    fig, ax = plt.subplots(figsize=(9.0, fig_height))
+    fig_height = max(4.0, len(labels) * 1.1 + 1.5)
+    fig, ax = plt.subplots(figsize=(10.0, fig_height))
     y_pos = range(len(labels))
-    bars = ax.barh(list(y_pos), ratios, color=colors, edgecolor="#0f172a", linewidth=0.5, height=0.6)
-    ax.axvline(1.0, color="#475569", linestyle="--", linewidth=1.2, label="ratio = 1 (equal)")
+    ax.barh(list(y_pos), ratios, color=colors, edgecolor="#0f172a",
+            linewidth=0.5, height=0.55)
+    ax.axvline(1.0, color="#475569", linestyle="--", linewidth=1.2)
     ax.set_yticks(list(y_pos))
-    ax.set_yticklabels(labels, fontsize=8)
-    ax.set_xlabel("speed ratio (mzarc time / baseline time — lower is faster for mzarc)")
-    ax.set_title("Statistical Comparisons: mzarc vs Baselines (Mann-Whitney U)")
+    ax.set_yticklabels(labels, fontsize=9)
+    ax.set_xlabel("speed ratio  (mzarc time / baseline time — lower = mzarc faster)")
+    ax.set_title("Statistical Speed Comparisons  (Mann-Whitney U)", fontsize=15, fontweight="bold")
 
     legend_handles = [
-        mpatches.Patch(color="#0f766e", label="mzarc faster (significant)"),
-        mpatches.Patch(color="#dc2626", label="mzarc slower (significant)"),
-        mpatches.Patch(color="#94a3b8", label="not significant"),
-        plt.Line2D([0], [0], color="#475569", linestyle="--", label="ratio = 1"),
+        mpatches.Patch(color=_COLORS["mzarc_lossless"], label="mzarc faster (significant)"),
+        mpatches.Patch(color="#e11d48",                  label="mzarc slower (significant)"),
+        mpatches.Patch(color="#94a3b8",                  label="not significant"),
+        plt.Line2D([0], [0], color="#475569", linestyle="--", label="ratio = 1  (equal)"),
     ]
-    ax.legend(handles=legend_handles, fontsize=8, loc="lower right")
+    ax.legend(handles=legend_handles, fontsize=9, loc="lower right")
     fig.tight_layout()
     fig.savefig(path, bbox_inches="tight")
     plt.close(fig)
