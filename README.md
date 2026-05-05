@@ -15,7 +15,7 @@
     <a href="#v020-release"><img src="https://img.shields.io/badge/version-v0.2.0-0f766e?style=for-the-badge" alt="Version v0.2.0" /></a>
     <a href="#quick-start"><img src="https://img.shields.io/badge/zig-0.16.0-f7a41d?style=for-the-badge" alt="Zig 0.16.0" /></a>
     <a href="#quick-start"><img src="https://img.shields.io/badge/python-3.12-3776AB?style=for-the-badge" alt="Python 3.12" /></a>
-    <a href="#github-ci"><img src="https://img.shields.io/badge/ci-all%20green-22c55e?style=for-the-badge" alt="CI all green" /></a>
+    <a href="#ci"><img src="https://img.shields.io/badge/ci-all%20green-22c55e?style=for-the-badge" alt="CI all green" /></a>
 </p>
 
 <p align="center">
@@ -140,7 +140,7 @@ Size gains on `15HCD_1` relative to v0.1.1:
 - `tools/collect_report.py`: assembles report.json, generates 8 plots, writes report.md
 - `tools/check_regression.py`: compares the current report against the versioned baseline
 
-## GitHub CI
+## CI
 
 The workflow runs on Ubuntu and macOS on every push and pull request. No mzML data or Python required. All steps operate on the frozen binary fixture in `test/fixtures/`.
 
