@@ -206,7 +206,7 @@ test "lossy block worst-case intensity error stays below 0.1%" {
     // Build a corpus that exercises many quantization buckets: a wide dynamic
     // range from very low to very high intensity.  With intensity_quant=16384
     // (the production default) the worst-case relative error must stay below
-    // 0.1% across all peaks (Phase 1 exit criterion).
+    // 0.1% across all peaks.
     const n = 128;
     var mz_buf: [n]f64 = undefined;
     var int_buf: [n]f32 = undefined;
@@ -234,7 +234,7 @@ test "lossy block worst-case intensity error stays below 0.1%" {
         if (rel > max_rel_error) max_rel_error = rel;
     }
 
-    // Phase 1 exit criterion: worst-case relative intensity error < 0.1% (0.001).
+    // Worst-case relative intensity error must stay below 0.1% (0.001).
     if (max_rel_error >= 0.001) {
         std.debug.print("worst-case intensity rel error {d:.6} >= 0.001 (0.1%)\n", .{max_rel_error});
         return error.TestExpectedLessThan;
@@ -629,6 +629,10 @@ test "block encoding rejects mismatched m/z and intensity array lengths" {
     try std.testing.expectError(error.MismatchedPeakArrays, block.encodeBlock(std.testing.allocator, &spectra, .{ .mode = .lossless }));
 }
 
+test "packedByteLen rejects multiplicative overflow" {
+    try std.testing.expectError(error.Overflow, block.packedByteLen(255, std.math.maxInt(usize)));
+}
+
 test "lossy block encoding rejects intensity quant of zero" {
     var mz = [_]f64{ 100.0, 200.0 };
     var intensity = [_]f32{ 10.0, 20.0 };
@@ -675,6 +679,24 @@ test "decodeBlock rejects scan_id delta base exceeding u32 max" {
     std.mem.writeInt(u32, corrupted[36..40], new_checksum, .little);
 
     try std.testing.expectError(error.Overflow, block.decodeBlock(std.testing.allocator, corrupted));
+}
+
+test "decodeBlock rejects mz bit_width above 64" {
+    var mz = [_]f64{ 100.0, 200.0 };
+    var intensity = [_]f32{ 1.0, 2.0 };
+    const spectra = [_]binary_reader.RawSpectrum{
+        .{ .scan_id = 1, .rt_seconds = 1.0, .ms_level = 2, .precursor_mz = 300.0, .mz = mz[0..], .intensity = intensity[0..] },
+    };
+
+    const encoded = try block.encodeBlock(std.testing.allocator, &spectra, .{ .mode = .lossless });
+    defer std.testing.allocator.free(encoded);
+
+    const corrupted = try std.testing.allocator.dupe(u8, encoded);
+    defer std.testing.allocator.free(corrupted);
+    // mz_bit_width is header byte 16; checksum covers payload only.
+    corrupted[16] = 65;
+
+    try std.testing.expectError(error.InvalidBitWidth, block.decodeBlock(std.testing.allocator, corrupted));
 }
 
 test "rt_seconds = -0.0 followed by +0.0 does not trigger NonMonotonicRt" {

@@ -1,23 +1,25 @@
+//! CLI: dump-inspect, encode, decode, inspect, validate, benchmark-rans-core.
+//! Prefer `init.io` for I/O; exit codes and verb behavior stay stable.
+
 const std = @import("std");
 const binary_reader = @import("binary_reader");
 const block = @import("block");
 const codec = @import("codec");
 const rans = @import("rans");
 
-fn writeStdout(bytes: []const u8) void {
-    const io = std.Io.Threaded.global_single_threaded.io();
+fn writeStdout(io: std.Io, bytes: []const u8) void {
     std.Io.File.stdout().writeStreamingAll(io, bytes) catch return;
 }
 
-fn printStdout(comptime fmt: []const u8, args: anytype) void {
+fn printStdout(io: std.Io, comptime fmt: []const u8, args: anytype) void {
     var buf: [4096]u8 = undefined;
     const s = std.fmt.bufPrint(&buf, fmt, args) catch {
         const fallback = std.fmt.allocPrint(std.heap.page_allocator, fmt, args) catch return;
         defer std.heap.page_allocator.free(fallback);
-        writeStdout(fallback);
+        writeStdout(io, fallback);
         return;
     };
-    writeStdout(s);
+    writeStdout(io, s);
 }
 
 fn printUsage() void {
@@ -34,8 +36,8 @@ fn printUsage() void {
     );
 }
 
-fn commandDumpInspect(allocator: std.mem.Allocator, path: []const u8) !void {
-    const spectra = try binary_reader.readBinaryDump(path, allocator);
+fn commandDumpInspect(io: std.Io, allocator: std.mem.Allocator, path: []const u8) !void {
+    const spectra = try binary_reader.readBinaryDump(io, path, allocator);
     defer binary_reader.freeSpectra(allocator, spectra);
 
     var total_peaks: u64 = 0;
@@ -50,7 +52,7 @@ fn commandDumpInspect(allocator: std.mem.Allocator, path: []const u8) !void {
 
     for (spectra, 0..) |spectrum, i| {
         const n: u64 = spectrum.mz.len;
-        total_peaks += n;
+        total_peaks = try std.math.add(u64, total_peaks, n);
         peak_counts[i] = n;
         if (n < min_peaks) min_peaks = n;
         if (n > max_peaks) max_peaks = n;
@@ -97,52 +99,25 @@ fn hasFlag(args: []const [:0]const u8, flag: []const u8) bool {
     return false;
 }
 
-fn parseOptionalU16(args: []const [:0]const u8, flag: []const u8) !?u16 {
-    if (args.len < 2) return null;
-
-    for (0..args.len - 1) |idx| {
-        if (std.mem.eql(u8, args[idx], flag)) {
-            return try std.fmt.parseInt(u16, args[idx + 1], 10);
-        }
+fn parseOptionalInt(comptime T: type, args: []const [:0]const u8, flag: []const u8) !?T {
+    for (args, 0..) |arg, idx| {
+        if (!std.mem.eql(u8, arg, flag)) continue;
+        if (idx + 1 >= args.len) return error.InvalidArguments;
+        return try std.fmt.parseInt(T, args[idx + 1], 10);
     }
-
     return null;
 }
 
-fn parseOptionalU8(args: []const [:0]const u8, flag: []const u8) !?u8 {
-    if (args.len < 2) return null;
-
-    for (0..args.len - 1) |idx| {
-        if (std.mem.eql(u8, args[idx], flag)) {
-            return try std.fmt.parseInt(u8, args[idx + 1], 10);
-        }
-    }
-
-    return null;
-}
-
-fn parseOptionalU32(args: []const [:0]const u8, flag: []const u8) !?u32 {
-    if (args.len < 2) return null;
-
-    for (0..args.len - 1) |idx| {
-        if (std.mem.eql(u8, args[idx], flag)) {
-            return try std.fmt.parseInt(u32, args[idx + 1], 10);
-        }
-    }
-
-    return null;
-}
-
-fn commandEncode(allocator: std.mem.Allocator, args: []const [:0]const u8) !void {
+fn commandEncode(io: std.Io, allocator: std.mem.Allocator, args: []const [:0]const u8) !void {
     if (args.len < 4) return error.InvalidArguments;
 
     const input_path = args[2];
     const output_path = try parseOutputPath(args[3..]);
-    const intensity_quant = try parseOptionalU16(args[3..], "--intensity-quant");
-    const mz_rans_min_gain = try parseOptionalU8(args[3..], "--mz-rans-min-gain");
-    const intensity_rans_min_gain = try parseOptionalU8(args[3..], "--intensity-rans-min-gain");
+    const intensity_quant = try parseOptionalInt(u16, args[3..], "--intensity-quant");
+    const mz_rans_min_gain = try parseOptionalInt(u8, args[3..], "--mz-rans-min-gain");
+    const intensity_rans_min_gain = try parseOptionalInt(u8, args[3..], "--intensity-rans-min-gain");
 
-    try codec.encodeDumpFile(allocator, input_path, output_path, .{
+    try codec.encodeDumpFile(io, allocator, input_path, output_path, .{
         .block_options = .{
             .mode = if (hasFlag(args[3..], "--lossy")) .lossy else .lossless,
             .intensity_quant = intensity_quant orelse 16384,
@@ -156,19 +131,19 @@ fn commandEncode(allocator: std.mem.Allocator, args: []const [:0]const u8) !void
     std.debug.print("encoded: {s} -> {s}\n", .{ input_path, output_path });
 }
 
-fn commandDecode(allocator: std.mem.Allocator, args: []const [:0]const u8) !void {
+fn commandDecode(io: std.Io, allocator: std.mem.Allocator, args: []const [:0]const u8) !void {
     if (args.len < 4) return error.InvalidArguments;
 
     const input_path = args[2];
     const output_path = try parseOutputPath(args[3..]);
 
-    try codec.decodeToDumpFile(allocator, input_path, output_path, .{
+    try codec.decodeToDumpFile(io, allocator, input_path, output_path, .{
         .verbose_timing = hasFlag(args[3..], "--verbose-timing"),
     });
     std.debug.print("decoded: {s} -> {s}\n", .{ input_path, output_path });
 }
 
-fn printInspectionJson(allocator: std.mem.Allocator, path: []const u8, inspection: codec.Inspection) !void {
+fn printInspectionJson(io: std.Io, allocator: std.mem.Allocator, path: []const u8, inspection: codec.Inspection) !void {
     const bytes = inspection.byte_breakdown;
     const json_str = try std.fmt.allocPrint(
         allocator,
@@ -226,7 +201,7 @@ fn printInspectionJson(allocator: std.mem.Allocator, path: []const u8, inspectio
         },
     );
     defer allocator.free(json_str);
-    writeStdout(json_str);
+    writeStdout(io, json_str);
 }
 
 fn printBlockTable(inspection: codec.Inspection) void {
@@ -249,7 +224,7 @@ fn printBlockTable(inspection: codec.Inspection) void {
     }
 }
 
-fn commandInspect(allocator: std.mem.Allocator, args: []const [:0]const u8) !void {
+fn commandInspect(io: std.Io, allocator: std.mem.Allocator, args: []const [:0]const u8) !void {
     if (args.len < 3) return error.InvalidArguments;
 
     var path: ?[]const u8 = null;
@@ -269,11 +244,11 @@ fn commandInspect(allocator: std.mem.Allocator, args: []const [:0]const u8) !voi
     if (path == null) return error.InvalidArguments;
     const input_path = path.?;
 
-    const inspection = try codec.inspectFileAlloc(allocator, input_path);
+    const inspection = try codec.inspectFileAlloc(io, allocator, input_path);
     defer codec.freeInspection(allocator, inspection);
 
     if (json_output) {
-        try printInspectionJson(allocator, input_path, inspection);
+        try printInspectionJson(io, allocator, input_path, inspection);
         return;
     }
 
@@ -306,18 +281,12 @@ fn commandInspect(allocator: std.mem.Allocator, args: []const [:0]const u8) !voi
     }
 }
 
-// ---------------------------------------------------------------------------
-// validate / validate-adversarial
-// ---------------------------------------------------------------------------
-
 const lossless_mz_tolerance_da: f64 = 1e-9;
 const lossy_mz_max_error_da: f64 = 0.002;
 const lossy_intensity_p95_threshold: f64 = 0.001; // 0.1%
 
-/// Compare two spectrum slices for lossless round-trip fidelity.
-/// verbose=true prints one PASS/FAIL line per check to stdout.
-/// Returns true iff all checks pass.
 fn checkLosslessSpectra(
+    io: std.Io,
     orig: []const binary_reader.RawSpectrum,
     dec: []const binary_reader.RawSpectrum,
     verbose: bool,
@@ -325,10 +294,10 @@ fn checkLosslessSpectra(
     var all_pass = true;
 
     if (orig.len != dec.len) {
-        if (verbose) printStdout("FAIL spectrum_count expected={} got={}\n", .{ orig.len, dec.len });
+        if (verbose) printStdout(io, "FAIL spectrum_count expected={} got={}\n", .{ orig.len, dec.len });
         return false;
     }
-    if (verbose) printStdout("PASS spectrum_count {}\n", .{orig.len});
+    if (verbose) printStdout(io, "PASS spectrum_count {}\n", .{orig.len});
 
     var scan_fail_idx: ?usize = null;
     var rt_fail_idx: ?usize = null;
@@ -343,7 +312,8 @@ fn checkLosslessSpectra(
         if (rt_fail_idx == null and @as(u32, @bitCast(o.rt_seconds)) != @as(u32, @bitCast(d.rt_seconds))) rt_fail_idx = si;
         if (ms_level_fail_idx == null and o.ms_level != d.ms_level) ms_level_fail_idx = si;
         if (precursor_fail_idx == null and @as(u64, @bitCast(o.precursor_mz)) != @as(u64, @bitCast(d.precursor_mz))) precursor_fail_idx = si;
-        if (peak_count_fail_idx == null and o.mz.len != d.mz.len) peak_count_fail_idx = si;
+        if (peak_count_fail_idx == null and (o.mz.len != d.mz.len or o.intensity.len != d.intensity.len or o.mz.len != o.intensity.len))
+            peak_count_fail_idx = si;
 
         if (peak_count_fail_idx == null) {
             if (mz_fail == null) {
@@ -367,39 +337,39 @@ fn checkLosslessSpectra(
 
     if (verbose) {
         if (scan_fail_idx) |si| {
-            printStdout("FAIL scan_id spectrum={} expected={} got={}\n", .{ si, orig[si].scan_id, dec[si].scan_id });
+            printStdout(io, "FAIL scan_id spectrum={} expected={} got={}\n", .{ si, orig[si].scan_id, dec[si].scan_id });
             all_pass = false;
-        } else printStdout("PASS scan_id_exact\n", .{});
+        } else printStdout(io, "PASS scan_id_exact\n", .{});
 
         if (rt_fail_idx) |si| {
-            printStdout("FAIL rt_seconds spectrum={} expected={e} got={e}\n", .{ si, orig[si].rt_seconds, dec[si].rt_seconds });
+            printStdout(io, "FAIL rt_seconds spectrum={} expected={e} got={e}\n", .{ si, orig[si].rt_seconds, dec[si].rt_seconds });
             all_pass = false;
-        } else printStdout("PASS rt_seconds_exact\n", .{});
+        } else printStdout(io, "PASS rt_seconds_exact\n", .{});
 
         if (ms_level_fail_idx) |si| {
-            printStdout("FAIL ms_level spectrum={} expected={} got={}\n", .{ si, orig[si].ms_level, dec[si].ms_level });
+            printStdout(io, "FAIL ms_level spectrum={} expected={} got={}\n", .{ si, orig[si].ms_level, dec[si].ms_level });
             all_pass = false;
-        } else printStdout("PASS ms_level_exact\n", .{});
+        } else printStdout(io, "PASS ms_level_exact\n", .{});
 
         if (precursor_fail_idx) |si| {
-            printStdout("FAIL precursor_mz spectrum={} expected={d} got={d}\n", .{ si, orig[si].precursor_mz, dec[si].precursor_mz });
+            printStdout(io, "FAIL precursor_mz spectrum={} expected={d} got={d}\n", .{ si, orig[si].precursor_mz, dec[si].precursor_mz });
             all_pass = false;
-        } else printStdout("PASS precursor_mz_exact\n", .{});
+        } else printStdout(io, "PASS precursor_mz_exact\n", .{});
 
         if (peak_count_fail_idx) |si| {
-            printStdout("FAIL peak_count spectrum={} expected={} got={}\n", .{ si, orig[si].mz.len, dec[si].mz.len });
+            printStdout(io, "FAIL peak_count spectrum={} expected={} got={}\n", .{ si, orig[si].mz.len, dec[si].mz.len });
             all_pass = false;
-        } else printStdout("PASS peak_count_exact\n", .{});
+        } else printStdout(io, "PASS peak_count_exact\n", .{});
 
         if (mz_fail) |f| {
-            printStdout("FAIL mz_round_trip spectrum={} peak={} expected={d} got={d}\n", .{ f.si, f.pi, f.exp, f.got });
+            printStdout(io, "FAIL mz_round_trip spectrum={} peak={} expected={d} got={d}\n", .{ f.si, f.pi, f.exp, f.got });
             all_pass = false;
-        } else printStdout("PASS mz_round_trip exact\n", .{});
+        } else printStdout(io, "PASS mz_round_trip exact\n", .{});
 
         if (int_fail) |f| {
-            printStdout("FAIL intensity_round_trip spectrum={} peak={} expected={e} got={e}\n", .{ f.si, f.pi, f.exp, f.got });
+            printStdout(io, "FAIL intensity_round_trip spectrum={} peak={} expected={e} got={e}\n", .{ f.si, f.pi, f.exp, f.got });
             all_pass = false;
-        } else printStdout("PASS intensity_round_trip exact\n", .{});
+        } else printStdout(io, "PASS intensity_round_trip exact\n", .{});
     } else {
         all_pass = scan_fail_idx == null and rt_fail_idx == null and ms_level_fail_idx == null and
             precursor_fail_idx == null and peak_count_fail_idx == null and
@@ -409,10 +379,8 @@ fn checkLosslessSpectra(
     return all_pass;
 }
 
-/// Compare two spectrum slices for lossy round-trip fidelity.
-/// verbose=true prints one PASS/FAIL line per metric to stdout.
-/// Returns true iff all checks pass.
 fn checkLossySpectra(
+    io: std.Io,
     allocator: std.mem.Allocator,
     orig: []const binary_reader.RawSpectrum,
     dec: []const binary_reader.RawSpectrum,
@@ -421,10 +389,10 @@ fn checkLossySpectra(
     var all_pass = true;
 
     if (orig.len != dec.len) {
-        if (verbose) printStdout("FAIL spectrum_count expected={} got={}\n", .{ orig.len, dec.len });
+        if (verbose) printStdout(io, "FAIL spectrum_count expected={} got={}\n", .{ orig.len, dec.len });
         return false;
     }
-    if (verbose) printStdout("PASS spectrum_count {}\n", .{orig.len});
+    if (verbose) printStdout(io, "PASS spectrum_count {}\n", .{orig.len});
 
     var meta_fail: bool = false;
     for (orig, dec, 0..) |o, d, si| {
@@ -432,16 +400,16 @@ fn checkLossySpectra(
             @as(u32, @bitCast(o.rt_seconds)) != @as(u32, @bitCast(d.rt_seconds)) or
             @as(u64, @bitCast(o.precursor_mz)) != @as(u64, @bitCast(d.precursor_mz)))
         {
-            if (verbose) printStdout("FAIL metadata_exact spectrum={}\n", .{si});
+            if (verbose) printStdout(io, "FAIL metadata_exact spectrum={}\n", .{si});
             meta_fail = true;
             all_pass = false;
             break;
         }
     }
-    if (!meta_fail and verbose) printStdout("PASS metadata_exact\n", .{});
+    if (!meta_fail and verbose) printStdout(io, "PASS metadata_exact\n", .{});
 
     var total_peaks: usize = 0;
-    for (orig) |s| total_peaks += s.mz.len;
+    for (orig) |s| total_peaks = try std.math.add(usize, total_peaks, s.mz.len);
 
     const mz_errors = try allocator.alloc(f64, total_peaks);
     defer allocator.free(mz_errors);
@@ -451,7 +419,7 @@ fn checkLossySpectra(
     var peak_count_mismatch = false;
     var err_idx: usize = 0;
     for (orig, dec) |o, d| {
-        if (o.mz.len != d.mz.len) {
+        if (o.mz.len != d.mz.len or o.intensity.len != d.intensity.len or o.mz.len != o.intensity.len) {
             peak_count_mismatch = true;
             break;
         }
@@ -465,7 +433,7 @@ fn checkLossySpectra(
     }
 
     if (peak_count_mismatch) {
-        if (verbose) printStdout("FAIL peak_count_mismatch\n", .{});
+        if (verbose) printStdout(io, "FAIL peak_count_mismatch\n", .{});
         return false;
     }
 
@@ -480,9 +448,9 @@ fn checkLossySpectra(
     const mz_pass = mz_max <= lossy_mz_max_error_da;
     if (verbose) {
         if (mz_pass)
-            printStdout("PASS mz_max_error {d:.6} Da < {d:.3} Da\n", .{ mz_max, lossy_mz_max_error_da })
+            printStdout(io, "PASS mz_max_error {d:.6} Da < {d:.3} Da\n", .{ mz_max, lossy_mz_max_error_da })
         else
-            printStdout("FAIL mz_max_error {d:.6} Da > {d:.3} Da\n", .{ mz_max, lossy_mz_max_error_da });
+            printStdout(io, "FAIL mz_max_error {d:.6} Da > {d:.3} Da\n", .{ mz_max, lossy_mz_max_error_da });
     }
     if (!mz_pass) all_pass = false;
 
@@ -492,16 +460,16 @@ fn checkLossySpectra(
     const int_pass = p95 <= lossy_intensity_p95_threshold;
     if (verbose) {
         if (int_pass)
-            printStdout("PASS intensity_p95_error {d:.3}% < {d:.1}%\n", .{ p95_pct, lossy_intensity_p95_threshold * 100.0 })
+            printStdout(io, "PASS intensity_p95_error {d:.3}% < {d:.1}%\n", .{ p95_pct, lossy_intensity_p95_threshold * 100.0 })
         else
-            printStdout("FAIL intensity_p95_error {d:.3}% > {d:.1}%\n", .{ p95_pct, lossy_intensity_p95_threshold * 100.0 });
+            printStdout(io, "FAIL intensity_p95_error {d:.3}% > {d:.1}%\n", .{ p95_pct, lossy_intensity_p95_threshold * 100.0 });
     }
     if (!int_pass) all_pass = false;
 
     return all_pass;
 }
 
-fn commandValidate(allocator: std.mem.Allocator, args: []const [:0]const u8) !void {
+fn commandValidate(io: std.Io, allocator: std.mem.Allocator, args: []const [:0]const u8) !void {
     if (args.len != 5) return error.InvalidArguments;
     const orig_path = args[2];
     const dec_path = args[3];
@@ -511,24 +479,23 @@ fn commandValidate(allocator: std.mem.Allocator, args: []const [:0]const u8) !vo
     const lossy_mode = std.mem.eql(u8, mode_arg, "--mode=lossy");
     if (!lossless_mode and !lossy_mode) return error.InvalidArguments;
 
-    const orig = try binary_reader.readBinaryDump(orig_path, allocator);
+    const orig = try binary_reader.readBinaryDump(io, orig_path, allocator);
     defer binary_reader.freeSpectra(allocator, orig);
-    const dec = try binary_reader.readBinaryDump(dec_path, allocator);
+    const dec = try binary_reader.readBinaryDump(io, dec_path, allocator);
     defer binary_reader.freeSpectra(allocator, dec);
 
     const all_pass = if (lossless_mode)
-        checkLosslessSpectra(orig, dec, true)
+        checkLosslessSpectra(io, orig, dec, true)
     else
-        try checkLossySpectra(allocator, orig, dec, true);
+        try checkLossySpectra(io, allocator, orig, dec, true);
 
     if (!all_pass) return error.ValidationFailed;
 }
 
-fn commandValidateAdversarial(allocator: std.mem.Allocator, args: []const [:0]const u8) !void {
+fn commandValidateAdversarial(io: std.Io, allocator: std.mem.Allocator, args: []const [:0]const u8) !void {
     if (args.len != 3) return error.InvalidArguments;
     const dir_path = args[2];
 
-    const io = std.Io.Threaded.global_single_threaded.io();
     var dir = try std.Io.Dir.cwd().openDir(io, dir_path, .{ .iterate = true });
     defer dir.close(io);
 
@@ -541,31 +508,31 @@ fn commandValidateAdversarial(allocator: std.mem.Allocator, args: []const [:0]co
         const full_path = try std.fmt.allocPrint(allocator, "{s}/{s}", .{ dir_path, entry.name });
         defer allocator.free(full_path);
 
-        const orig = binary_reader.readBinaryDump(full_path, allocator) catch |err| {
-            printStdout("FAIL {s} read_error={s}\n", .{ entry.name, @errorName(err) });
+        const orig = binary_reader.readBinaryDump(io, full_path, allocator) catch |err| {
+            printStdout(io, "FAIL {s} read_error={s}\n", .{ entry.name, @errorName(err) });
             any_fail = true;
             continue;
         };
         defer binary_reader.freeSpectra(allocator, orig);
 
-        const encoded = codec.encodeFileAlloc(allocator, orig, .{}) catch |err| {
-            printStdout("FAIL {s} encode_error={s}\n", .{ entry.name, @errorName(err) });
+        const encoded = codec.encodeFileAlloc(io, allocator, orig, .{}) catch |err| {
+            printStdout(io, "FAIL {s} encode_error={s}\n", .{ entry.name, @errorName(err) });
             any_fail = true;
             continue;
         };
         defer allocator.free(encoded);
 
-        const decoded = codec.decodeFileAlloc(allocator, encoded, .{}) catch |err| {
-            printStdout("FAIL {s} decode_error={s}\n", .{ entry.name, @errorName(err) });
+        const decoded = codec.decodeFileAlloc(io, allocator, encoded, .{}) catch |err| {
+            printStdout(io, "FAIL {s} decode_error={s}\n", .{ entry.name, @errorName(err) });
             any_fail = true;
             continue;
         };
         defer binary_reader.freeSpectra(allocator, decoded);
 
-        if (checkLosslessSpectra(orig, decoded, false)) {
-            printStdout("PASS {s}\n", .{entry.name});
+        if (checkLosslessSpectra(io, orig, decoded, false)) {
+            printStdout(io, "PASS {s}\n", .{entry.name});
         } else {
-            printStdout("FAIL {s}\n", .{entry.name});
+            printStdout(io, "FAIL {s}\n", .{entry.name});
             any_fail = true;
         }
     }
@@ -590,19 +557,8 @@ fn readIntLe(comptime T: type, bytes: []const u8) T {
     return std.mem.readInt(T, bytes[0..@sizeOf(T)], .little);
 }
 
-fn packedByteLen(bit_width: u8, count: usize) usize {
-    if (bit_width == 0) return 0;
-    return ((@as(usize, bit_width) * count) + 7) / 8;
-}
-
-fn perSpectrumPackedByteLen(bit_widths: []const u8, peak_counts: []const u32) !usize {
-    if (bit_widths.len != peak_counts.len) return error.InvalidPeakCount;
-
-    var total: usize = 0;
-    for (peak_counts, 0..) |peak_count, idx| {
-        total += packedByteLen(bit_widths[idx], peak_count);
-    }
-    return total;
+fn requireBytes(payload: []const u8, offset: usize, need_len: usize) !void {
+    if (payload.len -| offset < need_len) return error.UnexpectedEndOfStream;
 }
 
 fn collectRansSections(
@@ -612,79 +568,95 @@ fn collectRansSections(
     mz_sections: *std.ArrayList(RansSection),
     exponent_sections: *std.ArrayList(RansSection),
 ) !void {
+    if (block_bytes.len < try std.math.add(usize, block.header_len, header.payload_bytes)) return error.UnexpectedEndOfStream;
     const payload = block_bytes[block.header_len .. block.header_len + header.payload_bytes];
     const spectrum_count = @as(usize, header.spectrum_count);
     const total_peaks = @as(usize, header.total_peaks);
     var offset: usize = 0;
 
     if ((header.flags & block.flag_delta_scan_id) != 0) {
+        try requireBytes(payload, offset, 1 + 8 + 4);
         offset += 1 + 8;
         const pack_len = readIntLe(u32, payload[offset .. offset + 4]);
-        offset += 4 + pack_len;
+        offset = try std.math.add(usize, offset, try std.math.add(usize, 4, pack_len));
     } else {
-        offset += spectrum_count * @sizeOf(u32);
+        offset = try std.math.add(usize, offset, try std.math.mul(usize, spectrum_count, @sizeOf(u32)));
     }
 
     if ((header.flags & block.flag_delta_rt) != 0) {
+        try requireBytes(payload, offset, 1 + 8 + 4);
         offset += 1 + 8;
         const pack_len = readIntLe(u32, payload[offset .. offset + 4]);
-        offset += 4 + pack_len;
+        offset = try std.math.add(usize, offset, try std.math.add(usize, 4, pack_len));
     } else {
-        offset += spectrum_count * @sizeOf(f32);
+        offset = try std.math.add(usize, offset, try std.math.mul(usize, spectrum_count, @sizeOf(f32)));
     }
 
-    offset += spectrum_count * @sizeOf(f64);
+    offset = try std.math.add(usize, offset, try std.math.mul(usize, spectrum_count, @sizeOf(f64)));
+    try requireBytes(payload, offset, try std.math.mul(usize, spectrum_count, @sizeOf(u32)));
     const peak_counts = try allocator.alloc(u32, spectrum_count);
     defer allocator.free(peak_counts);
     for (peak_counts, 0..) |*value, idx| {
-        const start = offset + (idx * @sizeOf(u32));
+        const start = try std.math.add(usize, offset, try std.math.mul(usize, idx, @sizeOf(u32)));
         value.* = readIntLe(u32, payload[start .. start + @sizeOf(u32)]);
     }
-    offset += spectrum_count * @sizeOf(u32);
+    offset = try std.math.add(usize, offset, try std.math.mul(usize, spectrum_count, @sizeOf(u32)));
 
+    try requireBytes(payload, offset, @sizeOf(u64) + 4);
     offset += @sizeOf(u64);
     const mz_payload_len = readIntLe(u32, payload[offset .. offset + 4]);
     offset += 4;
     const mz_widths = if ((header.flags & block.flag_mz_per_spectrum_bit_widths) != 0) blk: {
+        try requireBytes(payload, offset, spectrum_count);
         const widths = payload[offset .. offset + spectrum_count];
-        offset += spectrum_count;
+        offset = try std.math.add(usize, offset, spectrum_count);
         break :blk widths;
     } else null;
+    try requireBytes(payload, offset, mz_payload_len);
     if ((header.flags & block.flag_rans_mz) != 0) {
         const encoded = payload[offset .. offset + mz_payload_len];
         const raw_len = if (mz_widths) |widths|
-            try perSpectrumPackedByteLen(widths, peak_counts)
+            try block.perSpectrumPayloadLen(widths, peak_counts)
         else
-            packedByteLen(header.mz_bit_width, total_peaks);
+            try block.packedByteLen(header.mz_bit_width, total_peaks);
         const raw = try rans.decodeAlloc(allocator, encoded, raw_len);
-        try mz_sections.append(allocator, .{ .encoded = encoded, .raw = raw });
+        mz_sections.append(allocator, .{ .encoded = encoded, .raw = raw }) catch |err| {
+            allocator.free(raw);
+            return err;
+        };
     }
-    offset += mz_payload_len;
+    offset = try std.math.add(usize, offset, mz_payload_len);
 
     if ((header.flags & block.flag_lossless_intensity_raw) != 0) {
         if ((header.flags & block.flag_rans_intensity) != 0) {
+            try requireBytes(payload, offset, 4);
             const encoded_len = readIntLe(u32, payload[offset .. offset + 4]);
-            offset += 4 + encoded_len;
+            offset = try std.math.add(usize, offset, try std.math.add(usize, 4, encoded_len));
         } else {
-            offset += total_peaks * @sizeOf(f32);
+            offset = try std.math.add(usize, offset, try std.math.mul(usize, total_peaks, @sizeOf(f32)));
         }
     } else if ((header.flags & block.flag_split_exponent) != 0) {
+        try requireBytes(payload, offset, 1 + 8 + 4);
         const exp_bit_width = payload[offset];
-        _ = exp_bit_width;
         offset += 1 + 8;
         const exp_payload_len = readIntLe(u32, payload[offset .. offset + 4]);
         offset += 4;
+        try requireBytes(payload, offset, exp_payload_len);
         if ((header.flags & block.flag_rans_intensity) != 0) {
             const encoded = payload[offset .. offset + exp_payload_len];
-            const raw = try rans.decodeAlloc(allocator, encoded, packedByteLen(header.intensity_bit_width, total_peaks));
-            try exponent_sections.append(allocator, .{ .encoded = encoded, .raw = raw });
+            const raw = try rans.decodeAlloc(allocator, encoded, try block.packedByteLen(exp_bit_width, total_peaks));
+            exponent_sections.append(allocator, .{ .encoded = encoded, .raw = raw }) catch |err| {
+                allocator.free(raw);
+                return err;
+            };
         }
-        offset += exp_payload_len;
-        offset += total_peaks * 3;
+        offset = try std.math.add(usize, offset, exp_payload_len);
+        offset = try std.math.add(usize, offset, try std.math.mul(usize, total_peaks, 3));
     } else {
+        try requireBytes(payload, offset, @sizeOf(u16) + 4);
         offset += @sizeOf(u16);
         const intensity_payload_len = readIntLe(u32, payload[offset .. offset + 4]);
-        offset += 4 + intensity_payload_len;
+        offset = try std.math.add(usize, offset, try std.math.add(usize, 4, intensity_payload_len));
     }
 
     if (offset != payload.len) return error.TrailingBlockPayload;
@@ -695,6 +667,7 @@ fn freeRansSections(allocator: std.mem.Allocator, sections: []const RansSection)
 }
 
 fn benchmarkRansSections(
+    io: std.Io,
     bench_allocator: std.mem.Allocator,
     sections: []const RansSection,
     repeats: u32,
@@ -707,27 +680,27 @@ fn benchmarkRansSections(
     var encoded_bytes: usize = 0;
     var raw_bytes: usize = 0;
     for (sections) |section| {
-        encoded_bytes += section.encoded.len;
-        raw_bytes += section.raw.len;
+        encoded_bytes = try std.math.add(usize, encoded_bytes, section.encoded.len);
+        raw_bytes = try std.math.add(usize, raw_bytes, section.raw.len);
     }
 
     for (0..repeats) |repeat_idx| {
-        const encode_start = try monotonicNowNs();
+        const encode_start = monotonicNs(io);
         for (sections) |section| {
             const encoded = try rans.encodeAlloc(bench_allocator, section.raw);
+            defer bench_allocator.free(encoded);
             if (encoded.len == 0 and section.raw.len != 0) return error.InvalidBenchmark;
-            bench_allocator.free(encoded);
         }
-        encode_runs_ns[repeat_idx] = (try monotonicNowNs()) - encode_start;
+        encode_runs_ns[repeat_idx] = monotonicNs(io) - encode_start;
 
-        const decode_start = try monotonicNowNs();
+        const decode_start = monotonicNs(io);
         for (sections) |section| {
             const out = try bench_allocator.alloc(u8, section.raw.len);
+            defer bench_allocator.free(out);
             try rans.decodeInto(section.encoded, out);
             if (!std.mem.eql(u8, out, section.raw)) return error.InvalidBenchmark;
-            bench_allocator.free(out);
         }
-        decode_runs_ns[repeat_idx] = (try monotonicNowNs()) - decode_start;
+        decode_runs_ns[repeat_idx] = monotonicNs(io) - decode_start;
     }
 
     return .{
@@ -746,11 +719,8 @@ fn meanNs(values: []const u64) f64 {
     return total / @as(f64, @floatFromInt(values.len));
 }
 
-fn monotonicNowNs() !u64 {
-    var ts: std.os.linux.timespec = undefined;
-    const rc = std.os.linux.clock_gettime(.MONOTONIC, &ts);
-    if (@as(isize, @bitCast(rc)) < 0) return error.ClockGetTimeFailed;
-    return @as(u64, @intCast(ts.sec)) * std.time.ns_per_s + @as(u64, @intCast(ts.nsec));
+fn monotonicNs(io: std.Io) u64 {
+    return @truncate(@as(u96, @bitCast(std.Io.Clock.now(.awake, io).nanoseconds)));
 }
 
 fn printRunArray(allocator: std.mem.Allocator, values: []const u64) ![]u8 {
@@ -767,20 +737,25 @@ fn printRunArray(allocator: std.mem.Allocator, values: []const u64) ![]u8 {
     return list.toOwnedSlice(allocator);
 }
 
-fn commandBenchmarkRansCore(allocator: std.mem.Allocator, args: []const [:0]const u8) !void {
+fn commandBenchmarkRansCore(io: std.Io, allocator: std.mem.Allocator, args: []const [:0]const u8) !void {
     if (args.len < 3) return error.InvalidArguments;
-    const repeats = try parseOptionalU32(args[2..], "--repeats") orelse 5;
+    const repeats = try parseOptionalInt(u32, args[2..], "--repeats") orelse 5;
 
     var path: ?[]const u8 = null;
-    for (args[2..]) |arg| {
-        if (std.mem.eql(u8, arg, "--repeats")) continue;
-        if (path == null and !std.mem.startsWith(u8, arg, "--")) {
-            path = arg;
+    var idx: usize = 0;
+    const tail = args[2..];
+    while (idx < tail.len) : (idx += 1) {
+        const arg = tail[idx];
+        if (std.mem.eql(u8, arg, "--repeats")) {
+            idx += 1;
+            continue;
         }
+        if (path != null or std.mem.startsWith(u8, arg, "--")) return error.InvalidArguments;
+        path = arg;
     }
     if (path == null) return error.InvalidArguments;
 
-    const bytes = try codec.readFileAlloc(path.?, allocator);
+    const bytes = try codec.readFileAlloc(io, path.?, allocator);
     const inspection = try codec.inspectAlloc(allocator, bytes);
     defer codec.freeInspection(allocator, inspection);
 
@@ -796,9 +771,11 @@ fn commandBenchmarkRansCore(allocator: std.mem.Allocator, args: []const [:0]cons
     }
 
     for (inspection.blocks) |block_info| {
+        const end = try std.math.add(usize, block_info.offset, block_info.total_bytes);
+        if (end > bytes.len) return error.UnexpectedEndOfStream;
         try collectRansSections(
             allocator,
-            bytes[block_info.offset .. block_info.offset + block_info.total_bytes],
+            bytes[block_info.offset..end],
             block_info.header,
             &mz_sections,
             &exponent_sections,
@@ -807,12 +784,12 @@ fn commandBenchmarkRansCore(allocator: std.mem.Allocator, args: []const [:0]cons
 
     const bench_allocator = std.heap.page_allocator;
 
-    const mz_benchmark = try benchmarkRansSections(bench_allocator, mz_sections.items, repeats);
+    const mz_benchmark = try benchmarkRansSections(io, bench_allocator, mz_sections.items, repeats);
     defer {
         bench_allocator.free(mz_benchmark.encode_runs_ns);
         bench_allocator.free(mz_benchmark.decode_runs_ns);
     }
-    const exponent_benchmark = try benchmarkRansSections(bench_allocator, exponent_sections.items, repeats);
+    const exponent_benchmark = try benchmarkRansSections(io, bench_allocator, exponent_sections.items, repeats);
     defer {
         bench_allocator.free(exponent_benchmark.encode_runs_ns);
         bench_allocator.free(exponent_benchmark.decode_runs_ns);
@@ -871,10 +848,11 @@ fn commandBenchmarkRansCore(allocator: std.mem.Allocator, args: []const [:0]cons
         },
     );
     defer allocator.free(json_str);
-    writeStdout(json_str);
+    writeStdout(io, json_str);
 }
 
 pub fn main(init: std.process.Init) !void {
+    const io = init.io;
     const allocator = init.arena.allocator();
     const args = try init.minimal.args.toSlice(allocator);
 
@@ -888,37 +866,37 @@ pub fn main(init: std.process.Init) !void {
             printUsage();
             return error.InvalidArguments;
         }
-        try commandDumpInspect(allocator, args[2]);
+        try commandDumpInspect(io, allocator, args[2]);
         return;
     }
 
     if (std.mem.eql(u8, args[1], "encode")) {
-        try commandEncode(allocator, args);
+        try commandEncode(io, allocator, args);
         return;
     }
 
     if (std.mem.eql(u8, args[1], "decode")) {
-        try commandDecode(allocator, args);
+        try commandDecode(io, allocator, args);
         return;
     }
 
     if (std.mem.eql(u8, args[1], "inspect")) {
-        try commandInspect(allocator, args);
+        try commandInspect(io, allocator, args);
         return;
     }
 
     if (std.mem.eql(u8, args[1], "benchmark-rans-core")) {
-        try commandBenchmarkRansCore(allocator, args);
+        try commandBenchmarkRansCore(io, allocator, args);
         return;
     }
 
     if (std.mem.eql(u8, args[1], "validate")) {
-        try commandValidate(allocator, args);
+        try commandValidate(io, allocator, args);
         return;
     }
 
     if (std.mem.eql(u8, args[1], "validate-adversarial")) {
-        try commandValidateAdversarial(allocator, args);
+        try commandValidateAdversarial(io, allocator, args);
         return;
     }
 

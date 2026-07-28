@@ -1,19 +1,22 @@
+//! `.mzarc` file header, global order table, and block orchestration.
+//! Fail closed on bad magic/version, truncation, and order-table corruption.
+//! Block scratch arenas are reset, not individually freed.
+
 const std = @import("std");
 const binary_reader = @import("binary_reader");
 const block = @import("block");
 
 pub const Allocator = std.mem.Allocator;
-const io = std.Io.Threaded.global_single_threaded.io();
 
-fn monotonic_ns() u64 {
+fn monotonicNs(io: std.Io) u64 {
     return @truncate(@as(u96, @bitCast(std.Io.Clock.now(.awake, io).nanoseconds)));
 }
 
-fn ns_to_ms(ns: u64) f64 {
+fn nsToMs(ns: u64) f64 {
     return @as(f64, @floatFromInt(ns)) / 1_000_000.0;
 }
 
-fn ns_pct(part: u64, total: u64) f64 {
+fn nsPct(part: u64, total: u64) f64 {
     if (total == 0) return 0.0;
     return @as(f64, @floatFromInt(part)) * 100.0 / @as(f64, @floatFromInt(total));
 }
@@ -128,7 +131,7 @@ pub const Inspection = struct {
     byte_breakdown: FileByteBreakdown,
 };
 
-fn emptyFileByteBreakdown(order_bytes: usize) FileByteBreakdown {
+fn emptyFileByteBreakdown(order_bytes: usize) !FileByteBreakdown {
     return .{
         .file_header_bytes = header_len,
         .global_order_bytes = order_bytes,
@@ -141,21 +144,21 @@ fn emptyFileByteBreakdown(order_bytes: usize) FileByteBreakdown {
         .mz_payload_bytes = 0,
         .intensity_metadata_bytes = 0,
         .intensity_payload_bytes = 0,
-        .total_bytes = header_len + order_bytes,
+        .total_bytes = try std.math.add(usize, header_len, order_bytes),
     };
 }
 
-fn addBlockBytes(total: *FileByteBreakdown, block_bytes: block.BlockByteBreakdown) void {
-    total.block_header_bytes += block_bytes.header_bytes;
-    total.scan_id_bytes += block_bytes.scan_id_bytes;
-    total.rt_bytes += block_bytes.rt_bytes;
-    total.precursor_bytes += block_bytes.precursor_bytes;
-    total.peak_count_bytes += block_bytes.peak_count_bytes;
-    total.mz_metadata_bytes += block_bytes.mz_metadata_bytes;
-    total.mz_payload_bytes += block_bytes.mz_payload_bytes;
-    total.intensity_metadata_bytes += block_bytes.intensity_metadata_bytes;
-    total.intensity_payload_bytes += block_bytes.intensity_payload_bytes;
-    total.total_bytes += block_bytes.total_bytes;
+fn addBlockBytes(total: *FileByteBreakdown, block_bytes: block.BlockByteBreakdown) !void {
+    total.block_header_bytes = try std.math.add(usize, total.block_header_bytes, block_bytes.header_bytes);
+    total.scan_id_bytes = try std.math.add(usize, total.scan_id_bytes, block_bytes.scan_id_bytes);
+    total.rt_bytes = try std.math.add(usize, total.rt_bytes, block_bytes.rt_bytes);
+    total.precursor_bytes = try std.math.add(usize, total.precursor_bytes, block_bytes.precursor_bytes);
+    total.peak_count_bytes = try std.math.add(usize, total.peak_count_bytes, block_bytes.peak_count_bytes);
+    total.mz_metadata_bytes = try std.math.add(usize, total.mz_metadata_bytes, block_bytes.mz_metadata_bytes);
+    total.mz_payload_bytes = try std.math.add(usize, total.mz_payload_bytes, block_bytes.mz_payload_bytes);
+    total.intensity_metadata_bytes = try std.math.add(usize, total.intensity_metadata_bytes, block_bytes.intensity_metadata_bytes);
+    total.intensity_payload_bytes = try std.math.add(usize, total.intensity_payload_bytes, block_bytes.intensity_payload_bytes);
+    total.total_bytes = try std.math.add(usize, total.total_bytes, block_bytes.total_bytes);
 }
 
 fn readIntLe(comptime T: type, bytes: []const u8) T {
@@ -197,32 +200,32 @@ fn writeHeaderInto(bytes: []u8, header: FileHeader) void {
     std.mem.writeInt(u64, bytes[24..32], header.total_peaks, .little);
 }
 
-fn writeOrderEntry(bytes: []u8, entry_index: usize, value: u32) void {
-    const start = entry_index * @sizeOf(u32);
+fn writeOrderEntry(bytes: []u8, entry_index: usize, value: u32) !void {
+    const start = try std.math.mul(usize, entry_index, @sizeOf(u32));
     std.mem.writeInt(u32, bytes[start..][0..@sizeOf(u32)], value, .little);
 }
 
-fn readOrderEntry(bytes: []const u8, entry_index: usize) u32 {
-    const start = entry_index * @sizeOf(u32);
+fn readOrderEntry(bytes: []const u8, entry_index: usize) !u32 {
+    const start = try std.math.mul(usize, entry_index, @sizeOf(u32));
     return readIntLe(u32, bytes[start .. start + @sizeOf(u32)]);
 }
 
-fn globalOrderTableLen(spectrum_count: u32) usize {
-    return @as(usize, spectrum_count) * @sizeOf(u32);
+fn globalOrderTableLen(spectrum_count: u32) !usize {
+    return try std.math.mul(usize, spectrum_count, @sizeOf(u32));
 }
 
 fn blocksOffset(header: FileHeader, bytes: []const u8) !usize {
     var offset: usize = header_len;
     if ((header.flags & flag_has_global_order) != 0) {
-        const order_len = globalOrderTableLen(header.spectrum_count);
+        const order_len = try globalOrderTableLen(header.spectrum_count);
         if (bytes.len - offset < order_len) return error.UnexpectedEndOfStream;
-        offset += order_len;
+        offset = try std.math.add(usize, offset, order_len);
     }
     return offset;
 }
 
 fn readValidatedGlobalOrderAlloc(allocator: Allocator, header: FileHeader, bytes: []const u8) ![]u32 {
-    const order_len = globalOrderTableLen(header.spectrum_count);
+    const order_len = try globalOrderTableLen(header.spectrum_count);
     const order_bytes = bytes[header_len .. header_len + order_len];
     const order = try allocator.alloc(u32, header.spectrum_count);
     errdefer allocator.free(order);
@@ -232,7 +235,7 @@ fn readValidatedGlobalOrderAlloc(allocator: Allocator, header: FileHeader, bytes
     @memset(seen, false);
 
     for (0..order.len) |file_index| {
-        const original_index = readOrderEntry(order_bytes, file_index);
+        const original_index = try readOrderEntry(order_bytes, file_index);
         if (original_index >= order.len or seen[original_index]) return error.InvalidOrderTable;
         seen[original_index] = true;
         order[file_index] = original_index;
@@ -241,9 +244,11 @@ fn readValidatedGlobalOrderAlloc(allocator: Allocator, header: FileHeader, bytes
     return order;
 }
 
-fn totalPeaks(spectra: []const binary_reader.RawSpectrum) usize {
-    var total: usize = 0;
-    for (spectra) |spectrum| total += spectrum.mz.len;
+fn totalPeaks(spectra: []const binary_reader.RawSpectrum) !u64 {
+    var total: u64 = 0;
+    for (spectra) |spectrum| {
+        total = try std.math.add(u64, total, spectrum.mz.len);
+    }
     return total;
 }
 
@@ -304,11 +309,11 @@ fn appendFilteredStreamBlocks(
     return matched;
 }
 
-pub fn encodeFileAlloc(allocator: Allocator, spectra: []const binary_reader.RawSpectrum, options: EncodeOptions) ![]u8 {
+pub fn encodeFileAlloc(io: std.Io, allocator: Allocator, spectra: []const binary_reader.RawSpectrum, options: EncodeOptions) ![]u8 {
     if (options.block_size == 0) return error.InvalidBlockSize;
     if (spectra.len > std.math.maxInt(u32)) return error.TooManySpectra;
 
-    const t0 = monotonic_ns();
+    const t0 = monotonicNs(io);
 
     var ms1_count: usize = 0;
     var ms2_count: usize = 0;
@@ -322,8 +327,9 @@ pub fn encodeFileAlloc(allocator: Allocator, spectra: []const binary_reader.RawS
 
     var file_bytes: std.ArrayList(u8) = .empty;
     errdefer file_bytes.deinit(allocator);
-    const order_len = globalOrderTableLen(@intCast(spectra.len));
-    try file_bytes.appendNTimes(allocator, 0, header_len + order_len);
+    const order_len = try globalOrderTableLen(@intCast(spectra.len));
+    const header_and_order = try std.math.add(usize, header_len, order_len);
+    try file_bytes.appendNTimes(allocator, 0, header_and_order);
     const order_entries = try allocator.alloc(u32, spectra.len);
     defer allocator.free(order_entries);
 
@@ -333,19 +339,19 @@ pub fn encodeFileAlloc(allocator: Allocator, spectra: []const binary_reader.RawS
     if (ms2_count != 0) flags |= flag_contains_ms2;
     flags |= flag_has_global_order;
 
-    const t1 = monotonic_ns();
+    const t1 = monotonicNs(io);
 
     var block_count: u32 = 0;
     var order_cursor: usize = 0;
     _ = try appendFilteredStreamBlocks(&file_bytes, allocator, spectra, 1, options, order_entries, &order_cursor, &block_count);
-    const t2 = monotonic_ns();
+    const t2 = monotonicNs(io);
     _ = try appendFilteredStreamBlocks(&file_bytes, allocator, spectra, 2, options, order_entries, &order_cursor, &block_count);
-    const t3 = monotonic_ns();
+    const t3 = monotonicNs(io);
 
     if (order_cursor != spectra.len) return error.InvalidOrderTable;
 
     const order_bytes = file_bytes.items[header_len .. header_len + order_len];
-    for (order_entries, 0..) |entry, entry_index| writeOrderEntry(order_bytes, entry_index, entry);
+    for (order_entries, 0..) |entry, entry_index| try writeOrderEntry(order_bytes, entry_index, entry);
 
     const header: FileHeader = .{
         .magic_bytes = magic,
@@ -356,13 +362,13 @@ pub fn encodeFileAlloc(allocator: Allocator, spectra: []const binary_reader.RawS
         .reserved0 = 0,
         .spectrum_count = @intCast(spectra.len),
         .block_count = block_count,
-        .total_peaks = @intCast(totalPeaks(spectra)),
+        .total_peaks = try totalPeaks(spectra),
     };
     writeHeaderInto(file_bytes.items[0..header_len], header);
     const result = try file_bytes.toOwnedSlice(allocator);
 
     if (options.verbose_timing) {
-        const t4 = monotonic_ns();
+        const t4 = monotonicNs(io);
         const total_ns = t4 - t0;
         const setup_ns = t1 - t0;
         const ms1_ns = t2 - t1;
@@ -372,8 +378,8 @@ pub fn encodeFileAlloc(allocator: Allocator, spectra: []const binary_reader.RawS
             "[encode timing] setup={d:.2}ms  ms1_blocks={d:.2}ms  ms2_blocks={d:.2}ms  finalize={d:.2}ms  total={d:.2}ms\n" ++
                 "[encode timing] setup={d:.1}%  ms1_blocks={d:.1}%  ms2_blocks={d:.1}%  finalize={d:.1}%\n",
             .{
-                ns_to_ms(setup_ns),         ns_to_ms(ms1_ns),         ns_to_ms(ms2_ns),         ns_to_ms(finalize_ns),         ns_to_ms(total_ns),
-                ns_pct(setup_ns, total_ns), ns_pct(ms1_ns, total_ns), ns_pct(ms2_ns, total_ns), ns_pct(finalize_ns, total_ns),
+                nsToMs(setup_ns),          nsToMs(ms1_ns),          nsToMs(ms2_ns),          nsToMs(finalize_ns),          nsToMs(total_ns),
+                nsPct(setup_ns, total_ns), nsPct(ms1_ns, total_ns), nsPct(ms2_ns, total_ns), nsPct(finalize_ns, total_ns),
             },
         );
     }
@@ -383,7 +389,7 @@ pub fn encodeFileAlloc(allocator: Allocator, spectra: []const binary_reader.RawS
 
 pub fn inspectAlloc(allocator: Allocator, bytes: []const u8) !Inspection {
     const header = try parseHeader(bytes);
-    const blocks = try allocator.alloc(BlockInfo, @intCast(header.block_count));
+    const blocks = try allocator.alloc(BlockInfo, header.block_count);
     errdefer allocator.free(blocks);
 
     const initial_offset = try blocksOffset(header, bytes);
@@ -392,12 +398,12 @@ pub fn inspectAlloc(allocator: Allocator, bytes: []const u8) !Inspection {
     var ms2_block_count: usize = 0;
     var ms1_spectra: usize = 0;
     var ms2_spectra: usize = 0;
-    var byte_breakdown = emptyFileByteBreakdown(initial_offset - header_len);
+    var byte_breakdown = try emptyFileByteBreakdown(initial_offset - header_len);
 
     for (blocks) |*block_info| {
         if (bytes.len - offset < block.header_len) return error.UnexpectedEndOfStream;
         const block_header = try block.parseHeader(bytes[offset .. offset + block.header_len]);
-        const total_bytes = block.header_len + @as(usize, block_header.payload_bytes);
+        const total_bytes = try std.math.add(usize, block.header_len, block_header.payload_bytes);
         if (bytes.len - offset < total_bytes) return error.UnexpectedEndOfStream;
         const block_breakdown = try block.inspectBlockByteBreakdown(bytes[offset .. offset + total_bytes]);
 
@@ -407,7 +413,7 @@ pub fn inspectAlloc(allocator: Allocator, bytes: []const u8) !Inspection {
             .header = block_header,
             .byte_breakdown = block_breakdown,
         };
-        addBlockBytes(&byte_breakdown, block_breakdown);
+        try addBlockBytes(&byte_breakdown, block_breakdown);
 
         switch (block_header.ms_level) {
             1 => {
@@ -421,7 +427,7 @@ pub fn inspectAlloc(allocator: Allocator, bytes: []const u8) !Inspection {
             else => return error.UnsupportedMsLevel,
         }
 
-        offset += total_bytes;
+        offset = try std.math.add(usize, offset, total_bytes);
     }
 
     if (offset != bytes.len) return error.TrailingFileData;
@@ -441,8 +447,8 @@ pub fn freeInspection(allocator: Allocator, inspection: Inspection) void {
     allocator.free(inspection.blocks);
 }
 
-pub fn decodeFileAlloc(allocator: Allocator, bytes: []const u8, options: DecodeOptions) ![]binary_reader.RawSpectrum {
-    const t0 = monotonic_ns();
+pub fn decodeFileAlloc(io: std.Io, allocator: Allocator, bytes: []const u8, options: DecodeOptions) ![]binary_reader.RawSpectrum {
+    const t0 = monotonicNs(io);
 
     const inspection = try inspectAlloc(allocator, bytes);
     defer freeInspection(allocator, inspection);
@@ -453,16 +459,19 @@ pub fn decodeFileAlloc(allocator: Allocator, bytes: []const u8, options: DecodeO
         null;
     defer if (global_order) |order| allocator.free(order);
 
-    const t1 = monotonic_ns();
+    const t1 = monotonicNs(io);
 
-    const spectra = try allocator.alloc(binary_reader.RawSpectrum, @intCast(inspection.header.spectrum_count));
+    const spectra = try allocator.alloc(binary_reader.RawSpectrum, inspection.header.spectrum_count);
     var initialized: usize = 0;
+    var spectra_owned = true;
     errdefer {
-        for (spectra[0..initialized]) |spectrum| {
-            allocator.free(spectrum.mz);
-            allocator.free(spectrum.intensity);
+        if (spectra_owned) {
+            for (spectra[0..initialized]) |spectrum| {
+                allocator.free(spectrum.mz);
+                allocator.free(spectrum.intensity);
+            }
+            allocator.free(spectra);
         }
-        allocator.free(spectra);
     }
 
     var spectrum_offset: usize = 0;
@@ -472,13 +481,23 @@ pub fn decodeFileAlloc(allocator: Allocator, bytes: []const u8, options: DecodeO
         const decoded = try block.decodeBlockWithScratch(allocator, decode_scratch_arena.allocator(), bytes[block_info.offset .. block_info.offset + block_info.total_bytes]);
         _ = decode_scratch_arena.reset(.retain_capacity);
 
-        @memcpy(spectra[spectrum_offset .. spectrum_offset + decoded.len], decoded);
-        spectrum_offset += decoded.len;
+        const next = try std.math.add(usize, spectrum_offset, decoded.len);
+        if (next > spectra.len) {
+            for (decoded) |spectrum| {
+                allocator.free(spectrum.mz);
+                allocator.free(spectrum.intensity);
+            }
+            allocator.free(decoded);
+            return error.SpectrumCountMismatch;
+        }
+        @memcpy(spectra[spectrum_offset..next], decoded);
+        spectrum_offset = next;
         initialized = spectrum_offset;
         allocator.free(decoded);
     }
+    if (spectrum_offset != spectra.len) return error.SpectrumCountMismatch;
 
-    const t2 = monotonic_ns();
+    const t2 = monotonicNs(io);
 
     if (global_order == null) {
         if (options.verbose_timing) {
@@ -489,11 +508,12 @@ pub fn decodeFileAlloc(allocator: Allocator, bytes: []const u8, options: DecodeO
                 "[decode timing] setup={d:.2}ms  block_loop={d:.2}ms  reorder=0.00ms  total={d:.2}ms\n" ++
                     "[decode timing] setup={d:.1}%  block_loop={d:.1}%  reorder=0.0%\n",
                 .{
-                    ns_to_ms(setup_ns),         ns_to_ms(blocks_ns),         ns_to_ms(total_ns),
-                    ns_pct(setup_ns, total_ns), ns_pct(blocks_ns, total_ns),
+                    nsToMs(setup_ns),          nsToMs(blocks_ns),          nsToMs(total_ns),
+                    nsPct(setup_ns, total_ns), nsPct(blocks_ns, total_ns),
                 },
             );
         }
+        spectra_owned = false;
         return spectra;
     }
 
@@ -501,10 +521,11 @@ pub fn decodeFileAlloc(allocator: Allocator, bytes: []const u8, options: DecodeO
     for (global_order.?, 0..) |original_index, file_index| {
         reordered[original_index] = spectra[file_index];
     }
+    spectra_owned = false;
     allocator.free(spectra);
 
     if (options.verbose_timing) {
-        const t3 = monotonic_ns();
+        const t3 = monotonicNs(io);
         const total_ns = t3 - t0;
         const setup_ns = t1 - t0;
         const blocks_ns = t2 - t1;
@@ -513,8 +534,8 @@ pub fn decodeFileAlloc(allocator: Allocator, bytes: []const u8, options: DecodeO
             "[decode timing] setup={d:.2}ms  block_loop={d:.2}ms  reorder={d:.2}ms  total={d:.2}ms\n" ++
                 "[decode timing] setup={d:.1}%  block_loop={d:.1}%  reorder={d:.1}%\n",
             .{
-                ns_to_ms(setup_ns),         ns_to_ms(blocks_ns),         ns_to_ms(reorder_ns),         ns_to_ms(total_ns),
-                ns_pct(setup_ns, total_ns), ns_pct(blocks_ns, total_ns), ns_pct(reorder_ns, total_ns),
+                nsToMs(setup_ns),          nsToMs(blocks_ns),          nsToMs(reorder_ns),          nsToMs(total_ns),
+                nsPct(setup_ns, total_ns), nsPct(blocks_ns, total_ns), nsPct(reorder_ns, total_ns),
             },
         );
     }
@@ -522,36 +543,36 @@ pub fn decodeFileAlloc(allocator: Allocator, bytes: []const u8, options: DecodeO
     return reordered;
 }
 
-pub fn readFileAlloc(path: []const u8, allocator: Allocator) ![]u8 {
+pub fn readFileAlloc(io: std.Io, path: []const u8, allocator: Allocator) ![]u8 {
     return std.Io.Dir.cwd().readFileAlloc(io, path, allocator, .limited(std.math.maxInt(usize)));
 }
 
-pub fn writeFile(path: []const u8, bytes: []const u8) !void {
+pub fn writeFile(io: std.Io, path: []const u8, bytes: []const u8) !void {
     try std.Io.Dir.cwd().writeFile(io, .{ .sub_path = path, .data = bytes });
 }
 
-pub fn encodeDumpFile(allocator: Allocator, input_path: []const u8, output_path: []const u8, options: EncodeOptions) !void {
-    const spectra = try binary_reader.readBinaryDump(input_path, allocator);
+pub fn encodeDumpFile(io: std.Io, allocator: Allocator, input_path: []const u8, output_path: []const u8, options: EncodeOptions) !void {
+    const spectra = try binary_reader.readBinaryDump(io, input_path, allocator);
     defer binary_reader.freeSpectra(allocator, spectra);
 
-    const encoded = try encodeFileAlloc(allocator, spectra, options);
+    const encoded = try encodeFileAlloc(io, allocator, spectra, options);
     defer allocator.free(encoded);
 
-    try writeFile(output_path, encoded);
+    try writeFile(io, output_path, encoded);
 }
 
-pub fn decodeToDumpFile(allocator: Allocator, input_path: []const u8, output_path: []const u8, options: DecodeOptions) !void {
-    const bytes = try readFileAlloc(input_path, allocator);
+pub fn decodeToDumpFile(io: std.Io, allocator: Allocator, input_path: []const u8, output_path: []const u8, options: DecodeOptions) !void {
+    const bytes = try readFileAlloc(io, input_path, allocator);
     defer allocator.free(bytes);
 
-    const spectra = try decodeFileAlloc(allocator, bytes, options);
+    const spectra = try decodeFileAlloc(io, allocator, bytes, options);
     defer binary_reader.freeSpectra(allocator, spectra);
 
-    try binary_reader.writeBinaryDump(output_path, spectra, allocator);
+    try binary_reader.writeBinaryDump(io, output_path, spectra, allocator);
 }
 
-pub fn inspectFileAlloc(allocator: Allocator, path: []const u8) !Inspection {
-    const bytes = try readFileAlloc(path, allocator);
+pub fn inspectFileAlloc(io: std.Io, allocator: Allocator, path: []const u8) !Inspection {
+    const bytes = try readFileAlloc(io, path, allocator);
     defer allocator.free(bytes);
     return inspectAlloc(allocator, bytes);
 }

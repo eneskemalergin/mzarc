@@ -1,6 +1,8 @@
-const std = @import("std");
+//! Fixed-point m/z and log-intensity quantization.
+//! m/z: |v'-v| ≤ 0.5/scale. Codec lossy intensity is scaled log1p over block `log_max`
+//! (uniform levels on [0, log_max]). Unscaled log1p×quant bounds: `plan/spec.md`.
 
-pub const Allocator = std.mem.Allocator;
+const std = @import("std");
 
 pub fn quantizeMzValue(value: f64, scale_factor: u32) !u64 {
     if (scale_factor == 0) return error.InvalidScaleFactor;
@@ -23,28 +25,6 @@ pub fn dequantizeMzValue(value: u64, scale_factor: u32) !f64 {
 
     const scale = @as(f64, @floatFromInt(scale_factor));
     return @as(f64, @floatFromInt(value)) / scale;
-}
-
-pub fn quantizeMzArray(allocator: Allocator, values: []const f64, scale_factor: u32) ![]u64 {
-    var out = try allocator.alloc(u64, values.len);
-    errdefer allocator.free(out);
-
-    for (values, 0..) |value, idx| {
-        out[idx] = try quantizeMzValue(value, scale_factor);
-    }
-
-    return out;
-}
-
-pub fn dequantizeMzArray(allocator: Allocator, values: []const u64, scale_factor: u32) ![]f64 {
-    var out = try allocator.alloc(f64, values.len);
-    errdefer allocator.free(out);
-
-    for (values, 0..) |value, idx| {
-        out[idx] = try dequantizeMzValue(value, scale_factor);
-    }
-
-    return out;
 }
 
 pub fn quantizeIntensityValue(value: f32, quant_factor: u16) !u16 {
@@ -88,11 +68,8 @@ pub fn quantizeIntensityValueScaled(value: f32, quant_levels: u16, log_max: f32)
     if (value <= 0.0 or log_max == 0.0) return 0;
 
     const numerator = std.math.log1p(@as(f64, value));
-    const denominator = @as(f64, log_max);
-    if (denominator <= 0.0) return 0;
-
     const max_level = @as(f64, @floatFromInt(quant_levels));
-    const encoded = @round((numerator / denominator) * max_level);
+    const encoded = @round((numerator / @as(f64, log_max)) * max_level);
     const clamped = std.math.clamp(encoded, 1.0, max_level);
     return @as(u16, @intFromFloat(clamped));
 }
@@ -106,48 +83,4 @@ pub fn dequantizeIntensityValueScaled(value: u16, quant_levels: u16, log_max: f3
     const decoded = std.math.exp(ratio * @as(f64, log_max)) - 1.0;
     if (decoded >= std.math.floatMax(f32)) return std.math.floatMax(f32);
     return @as(f32, @floatCast(decoded));
-}
-
-pub fn quantizeIntensityArrayScaled(allocator: Allocator, values: []const f32, quant_levels: u16, log_max: f32) ![]u16 {
-    var out = try allocator.alloc(u16, values.len);
-    errdefer allocator.free(out);
-
-    for (values, 0..) |value, idx| {
-        out[idx] = try quantizeIntensityValueScaled(value, quant_levels, log_max);
-    }
-
-    return out;
-}
-
-pub fn dequantizeIntensityArrayScaled(allocator: Allocator, values: []const u16, quant_levels: u16, log_max: f32) ![]f32 {
-    var out = try allocator.alloc(f32, values.len);
-    errdefer allocator.free(out);
-
-    for (values, 0..) |value, idx| {
-        out[idx] = try dequantizeIntensityValueScaled(value, quant_levels, log_max);
-    }
-
-    return out;
-}
-
-pub fn quantizeIntensityArray(allocator: Allocator, values: []const f32, quant_factor: u16) ![]u16 {
-    var out = try allocator.alloc(u16, values.len);
-    errdefer allocator.free(out);
-
-    for (values, 0..) |value, idx| {
-        out[idx] = try quantizeIntensityValue(value, quant_factor);
-    }
-
-    return out;
-}
-
-pub fn dequantizeIntensityArray(allocator: Allocator, values: []const u16, quant_factor: u16) ![]f32 {
-    var out = try allocator.alloc(f32, values.len);
-    errdefer allocator.free(out);
-
-    for (values, 0..) |value, idx| {
-        out[idx] = try dequantizeIntensityValue(value, quant_factor);
-    }
-
-    return out;
 }

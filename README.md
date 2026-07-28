@@ -71,14 +71,14 @@ Run the full CI gate (fixture, roundtrips, adversarial corpus, regression):
 
 Benchmark dataset: `data/PXD075509/15HCD_1.mzML` (9,001 spectra, 2.67M peaks). Full report at [benchmark/report.md](benchmark/report.md).
 
-| codec | size | vs mzML |
-| --- | ---: | ---: |
-| mzML | 75.55 MiB | 100.0% |
-| mzarc lossless | 15.27 MiB | 20.2% |
-| mzarc lossy q=16384 | 12.62 MiB | 16.7% |
-| mzMLb | 16.25 MiB | 21.5% |
-| xz dump | 15.77 MiB | 20.9% |
-| zstd dump | 17.85 MiB | 23.6% |
+| codec               |      size | vs mzML |
+| ------------------- | --------: | ------: |
+| mzML                | 75.55 MiB |  100.0% |
+| mzarc lossless      | 15.27 MiB |   20.2% |
+| mzarc lossy q=16384 | 12.62 MiB |   16.7% |
+| mzMLb               | 16.25 MiB |   21.5% |
+| xz dump             | 15.77 MiB |   20.9% |
+| zstd dump           | 17.85 MiB |   23.6% |
 
 mzarc lossless beats every other codec in the comparison. It is 3.1% smaller than xz on the same binary dump and 1.3% smaller than mzMLb. The lossy path at q=16384 reaches 16.7% of raw mzML size with p95 relative intensity error of 0.055%.
 
@@ -107,7 +107,7 @@ Lossless fidelity: exact round-trip, mean absolute m/z error `0.0`, global scan 
 - split-exponent intensity coding with rANS entropy coding on m/z and intensity streams
 - per-spectrum m/z width support in the container format
 - block-scoped arena allocators (encode peak RSS dropped from 208 MB to 89 MB)
-- `zig build ci`: 2.4 s, 11-step pipeline covering fixture, roundtrips, adversarial corpus, and regression
+- `zig build ci`: 2.4 s local gate covering fixture, roundtrips, adversarial corpus, and regression
 - adversarial corpus coverage across 13 categories
 
 Size gains on `15HCD_1` relative to v0.1.1:
@@ -120,16 +120,15 @@ Size gains on `15HCD_1` relative to v0.1.1:
 
 ### Ingest and dump layer
 
-`tools/mzml_dump.py` converts mzML to the flat binary format the codec expects. The Python step is intentional: it isolates XML parsing from the codec. A native Zig ingest path is planned once the codec core is stable.
+`tools/mzml_dump.py` converts mzML to the flat binary format the codec expects. The Python dump is intentional: it isolates XML parsing from the codec. A native Zig ingest path is planned once the codec core is stable.
 
-`src/binary_reader.zig` reads and writes the dump format. `tools/inspect_dump.py` reports dump statistics.
+`src/binary_reader.zig` reads and writes the dump format. `mzarc dump-inspect` reports dump statistics.
 
 ### Codec core
 
 - `src/quantize.zig`: m/z fixed-point conversion and lossy intensity quantization
-- `src/delta.zig`: intra-spectrum delta transforms
 - `src/bitpack.zig`: scalar FOR bit-packing and unpacking
-- `src/block.zig`: block encode/decode, CRC validation, entropy decisions, per-spectrum width support
+- `src/block.zig`: block encode/decode (deltas, CRC, entropy decisions, per-spectrum widths)
 - `src/codec.zig`: `.mzarc` container stream read/write
 - `src/main.zig`: CLI subcommands (encode, decode, inspect, validate, benchmark)
 
@@ -142,15 +141,15 @@ Size gains on `15HCD_1` relative to v0.1.1:
 
 ## CI
 
-The workflow runs on Ubuntu and macOS on every push and pull request. No mzML data or Python required. All steps operate on the frozen binary fixture in `test/fixtures/`.
+The workflow runs on Ubuntu and macOS on every push and pull request. No mzML data or Python required. Checks use the frozen binary fixture in `test/fixtures/`.
 
-Steps: build with `-Drelease=true`, unit tests, frozen fixture SHA-256 integrity check, lossless/lossy roundtrips and adversarial corpus via `tools/smoke_test.sh`.
+Jobs: build with `-Drelease=true`, unit tests, frozen fixture SHA-256 integrity check, lossless/lossy roundtrips and adversarial corpus via `tools/smoke_test.sh`.
 
 The full local gate (`zig build ci`) additionally runs a regression check against the versioned baseline and is intended for pre-commit use.
 
 ## Validation State
 
-All CI steps pass on the current build. Lossless fidelity on `15HCD_1` is exact: zero m/z error, scan order preserved. The lossy path at `q=16384` yields p95 relative intensity error of 0.055%.
+CI is green on the current build. Lossless fidelity on `15HCD_1` is exact: zero m/z error, scan order preserved. The lossy path at `q=16384` yields p95 relative intensity error of 0.055%.
 
 This is a research prototype. It has been validated on one dataset from one instrument type. Quirks in edge cases are expected and will surface with broader use.
 
@@ -173,7 +172,7 @@ mzarc/
 
 v0.2.0 is released. Broad directions from here:
 
-- Native Zig mzML parser to remove the Python dump step
+- Native Zig mzML parser so the default ingest path does not need the Python dump
 - SIMD acceleration for hot decode paths
 - Native multithreading as the default encode/decode mode
 - Cross-spectrum delta coding (requires a DIA dataset)
@@ -185,25 +184,25 @@ v0.2.0 is released. Broad directions from here:
 
 **Format and codec**
 
-- Martens, L. et al. [mzML -- a community standard for mass spectrometry data](https://doi.org/10.1074/mcp.R110.000133). *Molecular & Cellular Proteomics*.
-- Bhamber, R. S. et al. (2020). [mzMLb: a future-proof raw mass spectrometry data format based on standards-compliant mzML and optimized for speed and storage requirements](https://doi.org/10.1021/acs.jproteome.0c00192). *Journal of Proteome Research*.
+- Martens, L. et al. [mzML -- a community standard for mass spectrometry data](https://doi.org/10.1074/mcp.R110.000133). _Molecular & Cellular Proteomics_.
+- Bhamber, R. S. et al. (2020). [mzMLb: a future-proof raw mass spectrometry data format based on standards-compliant mzML and optimized for speed and storage requirements](https://doi.org/10.1021/acs.jproteome.0c00192). _Journal of Proteome Research_.
 - [ms-numpress](https://github.com/ms-numpress/ms-numpress): Lossless compression of high precision numerical data for mass spectrometry.
 - [mscompress](https://github.com/chrisagrams/mscompress): Domain-specific compression for tandem mass spectrometry data.
 
 **Entropy coding**
 
-- Duda, J. (2013). [Asymmetric numeral systems: entropy coding combining speed of Huffman coding with compression rate of arithmetic coding](https://arxiv.org/abs/1311.2540). *arXiv:1311.2540*.
+- Duda, J. (2013). [Asymmetric numeral systems: entropy coding combining speed of Huffman coding with compression rate of arithmetic coding](https://arxiv.org/abs/1311.2540). _arXiv:1311.2540_.
 - Giesen, F. (2014). [rANS notes](https://fgiesen.wordpress.com/2014/02/02/rans-notes/). Practical derivation and proofs for streaming rANS; reference implementation at [github.com/rygorous/ryg_rans](https://github.com/rygorous/ryg_rans).
 
 **Dataset**
 
-- [PXD075509](https://www.ebi.ac.uk/pride/archive/projects/PXD075509): HCD fragmentation energy series, *E. coli* rRNA digest. Primary benchmark dataset.
+- [PXD075509](https://www.ebi.ac.uk/pride/archive/projects/PXD075509): HCD fragmentation energy series, _E. coli_ rRNA digest. Primary benchmark dataset.
 
 **Tooling**
 
 - [Zig](https://ziglang.org): systems programming language used for the codec, CLI, and test harness.
 - [pyteomics](https://github.com/levitsky/pyteomics): Python library for mzML/mzMLb ingestion in the dump tool. Cite: Goloborodko et al. (2013), DOI [10.1007/s13361-012-0516-6](https://doi.org/10.1007/s13361-012-0516-6); Levitsky et al. (2018), DOI [10.1021/acs.jproteome.8b00717](https://doi.org/10.1021/acs.jproteome.8b00717).
-- [zebrac](https://github.com/eneskemalergin/zebrac): Linux perf-counter profiling tool used as the primary timing source (binary at [tools/zebrac/](tools/zebrac/)).
+- [zebrac](https://github.com/eneskemalergin/zebrac): Linux perf-counter profiling tool used as the primary timing source (binary at `tools/zebrac`).
 
 ---
 

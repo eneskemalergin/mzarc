@@ -1,8 +1,9 @@
+//! Public block API surface. Logic lives in `block_common`, `block_encode`, and `block_decode`.
+
 const common = @import("block_common");
 const encode = @import("block_encode");
 const decode = @import("block_decode");
 
-// Re-export all public symbols from block_common
 pub const Allocator = common.Allocator;
 pub const Mode = common.Mode;
 pub const EncodeOptions = common.EncodeOptions;
@@ -20,18 +21,12 @@ pub const flag_delta_rt = common.flag_delta_rt;
 pub const flag_rans_mz = common.flag_rans_mz;
 pub const flag_rans_intensity = common.flag_rans_intensity;
 pub const header_len = common.header_len;
-pub const RansCandidate = common.RansCandidate;
 pub const packedByteLen = common.packedByteLen;
 pub const perSpectrumPayloadLen = common.perSpectrumPayloadLen;
-pub const totalPeakCount = common.totalPeakCount;
-pub const allMzExactlyF32 = common.allMzExactlyF32;
-pub const maybeEncodeRansAlloc = common.maybeEncodeRansAlloc;
 
-// Re-export from block_encode
 pub const encodeBlockDetailed = encode.encodeBlockDetailed;
 pub const encodeBlock = encode.encodeBlock;
 
-// Re-export from block_decode
 pub const parseHeader = decode.parseHeader;
 pub const decodeBlock = decode.decodeBlock;
 pub const decodeBlockWithScratch = decode.decodeBlockWithScratch;

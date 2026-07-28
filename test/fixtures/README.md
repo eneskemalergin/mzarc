@@ -21,7 +21,7 @@ A deterministically sliced 1,000-spectrum subset of `data/PXD075509/15HCD_1.bin`
 Sparse and empty spectra are fabricated deterministically (`random.seed(42)`) because
 the source dump (min 16 peaks/spectrum) contains no such spectra naturally.
 
-### inspect_dump.py summary
+### dump-inspect summary (`mzarc dump-inspect`)
 
 ```text
 file: test/fixtures/frozen.bin
@@ -41,7 +41,7 @@ ms2 count: 890
 9d5a10167356db7afaa4e6c43832a7ea75a53e84dc74e679a881d5d8cf7cb2c6
 ```
 
-`zig build check-fixture` re-hashes `frozen.bin` at build time and fails if the digest does not match.
+`zig build check-fixture` re-hashes `frozen.bin` at build time (`sha256sum`, or `shasum -a 256` on macOS) and fails if the digest does not match.
 
 ## Adversarial corpus (test/adversarial/)
 

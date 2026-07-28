@@ -1,14 +1,9 @@
-const std = @import("std");
-const builtin = @import("builtin");
-const binary_reader = @import("binary_reader");
-const quantize = @import("quantize");
-const bitpack = @import("bitpack");
-const rans = @import("rans");
-const build_options = @import("build_options");
+//! Shared block types, flag bits, and helpers for encode/decode.
+//! Flag bits 0-7 are fully assigned; new layouts need a version bump or extended header.
 
-/// Force scalar code paths. Set via `-Dforce_scalar=true` in build.zig.
-/// Used by SIMD FOR unpack in v0.3.x.
-pub const force_scalar = build_options.force_scalar;
+const std = @import("std");
+const binary_reader = @import("binary_reader");
+const rans = @import("rans");
 
 pub const Allocator = std.mem.Allocator;
 
@@ -75,10 +70,6 @@ pub const RansCandidate = struct {
     pub fn used(self: RansCandidate) bool {
         return self.encoded != null;
     }
-
-    pub fn deinit(self: RansCandidate, allocator: Allocator) void {
-        if (self.encoded) |encoded| allocator.free(encoded);
-    }
 };
 
 pub const BlockHeader = struct {
@@ -88,10 +79,12 @@ pub const BlockHeader = struct {
     total_peaks: u32,
     mz_scale_factor: u32,
     intensity_quant: u16,
-    reserved0: u16,
+    /// Low 16 bits of lossy intensity `log_max` (f32 bitcast).
+    intensity_log_scale_lo: u16,
     mz_bit_width: u8,
     intensity_bit_width: u8,
-    reserved1: u16,
+    /// High 16 bits of lossy intensity `log_max` (f32 bitcast).
+    intensity_log_scale_hi: u16,
     rt_min: f32,
     rt_max: f32,
     payload_bytes: u32,
@@ -127,7 +120,7 @@ pub fn combineU32(low: u16, high: u16) u32 {
 }
 
 pub fn encodeIntensityLogScale(value: f32) struct { low: u16, high: u16 } {
-    const bits = @as(u32, @bitCast(value));
+    const bits: u32 = @bitCast(value);
     return .{
         .low = @intCast(bits & 0xffff),
         .high = @intCast((bits >> 16) & 0xffff),
@@ -135,7 +128,7 @@ pub fn encodeIntensityLogScale(value: f32) struct { low: u16, high: u16 } {
 }
 
 pub fn decodeIntensityLogScale(header: BlockHeader) f32 {
-    return @as(f32, @bitCast(combineU32(header.reserved0, header.reserved1)));
+    return @bitCast(combineU32(header.intensity_log_scale_lo, header.intensity_log_scale_hi));
 }
 
 pub fn appendIntLe(list: *std.ArrayList(u8), allocator: Allocator, comptime T: type, value: T) !void {
@@ -145,11 +138,11 @@ pub fn appendIntLe(list: *std.ArrayList(u8), allocator: Allocator, comptime T: t
 }
 
 pub fn appendF32Le(list: *std.ArrayList(u8), allocator: Allocator, value: f32) !void {
-    try appendIntLe(list, allocator, u32, @as(u32, @bitCast(value)));
+    try appendIntLe(list, allocator, u32, @bitCast(value));
 }
 
 pub fn appendF64Le(list: *std.ArrayList(u8), allocator: Allocator, value: f64) !void {
-    try appendIntLe(list, allocator, u64, @as(u64, @bitCast(value)));
+    try appendIntLe(list, allocator, u64, @bitCast(value));
 }
 
 pub fn readIntLe(comptime T: type, bytes: []const u8) T {
@@ -164,16 +157,17 @@ pub fn readF64Le(bytes: []const u8) f64 {
     return @bitCast(readIntLe(u64, bytes));
 }
 
-pub fn packedByteLen(bit_width: u8, count: usize) usize {
-    if (bit_width == 0) return 0;
-    return ((@as(usize, bit_width) * count) + 7) / 8;
+pub fn packedByteLen(bit_width: u8, count: usize) !usize {
+    if (bit_width == 0 or count == 0) return 0;
+    const bits = try std.math.mul(usize, bit_width, count);
+    return (try std.math.add(usize, bits, 7)) / 8;
 }
 
 pub fn totalPeakCount(spectra: []const binary_reader.RawSpectrum) !usize {
     var total: usize = 0;
     for (spectra) |spectrum| {
         if (spectrum.mz.len != spectrum.intensity.len) return error.MismatchedPeakArrays;
-        total += spectrum.mz.len;
+        total = try std.math.add(usize, total, spectrum.mz.len);
     }
     return total;
 }
@@ -192,7 +186,7 @@ pub fn perSpectrumPayloadLen(bit_widths: []const u8, peak_counts: []const u32) !
 
     var total: usize = 0;
     for (peak_counts, 0..) |peak_count, idx| {
-        total += packedByteLen(bit_widths[idx], peak_count);
+        total = try std.math.add(usize, total, try packedByteLen(bit_widths[idx], peak_count));
     }
     return total;
 }
@@ -200,7 +194,9 @@ pub fn perSpectrumPayloadLen(bit_widths: []const u8, peak_counts: []const u32) !
 pub fn shouldUseRans(encoded_len: usize, raw_len: usize, min_gain_percent: u8) bool {
     if (raw_len == 0 or encoded_len >= raw_len) return false;
     const required = 100 - @min(@as(usize, min_gain_percent), 99);
-    return @as(u64, encoded_len) * 100 < @as(u64, raw_len) * required;
+    const left = std.math.mul(u64, encoded_len, 100) catch return false;
+    const right = std.math.mul(u64, raw_len, required) catch return false;
+    return left < right;
 }
 
 pub fn maybeEncodeRansAlloc(allocator: Allocator, raw: []const u8, min_gain_percent: u8) !RansCandidate {

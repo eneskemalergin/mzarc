@@ -20,15 +20,15 @@ test "m/z quantization rejects invalid inputs" {
     try std.testing.expectError(error.InvalidMz, quantize.quantizeMzValue(std.math.inf(f64), 500_000));
     try std.testing.expectError(error.InvalidMz, quantize.quantizeMzValue(-std.math.inf(f64), 500_000));
     try std.testing.expectError(error.Overflow, quantize.quantizeMzValue(std.math.floatMax(f64), 500_000));
+    try std.testing.expectError(error.InvalidScaleFactor, quantize.dequantizeMzValue(1, 0));
 }
 
-test "m/z array quantization preserves ordering" {
+test "m/z quantization preserves ordering" {
     const input = [_]f64{ 100.0, 100.000002, 100.000004, 101.5 };
-
-    const encoded = try quantize.quantizeMzArray(std.testing.allocator, &input, 500_000);
-    defer std.testing.allocator.free(encoded);
-
-    try std.testing.expectEqual(@as(usize, input.len), encoded.len);
+    var encoded: [input.len]u64 = undefined;
+    for (input, 0..) |value, idx| {
+        encoded[idx] = try quantize.quantizeMzValue(value, 500_000);
+    }
     for (encoded[1..], encoded[0 .. encoded.len - 1]) |current, previous| {
         try std.testing.expect(current >= previous);
     }
@@ -92,6 +92,8 @@ test "intensity quantization handles near-zero and saturation boundaries" {
 }
 
 test "scaled intensity quantization rejects invalid log maxima" {
+    try std.testing.expectError(error.InvalidQuantFactor, quantize.quantizeIntensityValueScaled(1.0, 0, 1.0));
+    try std.testing.expectError(error.InvalidQuantFactor, quantize.dequantizeIntensityValueScaled(1, 0, 1.0));
     try std.testing.expectError(error.InvalidIntensity, quantize.quantizeIntensityValueScaled(1.0, 4096, std.math.nan(f32)));
     try std.testing.expectError(error.InvalidIntensity, quantize.quantizeIntensityValueScaled(1.0, 4096, -1.0));
     try std.testing.expectError(error.InvalidIntensity, quantize.dequantizeIntensityValueScaled(1, 4096, std.math.nan(f32)));

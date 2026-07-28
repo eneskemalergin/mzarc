@@ -2,7 +2,7 @@
 """Generate deterministic adversarial binary dump corpus into test/adversarial/.
 
 Each file exercises one codec edge case. All files use the same flat RawSpectrum
-dump format as inspect_dump.py / slice_fixture.py so they feed directly into
+dump format as slice_fixture.py / mzarc dump-inspect so they feed directly into
 `mzarc encode`.
 
 Files generated (test/adversarial/<name>.bin):

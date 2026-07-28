@@ -94,3 +94,24 @@ test "binary dump parser rejects truncated payloads" {
         binary_reader.parseDump(dump_bytes[0 .. dump_bytes.len - 1], std.testing.allocator),
     );
 }
+
+test "binary dump writer rejects mismatched peak arrays" {
+    var mz = [_]f64{ 100.0, 101.0 };
+    var intensity = [_]f32{1.0};
+
+    const spectra = [_]binary_reader.RawSpectrum{
+        .{
+            .scan_id = 1,
+            .rt_seconds = 0.0,
+            .ms_level = 1,
+            .precursor_mz = 0.0,
+            .mz = mz[0..],
+            .intensity = intensity[0..],
+        },
+    };
+
+    try std.testing.expectError(
+        error.MismatchedPeakArrays,
+        binary_reader.writeDumpAlloc(std.testing.allocator, &spectra),
+    );
+}

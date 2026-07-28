@@ -3,18 +3,34 @@
 
 All notable changes to mzarc are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This project follows [Semantic Versioning](https://semver.org/).
 
-## [0.2.0] — 2026-05-04 `tagged`
+## [Unreleased]
+
+### Removed
+
+- Unused `-Dforce_scalar` / `build_options` wiring (no SIMD paths existed to gate).
+- Orphan `src/delta.zig` and `test/test_delta.zig` (codec deltas live in `block_encode`).
+- Research one-shots out of `tools/`: intensity entropy H9 gate and isolation-window
+  analysis (now under `experiments/`; active DIA gate remains `10_dia_cross_spectrum/measure.py`).
+
+### Changed
+
+- Block header fields formerly named `reserved0`/`reserved1` are `intensity_log_scale_lo`/`intensity_log_scale_hi` (wire layout unchanged).
+- README / fixture docs: dump stats via `mzarc dump-inspect` (deleted `inspect_dump.py`).
+
+---
+
+## [0.2.0]: 2026-05-04 `tagged`
 
 ### Fixed
 
 - `src/codec.zig`: `monotonic_ns()` was using `std.os.linux.timespec` and
   `std.os.linux.clock_gettime`, which are Linux-only. Replaced with
-  `std.Io.Clock.now(.awake, io)` — the correct Zig 0.16.0 cross-platform API.
+  `std.Io.Clock.now(.awake, io)`: the correct Zig 0.16.0 cross-platform API.
   Fixes a panic on macOS CI (`integer does not fit in destination type`).
 - `src/codec.zig`: `@intCast` on `i96` timestamp replaced with `@truncate` to
   avoid safety-checked-build panic if the value were ever negative.
 - `src/codec.zig`: percentage divisions in all three timing print blocks were
-  raw f64 divides — produced `inf` when `total_ns == 0`. Guarded with zero-check.
+  raw f64 divides: produced `inf` when `total_ns == 0`. Guarded with zero-check.
 
 ### Changed
 
@@ -25,7 +41,7 @@ All notable changes to mzarc are documented here. The format follows [Keep a Cha
   and the post-loop flush.
 - `.github/workflows/ci.yml`: `mlugg/setup-zig@v1` replaced with `@v2`; v1
   mirrors returned 404 for all platforms.
-- `README.md`: restructured for public impact — leads with result numbers,
+- `README.md`: restructured for public impact: leads with result numbers,
   adds "why not mzMLb/xz" context, honest prototype status section.
 - `benchmark/baseline_v0.2.0.json`: new regression baseline. Old
   `baseline_v0.1.1.json` removed.
@@ -36,7 +52,7 @@ All notable changes to mzarc are documented here. The format follows [Keep a Cha
 
 ---
 
-## [0.1.13] — 2026-05-04
+## [0.1.13]: 2026-05-04
 
 ### Added
 
@@ -66,7 +82,7 @@ All notable changes to mzarc are documented here. The format follows [Keep a Cha
 - `.gitignore`: only `benchmark/raw/` ignored; plots, report, and baselines
   are tracked.
 
-## [0.1.12] — 2026-05-04
+## [0.1.12]: 2026-05-04
 
 ### Changed
 
@@ -83,7 +99,7 @@ All notable changes to mzarc are documented here. The format follows [Keep a Cha
   callers. `codec.zig` decode hot loop uses a per-file arena reset with
   `.retain_capacity`. decode cache_misses −79%, peak_rss 87.2→83.2 MB.
 - `block.zig`: re-exports `decodeBlockWithScratch` in the public API.
-- Added `--verbose-timing` flag to encode and decode subcommands for phase-level
+- Added `--verbose-timing` flag to encode and decode subcommands for
   wall time reporting (`clock_gettime` MONOTONIC).
 
 ### Measured (no code change)
@@ -99,7 +115,7 @@ All notable changes to mzarc are documented here. The format follows [Keep a Cha
 
 ---
 
-## [0.1.11] — 2026-05-04
+## [0.1.11]: 2026-05-04
 
 ### Fixed
 
@@ -132,7 +148,7 @@ All notable changes to mzarc are documented here. The format follows [Keep a Cha
 
 ---
 
-## [0.1.10] — 2026-05-03
+## [0.1.10]: 2026-05-03
 
 ### Added
 
@@ -157,7 +173,7 @@ All notable changes to mzarc are documented here. The format follows [Keep a Cha
 
 ---
 
-## [0.1.9] — 2026-05-03
+## [0.1.9]: 2026-05-03
 
 ### Changed
 
@@ -166,7 +182,7 @@ All notable changes to mzarc are documented here. The format follows [Keep a Cha
     - `block_encode.zig` (410 LOC): encoder logic
     - `block_decode.zig` (548 LOC): decoder logic
     - `block.zig` (29 LOC): thin wrapper re-exporting public API
-- No new flags, no new modes. Pure structural refactor — makes v0.3.x
+- No new flags, no new modes. Pure structural refactor: makes v0.3.x
   cross-spectrum delta and SIMD integration safer.
 
 ### Performance
@@ -175,7 +191,7 @@ All notable changes to mzarc are documented here. The format follows [Keep a Cha
 
 ---
 
-## [0.1.8] — 2026-05-03
+## [0.1.8]: 2026-05-03
 
 ### Changed
 
@@ -195,7 +211,7 @@ All notable changes to mzarc are documented here. The format follows [Keep a Cha
 
 ---
 
-## [0.1.7] — 2026-05-03
+## [0.1.7]: 2026-05-03
 
 ### Changed
 
@@ -236,7 +252,7 @@ All notable changes to mzarc are documented here. The format follows [Keep a Cha
 
 ---
 
-## [0.1.6] — 2026-05-03
+## [0.1.6]: 2026-05-03
 
 ### Fixed
 
@@ -282,7 +298,7 @@ All notable changes to mzarc are documented here. The format follows [Keep a Cha
 
 ---
 
-## [0.1.5] — 2026-03-27 `tagged`
+## [0.1.5]: 2026-03-27 `tagged`
 
 ### Changed
 
@@ -293,7 +309,7 @@ All notable changes to mzarc are documented here. The format follows [Keep a Cha
 
 ---
 
-## [0.1.4] — 2026-03-26
+## [0.1.4]: 2026-03-26
 
 ### Changed
 
@@ -302,7 +318,7 @@ All notable changes to mzarc are documented here. The format follows [Keep a Cha
 
 ---
 
-## [0.1.3] — 2026-03-25
+## [0.1.3]: 2026-03-25
 
 ### Added
 
@@ -316,7 +332,7 @@ All notable changes to mzarc are documented here. The format follows [Keep a Cha
 
 ---
 
-## [0.1.2] — 2026-03-24
+## [0.1.2]: 2026-03-24
 
 ### Added
 
@@ -327,11 +343,11 @@ All notable changes to mzarc are documented here. The format follows [Keep a Cha
 
 ---
 
-## [0.1.1] — 2026-03-23
+## [0.1.1]: 2026-03-23
 
 ### Added
 
-- Local CI step (`zig build ci`): encode, decode, validate round-trip.
+- Local CI (`zig build ci`): encode, decode, validate round-trip.
 - SHA-256 integrity fixture check in build system.
 - `tools/check_regression.py` for automated baseline comparison.
 
@@ -344,7 +360,7 @@ All notable changes to mzarc are documented here. The format follows [Keep a Cha
 
 ---
 
-## [0.1.0] — 2026-03-22 `tagged`
+## [0.1.0]: 2026-03-22 `tagged`
 
 ### Added
 
@@ -362,7 +378,7 @@ All notable changes to mzarc are documented here. The format follows [Keep a Cha
 
 ---
 
-## [0.0.1] — 2026-03-21 (bootstrap)
+## [0.0.1]: 2026-03-21 (bootstrap)
 
 ### Added
 

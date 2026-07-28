@@ -66,6 +66,7 @@ test "FOR bit-packing round-trips adversarial bit widths" {
         .{ .values = &[_]u64{ 5000, 5512, 5000, 5256 }, .expected_bit_width = 10 },
         .{ .values = &[_]u64{ 1 << 40, (1 << 40) + (@as(u64, 1) << 31), (1 << 40) + 17 }, .expected_bit_width = 32 },
         .{ .values = &[_]u64{ 0, (@as(u64, 1) << 63) - 1 }, .expected_bit_width = 63 },
+        .{ .values = &[_]u64{ 0, std.math.maxInt(u64) }, .expected_bit_width = 64 },
     };
 
     for (cases) |case| {
@@ -89,4 +90,26 @@ test "FOR unpack rejects truncated payload" {
     };
 
     try std.testing.expectError(error.UnexpectedEndOfStream, bitpack.unpackForU64(std.testing.allocator, packed_values));
+}
+
+test "FOR unpack rejects base plus offset overflow" {
+    const packed_values = bitpack.PackedU64{
+        .base = std.math.maxInt(u64),
+        .bit_width = 1,
+        .count = 1,
+        .payload = &[_]u8{0x01},
+    };
+
+    try std.testing.expectError(error.Overflow, bitpack.unpackForU64(std.testing.allocator, packed_values));
+}
+
+test "FOR unpack rejects bit_width above 64" {
+    const packed_values = bitpack.PackedU64{
+        .base = 0,
+        .bit_width = 65,
+        .count = 1,
+        .payload = &[_]u8{0} ** 9,
+    };
+
+    try std.testing.expectError(error.InvalidBitWidth, bitpack.unpackForU64(std.testing.allocator, packed_values));
 }

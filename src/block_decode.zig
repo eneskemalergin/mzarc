@@ -1,3 +1,6 @@
+//! Block decode and byte-breakdown inspection.
+//! Scratch must be an arena: temps are not freed individually. Fail closed on truncation, checksum, and overflow.
+
 const std = @import("std");
 const builtin = @import("builtin");
 const binary_reader = @import("binary_reader");
@@ -10,6 +13,7 @@ pub const Allocator = std.mem.Allocator;
 
 fn unpackNextForValue(payload: []const u8, bit_width: u8, bit_offset: *usize, base: u64) !u64 {
     if (bit_width == 0) return base;
+    if (bit_width > 64) return error.InvalidBitWidth;
 
     var offset_value: u64 = 0;
     var written: u8 = 0;
@@ -37,6 +41,17 @@ fn decodeFlatMzOne(raw: u64, uses_f32: bool, scale_factor: u32) !f64 {
     return quantize.dequantizeMzValue(raw, scale_factor);
 }
 
+fn copyF32Le(dst: []f32, src: []const u8) void {
+    if (builtin.cpu.arch.endian() == .little) {
+        @memcpy(std.mem.sliceAsBytes(dst), src);
+        return;
+    }
+    for (dst, 0..) |*value, idx| {
+        const start = idx * @sizeOf(f32);
+        value.* = common.readF32Le(src[start .. start + @sizeOf(f32)]);
+    }
+}
+
 fn decodeFlatMzBlockLevel(
     flat_mz: []f64,
     peak_counts: []const u32,
@@ -46,7 +61,8 @@ fn decodeFlatMzBlockLevel(
     uses_f32: bool,
     scale_factor: u32,
 ) !void {
-    const required_payload_len = common.packedByteLen(bit_width, flat_mz.len);
+    if (bit_width > 64) return error.InvalidBitWidth;
+    const required_payload_len = try common.packedByteLen(bit_width, flat_mz.len);
     if (payload.len < required_payload_len) return error.UnexpectedEndOfStream;
 
     var bit_offset: usize = 0;
@@ -89,7 +105,8 @@ fn decodeFlatMzPerSpectrum(
         if (peak_count == 0) continue;
 
         const spectrum_bit_width = bit_widths[spectrum_idx];
-        const spectrum_payload_len = common.packedByteLen(spectrum_bit_width, peak_count);
+        if (spectrum_bit_width > 64) return error.InvalidBitWidth;
+        const spectrum_payload_len = try common.packedByteLen(spectrum_bit_width, peak_count);
         if (payload.len - payload_cursor < spectrum_payload_len) return error.UnexpectedEndOfStream;
 
         const spectrum_payload = payload[payload_cursor .. payload_cursor + spectrum_payload_len];
@@ -139,10 +156,10 @@ pub fn parseHeader(bytes: []const u8) !common.BlockHeader {
         .total_peaks = common.readIntLe(u32, bytes[4..8]),
         .mz_scale_factor = common.readIntLe(u32, bytes[8..12]),
         .intensity_quant = common.readIntLe(u16, bytes[12..14]),
-        .reserved0 = common.readIntLe(u16, bytes[14..16]),
+        .intensity_log_scale_lo = common.readIntLe(u16, bytes[14..16]),
         .mz_bit_width = bytes[16],
         .intensity_bit_width = bytes[17],
-        .reserved1 = common.readIntLe(u16, bytes[18..20]),
+        .intensity_log_scale_hi = common.readIntLe(u16, bytes[18..20]),
         .rt_min = common.readF32Le(bytes[20..24]),
         .rt_max = common.readF32Le(bytes[24..28]),
         .payload_bytes = common.readIntLe(u32, bytes[28..32]),
@@ -157,17 +174,18 @@ pub fn decodeBlock(allocator: Allocator, block_bytes: []const u8) ![]binary_read
     return decodeBlockWithScratch(allocator, scratch_arena.allocator(), block_bytes);
 }
 
+/// `scratch` must be an arena. Temps are not freed individually; reset or deinit the arena.
 pub fn decodeBlockWithScratch(allocator: Allocator, scratch: Allocator, block_bytes: []const u8) ![]binary_reader.RawSpectrum {
     const header = try parseHeader(block_bytes);
-    if (block_bytes.len < common.header_len + header.payload_bytes) return error.UnexpectedEndOfStream;
+    const block_end = try std.math.add(usize, common.header_len, header.payload_bytes);
+    if (block_bytes.len < block_end) return error.UnexpectedEndOfStream;
 
     const tmp = scratch;
-
-    const payload = block_bytes[common.header_len .. common.header_len + header.payload_bytes];
+    const payload = block_bytes[common.header_len..block_end];
     if (std.hash.crc.Crc32.hash(payload) != header.checksum) return error.ChecksumMismatch;
 
     const spectrum_count = header.spectrum_count;
-    const total_peaks = header.total_peaks;
+    const total_peaks: usize = header.total_peaks;
     var offset: usize = 0;
 
     const scan_ids = try allocator.alloc(u32, spectrum_count);
@@ -187,7 +205,6 @@ pub fn decodeBlockWithScratch(allocator: Allocator, scratch: Allocator, block_by
             .count = spectrum_count,
             .payload = payload[offset .. offset + pack_len],
         });
-        defer tmp.free(unpacked);
         offset += pack_len;
         var running: u32 = 0;
         for (scan_ids, 0..) |*value, idx| {
@@ -222,7 +239,6 @@ pub fn decodeBlockWithScratch(allocator: Allocator, scratch: Allocator, block_by
             .count = spectrum_count,
             .payload = payload[offset .. offset + pack_len],
         });
-        defer tmp.free(unpacked);
         offset += pack_len;
         var running_bits: u32 = 0;
         for (rt_values, 0..) |*value, idx| {
@@ -255,13 +271,11 @@ pub fn decodeBlockWithScratch(allocator: Allocator, scratch: Allocator, block_by
         if (payload.len - offset < 4) return error.UnexpectedEndOfStream;
         value.* = common.readIntLe(u32, payload[offset .. offset + 4]);
         offset += 4;
-        computed_total_peaks += value.*;
+        computed_total_peaks = try std.math.add(usize, computed_total_peaks, value.*);
     }
     if (computed_total_peaks != total_peaks) return error.InvalidPeakCount;
 
     const flat_mz = try tmp.alloc(f64, total_peaks);
-    defer tmp.free(flat_mz);
-
     const mz_uses_f32 = (header.flags & common.flag_lossless_mz_f32) != 0;
     {
         if (payload.len - offset < 12) return error.UnexpectedEndOfStream;
@@ -277,16 +291,14 @@ pub fn decodeBlockWithScratch(allocator: Allocator, scratch: Allocator, block_by
         } else null;
         if (payload.len - offset < mz_payload_len) return error.UnexpectedEndOfStream;
 
-        var mz_rans_payload: ?[]u8 = null;
-        defer if (mz_rans_payload) |buf| tmp.free(buf);
         const mz_payload_bytes = if ((header.flags & common.flag_rans_mz) != 0) blk: {
             const decoded_len = if (mz_per_spectrum_bit_widths) |widths|
                 try common.perSpectrumPayloadLen(widths, peak_counts)
             else
-                common.packedByteLen(header.mz_bit_width, total_peaks);
-            mz_rans_payload = try tmp.alloc(u8, decoded_len);
-            try rans.decodeInto(payload[offset .. offset + mz_payload_len], mz_rans_payload.?);
-            break :blk mz_rans_payload.?;
+                try common.packedByteLen(header.mz_bit_width, total_peaks);
+            const decoded = try tmp.alloc(u8, decoded_len);
+            try rans.decodeInto(payload[offset .. offset + mz_payload_len], decoded);
+            break :blk decoded;
         } else payload[offset .. offset + mz_payload_len];
 
         try decodeFlatMzFromPackedForPayload(
@@ -303,7 +315,7 @@ pub fn decodeBlockWithScratch(allocator: Allocator, scratch: Allocator, block_by
     }
 
     const flat_intensity = try tmp.alloc(f32, total_peaks);
-    defer tmp.free(flat_intensity);
+    const intensity_raw_bytes = try std.math.mul(usize, total_peaks, @sizeOf(f32));
 
     if ((header.flags & common.flag_lossless_intensity_raw) != 0) {
         if ((header.flags & common.flag_rans_intensity) != 0) {
@@ -311,29 +323,13 @@ pub fn decodeBlockWithScratch(allocator: Allocator, scratch: Allocator, block_by
             const encoded_len = common.readIntLe(u32, payload[offset .. offset + 4]);
             offset += 4;
             if (payload.len - offset < encoded_len) return error.UnexpectedEndOfStream;
-            const decoded_bytes = try rans.decodeAlloc(tmp, payload[offset .. offset + encoded_len], total_peaks * @sizeOf(f32));
-            defer tmp.free(decoded_bytes);
-            if (builtin.cpu.arch.endian() == .little) {
-                @memcpy(std.mem.sliceAsBytes(flat_intensity), decoded_bytes);
-            } else {
-                for (flat_intensity, 0..) |*value, idx| {
-                    const start = idx * @sizeOf(f32);
-                    value.* = common.readF32Le(decoded_bytes[start .. start + @sizeOf(f32)]);
-                }
-            }
+            const decoded_bytes = try rans.decodeAlloc(tmp, payload[offset .. offset + encoded_len], intensity_raw_bytes);
+            copyF32Le(flat_intensity, decoded_bytes);
             offset += encoded_len;
         } else {
-            const raw_len = total_peaks * @sizeOf(f32);
-            if (payload.len - offset < raw_len) return error.UnexpectedEndOfStream;
-            if (builtin.cpu.arch.endian() == .little) {
-                @memcpy(std.mem.sliceAsBytes(flat_intensity), payload[offset .. offset + raw_len]);
-            } else {
-                for (flat_intensity, 0..) |*value, idx| {
-                    const start = offset + (idx * @sizeOf(f32));
-                    value.* = common.readF32Le(payload[start .. start + @sizeOf(f32)]);
-                }
-            }
-            offset += raw_len;
+            if (payload.len - offset < intensity_raw_bytes) return error.UnexpectedEndOfStream;
+            copyF32Le(flat_intensity, payload[offset .. offset + intensity_raw_bytes]);
+            offset += intensity_raw_bytes;
         }
     } else if ((header.flags & common.flag_split_exponent) != 0) {
         if (payload.len - offset < 13) return error.UnexpectedEndOfStream;
@@ -345,12 +341,10 @@ pub fn decodeBlockWithScratch(allocator: Allocator, scratch: Allocator, block_by
         offset += 4;
         if (payload.len - offset < exp_payload_len) return error.UnexpectedEndOfStream;
 
-        var exp_rans_payload: ?[]u8 = null;
-        defer if (exp_rans_payload) |buf| tmp.free(buf);
-        const exp_payload_bytes = if ((header.flags & common.flag_rans_intensity) != 0) blk: {
-            exp_rans_payload = try rans.decodeAlloc(tmp, payload[offset .. offset + exp_payload_len], common.packedByteLen(exp_bit_width, total_peaks));
-            break :blk exp_rans_payload.?;
-        } else payload[offset .. offset + exp_payload_len];
+        const exp_payload_bytes = if ((header.flags & common.flag_rans_intensity) != 0)
+            try rans.decodeAlloc(tmp, payload[offset .. offset + exp_payload_len], try common.packedByteLen(exp_bit_width, total_peaks))
+        else
+            payload[offset .. offset + exp_payload_len];
 
         const exp_unpacked = try bitpack.unpackForU64(tmp, .{
             .base = exp_base,
@@ -358,9 +352,8 @@ pub fn decodeBlockWithScratch(allocator: Allocator, scratch: Allocator, block_by
             .count = total_peaks,
             .payload = exp_payload_bytes,
         });
-        defer tmp.free(exp_unpacked);
         offset += exp_payload_len;
-        const mantissa_len = total_peaks * 3;
+        const mantissa_len = try std.math.mul(usize, total_peaks, 3);
         if (payload.len - offset < mantissa_len) return error.UnexpectedEndOfStream;
         for (flat_intensity, 0..) |*value, idx| {
             const b0 = payload[offset + idx * 3];
@@ -380,12 +373,10 @@ pub fn decodeBlockWithScratch(allocator: Allocator, scratch: Allocator, block_by
         offset += 4;
         if (payload.len - offset < intensity_payload_len) return error.UnexpectedEndOfStream;
 
-        var intensity_rans_payload: ?[]u8 = null;
-        defer if (intensity_rans_payload) |buf| tmp.free(buf);
-        const intensity_payload_bytes = if ((header.flags & common.flag_rans_intensity) != 0) blk: {
-            intensity_rans_payload = try rans.decodeAlloc(tmp, payload[offset .. offset + intensity_payload_len], common.packedByteLen(header.intensity_bit_width, total_peaks));
-            break :blk intensity_rans_payload.?;
-        } else payload[offset .. offset + intensity_payload_len];
+        const intensity_payload_bytes = if ((header.flags & common.flag_rans_intensity) != 0)
+            try rans.decodeAlloc(tmp, payload[offset .. offset + intensity_payload_len], try common.packedByteLen(header.intensity_bit_width, total_peaks))
+        else
+            payload[offset .. offset + intensity_payload_len];
 
         const unpacked = try bitpack.unpackForU64(tmp, .{
             .base = intensity_base,
@@ -393,11 +384,9 @@ pub fn decodeBlockWithScratch(allocator: Allocator, scratch: Allocator, block_by
             .count = total_peaks,
             .payload = intensity_payload_bytes,
         });
-        defer tmp.free(unpacked);
         offset += intensity_payload_len;
 
         const intensity_log_scale = common.decodeIntensityLogScale(header);
-
         for (unpacked, 0..) |value, idx| {
             if (value > std.math.maxInt(u16)) return error.IntensityOverflow;
             flat_intensity[idx] = try quantize.dequantizeIntensityValueScaled(@intCast(value), header.intensity_quant, intensity_log_scale);
@@ -407,9 +396,13 @@ pub fn decodeBlockWithScratch(allocator: Allocator, scratch: Allocator, block_by
     if (offset != payload.len) return error.TrailingBlockPayload;
 
     if (header.decompressed_bytes != 0) {
-        const expected_decompressed: usize =
-            (@as(usize, spectrum_count) * (@sizeOf(u32) + @sizeOf(f32) + @sizeOf(f64) + @sizeOf(u32))) +
-            (@as(usize, total_peaks) * (@sizeOf(f64) + @sizeOf(f32)));
+        const per_spectrum = @sizeOf(u32) + @sizeOf(f32) + @sizeOf(f64) + @sizeOf(u32);
+        const per_peak = @sizeOf(f64) + @sizeOf(f32);
+        const expected_decompressed = try std.math.add(
+            usize,
+            try std.math.mul(usize, spectrum_count, per_spectrum),
+            try std.math.mul(usize, total_peaks, per_peak),
+        );
         if (expected_decompressed <= std.math.maxInt(u32) and
             header.decompressed_bytes != @as(u32, @intCast(expected_decompressed)))
             return error.DecompressedBytesMismatch;
@@ -428,22 +421,26 @@ pub fn decodeBlockWithScratch(allocator: Allocator, scratch: Allocator, block_by
     var flat_offset: usize = 0;
     for (spectra, 0..) |*spectrum, idx| {
         const peak_count = peak_counts[idx];
-        const mz = try allocator.alloc(f64, peak_count);
-        errdefer allocator.free(mz);
-        const intensity = try allocator.alloc(f32, peak_count);
-        errdefer allocator.free(intensity);
-
-        @memcpy(mz, flat_mz[flat_offset .. flat_offset + peak_count]);
-        @memcpy(intensity, flat_intensity[flat_offset .. flat_offset + peak_count]);
+        const src_mz = flat_mz[flat_offset .. flat_offset + peak_count];
+        const src_intensity = flat_intensity[flat_offset .. flat_offset + peak_count];
         flat_offset += peak_count;
 
-        spectrum.* = .{
-            .scan_id = scan_ids[idx],
-            .rt_seconds = rt_values[idx],
-            .ms_level = header.ms_level,
-            .precursor_mz = precursor_values[idx],
-            .mz = mz,
-            .intensity = intensity,
+        // Block-scoped errdefer so ownership transfer into `spectra` does not double-free later.
+        spectrum.* = blk: {
+            const mz = try allocator.alloc(f64, peak_count);
+            errdefer allocator.free(mz);
+            const intensity = try allocator.alloc(f32, peak_count);
+            errdefer allocator.free(intensity);
+            @memcpy(mz, src_mz);
+            @memcpy(intensity, src_intensity);
+            break :blk .{
+                .scan_id = scan_ids[idx],
+                .rt_seconds = rt_values[idx],
+                .ms_level = header.ms_level,
+                .precursor_mz = precursor_values[idx],
+                .mz = mz,
+                .intensity = intensity,
+            };
         };
         initialized += 1;
     }
@@ -453,19 +450,20 @@ pub fn decodeBlockWithScratch(allocator: Allocator, scratch: Allocator, block_by
 
 pub fn inspectBlockByteBreakdown(block_bytes: []const u8) !common.BlockByteBreakdown {
     const header = try parseHeader(block_bytes);
-    if (block_bytes.len < common.header_len + header.payload_bytes) return error.UnexpectedEndOfStream;
+    const block_end = try std.math.add(usize, common.header_len, header.payload_bytes);
+    if (block_bytes.len < block_end) return error.UnexpectedEndOfStream;
 
-    const payload = block_bytes[common.header_len .. common.header_len + header.payload_bytes];
-    const spectrum_count = @as(usize, header.spectrum_count);
-    const total_peaks = @as(usize, header.total_peaks);
+    const payload = block_bytes[common.header_len..block_end];
+    const spectrum_count: usize = header.spectrum_count;
+    const total_peaks: usize = header.total_peaks;
 
     var offset: usize = 0;
 
     var scan_id_bytes: usize = 0;
     if ((header.flags & common.flag_delta_scan_id) != 0) {
         if (payload.len - offset < 13) return error.UnexpectedEndOfStream;
-        offset += 1; // bit_width byte
-        offset += 8; // base u64
+        offset += 1;
+        offset += 8;
         const pack_len = common.readIntLe(u32, payload[offset .. offset + 4]);
         offset += 4;
         if (payload.len - offset < pack_len) return error.UnexpectedEndOfStream;
@@ -501,7 +499,7 @@ pub fn inspectBlockByteBreakdown(block_bytes: []const u8) !common.BlockByteBreak
     for (0..spectrum_count) |idx| {
         const start = offset + precursor_bytes + (idx * @sizeOf(u32));
         const peak_count = common.readIntLe(u32, payload[start .. start + @sizeOf(u32)]);
-        computed_total_peaks += peak_count;
+        computed_total_peaks = try std.math.add(usize, computed_total_peaks, peak_count);
     }
     if (computed_total_peaks != total_peaks) return error.InvalidPeakCount;
     offset += precursor_bytes + peak_count_bytes;
@@ -530,7 +528,7 @@ pub fn inspectBlockByteBreakdown(block_bytes: []const u8) !common.BlockByteBreak
             if (payload.len - offset < intensity_payload_bytes) return error.UnexpectedEndOfStream;
             offset += intensity_payload_bytes;
         } else {
-            intensity_payload_bytes = total_peaks * @sizeOf(f32);
+            intensity_payload_bytes = try std.math.mul(usize, total_peaks, @sizeOf(f32));
             if (payload.len - offset < intensity_payload_bytes) return error.UnexpectedEndOfStream;
             offset += intensity_payload_bytes;
         }
@@ -542,7 +540,7 @@ pub fn inspectBlockByteBreakdown(block_bytes: []const u8) !common.BlockByteBreak
         offset += 4;
         if (payload.len - offset < exp_packed_len) return error.UnexpectedEndOfStream;
         offset += exp_packed_len;
-        const mantissa_len = total_peaks * 3;
+        const mantissa_len = try std.math.mul(usize, total_peaks, 3);
         if (payload.len - offset < mantissa_len) return error.UnexpectedEndOfStream;
         offset += mantissa_len;
         intensity_metadata_bytes = 1 + 8 + 4;
