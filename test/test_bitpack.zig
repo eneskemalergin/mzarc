@@ -113,3 +113,95 @@ test "FOR unpack rejects bit_width above 64" {
 
     try std.testing.expectError(error.InvalidBitWidth, bitpack.unpackForU64(std.testing.allocator, packed_values));
 }
+
+fn unpackBitByBitRef(allocator: std.mem.Allocator, packed_values: bitpack.PackedU64) ![]u64 {
+    const values = try allocator.alloc(u64, packed_values.count);
+    errdefer allocator.free(values);
+    var bit_offset: usize = 0;
+    for (values) |*value| {
+        value.* = try unpackBitByBitNext(packed_values.payload, packed_values.bit_width, &bit_offset, packed_values.base);
+    }
+    return values;
+}
+
+fn unpackBitByBitNext(payload: []const u8, bit_width: u8, bit_offset: *usize, base: u64) !u64 {
+    var offset: u64 = 0;
+    var written: u8 = 0;
+    while (written < bit_width) {
+        const bit_index = bit_offset.* & 7;
+        const available_bits = 8 - bit_index;
+        const chunk_bits: u8 = @intCast(@min(@as(usize, bit_width - written), available_bits));
+        const mask = (@as(u64, 1) << @as(u6, @intCast(chunk_bits))) - 1;
+        const byte = payload[bit_offset.* / 8];
+        const chunk = (@as(u64, byte) >> @as(u6, @intCast(bit_index))) & mask;
+        offset |= chunk << @as(u6, @intCast(written));
+        bit_offset.* += chunk_bits;
+        written += chunk_bits;
+    }
+    const sum = @addWithOverflow(base, offset);
+    if (sum[1] != 0) return error.Overflow;
+    return sum[0];
+}
+
+fn packFixedWidth(allocator: std.mem.Allocator, base: u64, bit_width: u8, residuals: []const u64) !bitpack.PackedU64 {
+    const bits = try std.math.mul(usize, bit_width, residuals.len);
+    const payload_len = (try std.math.add(usize, bits, 7)) / 8;
+    var payload = try allocator.alloc(u8, payload_len);
+    errdefer allocator.free(payload);
+    @memset(payload, 0);
+    var bit_offset: usize = 0;
+    for (residuals) |residual| {
+        var remaining = bit_width;
+        var current = residual;
+        while (remaining > 0) {
+            const bit_index = bit_offset & 7;
+            const free_bits = 8 - bit_index;
+            const chunk_bits: u8 = @intCast(@min(@as(usize, remaining), free_bits));
+            const mask = (@as(u64, 1) << @as(u6, @intCast(chunk_bits))) - 1;
+            const chunk = current & mask;
+            payload[bit_offset / 8] |= @as(u8, @intCast(chunk << @as(u6, @intCast(bit_index))));
+            current >>= @as(u6, @intCast(chunk_bits));
+            bit_offset += chunk_bits;
+            remaining -= chunk_bits;
+        }
+    }
+    return .{
+        .base = base,
+        .bit_width = bit_width,
+        .count = residuals.len,
+        .payload = payload,
+    };
+}
+
+test "FOR word unpack matches bit-by-bit reference across widths" {
+    var width: u8 = 1;
+    while (width <= 64) : (width += 1) {
+        const count: usize = 17;
+        var residuals: [17]u64 = undefined;
+        const max_off: u64 = if (width == 64) std.math.maxInt(u64) else (@as(u64, 1) << @as(u6, @intCast(width))) - 1;
+        for (&residuals, 0..) |*r, i| {
+            if (width == 64) {
+                r.* = @as(u64, @intCast(i)) *% 0x9e3779b97f4a7c15;
+            } else {
+                r.* = @as(u64, @intCast(i * 3 + 1)) & max_off;
+            }
+        }
+        residuals[0] = 0;
+        residuals[count - 1] = max_off;
+
+        const packed_values = try packFixedWidth(std.testing.allocator, 0, width, &residuals);
+        defer packed_values.deinit(std.testing.allocator);
+
+        const word = try bitpack.unpackForU64(std.testing.allocator, packed_values);
+        defer std.testing.allocator.free(word);
+        const ref = try unpackBitByBitRef(std.testing.allocator, packed_values);
+        defer std.testing.allocator.free(ref);
+        try std.testing.expectEqualSlices(u64, ref, word);
+
+        var bit_offset: usize = 0;
+        for (ref) |expected| {
+            const got = try bitpack.unpackNextForValue(packed_values.payload, width, &bit_offset, 0);
+            try std.testing.expectEqual(expected, got);
+        }
+    }
+}

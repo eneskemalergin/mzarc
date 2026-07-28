@@ -127,7 +127,7 @@ Size gains on `15HCD_1` relative to v0.1.1:
 ### Codec core
 
 - `src/quantize.zig`: m/z fixed-point conversion and lossy intensity quantization
-- `src/bitpack.zig`: scalar FOR bit-packing and unpacking
+- `src/bitpack.zig`: FOR bit-packing; word-at-a-time unpack (same wire)
 - `src/block.zig`: block encode/decode (deltas, CRC, entropy decisions, per-spectrum widths)
 - `src/codec.zig`: `.mzarc` container stream read/write
 - `src/main.zig`: CLI subcommands (encode, decode, inspect, validate, benchmark)

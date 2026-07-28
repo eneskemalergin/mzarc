@@ -17,6 +17,7 @@ All notable changes to mzarc are documented here. The format follows [Keep a Cha
 
 ### Changed
 
+- `src/bitpack.zig`: FOR unpack uses word-at-a-time assemble (same wire). `block_decode` m/z streams call `bitpack.unpackNextForValue`. Pack unchanged. Measured e2e `mzarc decode`: frozen **1.05×**, 15HCD **1.07×** wall; encode flat; peak RSS flat.
 - Block header fields formerly named `reserved0` / `reserved1` are `intensity_log_scale_lo` / `intensity_log_scale_hi` (wire layout unchanged).
 - README / fixture docs: dump stats via `mzarc dump-inspect` (deleted `inspect_dump.py`).
 - Benchmark board and plots refreshed for mzarc encode/decode on 15HCD_1 (other codecs unchanged). Lossless `14.46 MiB`; lossy q=16384 `12.66 MiB`.

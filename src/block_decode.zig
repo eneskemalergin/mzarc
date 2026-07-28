@@ -12,31 +12,6 @@ const common = @import("block_common");
 
 pub const Allocator = std.mem.Allocator;
 
-fn unpackNextForValue(payload: []const u8, bit_width: u8, bit_offset: *usize, base: u64) !u64 {
-    if (bit_width == 0) return base;
-    if (bit_width > 64) return error.InvalidBitWidth;
-
-    var offset_value: u64 = 0;
-    var written: u8 = 0;
-
-    while (written < bit_width) {
-        const bit_index = bit_offset.* & 7;
-        const available_bits = 8 - bit_index;
-        const chunk_bits: u8 = @intCast(@min(@as(usize, bit_width - written), available_bits));
-        const mask = (@as(u64, 1) << @as(u6, @intCast(chunk_bits))) - 1;
-        const byte = payload[bit_offset.* / 8];
-        const chunk = (@as(u64, byte) >> @as(u6, @intCast(bit_index))) & mask;
-        offset_value |= chunk << @as(u6, @intCast(written));
-
-        bit_offset.* += chunk_bits;
-        written += chunk_bits;
-    }
-
-    const sum = @addWithOverflow(base, offset_value);
-    if (sum[1] != 0) return error.Overflow;
-    return sum[0];
-}
-
 fn decodeFlatMzOne(raw: u64, uses_f32: bool, scale_factor: u32) !f64 {
     if (uses_f32) return @as(f64, @as(f32, @bitCast(@as(u32, @truncate(raw)))));
     return quantize.dequantizeMzValue(raw, scale_factor);
@@ -71,13 +46,13 @@ fn decodeFlatMzBlockLevel(
     for (peak_counts) |peak_count| {
         if (peak_count == 0) continue;
 
-        const first = try unpackNextForValue(payload, bit_width, &bit_offset, base);
+        const first = try bitpack.unpackNextForValue(payload, bit_width, &bit_offset, base);
         flat_mz[mz_cursor] = try decodeFlatMzOne(first, uses_f32, scale_factor);
         var previous = first;
 
         var i: u32 = 1;
         while (i < peak_count) : (i += 1) {
-            const delta = try unpackNextForValue(payload, bit_width, &bit_offset, base);
+            const delta = try bitpack.unpackNextForValue(payload, bit_width, &bit_offset, base);
             const sum = @addWithOverflow(previous, delta);
             if (sum[1] != 0) return error.Overflow;
             flat_mz[mz_cursor + i] = try decodeFlatMzOne(sum[0], uses_f32, scale_factor);
@@ -113,13 +88,13 @@ fn decodeFlatMzPerSpectrum(
         const spectrum_payload = payload[payload_cursor .. payload_cursor + spectrum_payload_len];
         var spectrum_bit_offset: usize = 0;
 
-        const first = try unpackNextForValue(spectrum_payload, spectrum_bit_width, &spectrum_bit_offset, base);
+        const first = try bitpack.unpackNextForValue(spectrum_payload, spectrum_bit_width, &spectrum_bit_offset, base);
         flat_mz[mz_cursor] = try decodeFlatMzOne(first, uses_f32, scale_factor);
         var previous = first;
 
         var i: u32 = 1;
         while (i < peak_count) : (i += 1) {
-            const delta = try unpackNextForValue(spectrum_payload, spectrum_bit_width, &spectrum_bit_offset, base);
+            const delta = try bitpack.unpackNextForValue(spectrum_payload, spectrum_bit_width, &spectrum_bit_offset, base);
             const sum = @addWithOverflow(previous, delta);
             if (sum[1] != 0) return error.Overflow;
             flat_mz[mz_cursor + i] = try decodeFlatMzOne(sum[0], uses_f32, scale_factor);
@@ -229,7 +204,7 @@ fn decodeMzFirstPeakSplit(
 
         var i: u32 = 1;
         while (i < peak_count) : (i += 1) {
-            const delta = try unpackNextForValue(for_bytes, bit_width, &bit_offset, base);
+            const delta = try bitpack.unpackNextForValue(for_bytes, bit_width, &bit_offset, base);
             const sum = @addWithOverflow(previous, delta);
             if (sum[1] != 0) return error.Overflow;
             flat_mz[mz_cursor + i] = try decodeFlatMzOne(sum[0], uses_f32, scale_factor);

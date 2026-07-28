@@ -1,5 +1,6 @@
 //! FOR bit-pack/unpack for u64 residuals.
 //! Wire payload is little-endian; pack and unpack must match bit-exactly.
+//! Unpack assembles residuals word-at-a-time (u64 when width<=57, else u128).
 
 const std = @import("std");
 
@@ -88,26 +89,69 @@ pub fn unpackForU64(allocator: Allocator, packed_values: PackedU64) ![]u64 {
 
     var bit_offset: usize = 0;
     for (values) |*value| {
-        var offset: u64 = 0;
-        var written: u8 = 0;
-        while (written < packed_values.bit_width) {
-            const bit_index = bit_offset & 7;
-            const available_bits = 8 - bit_index;
-            const chunk_bits: u8 = @intCast(@min(@as(usize, packed_values.bit_width - written), available_bits));
-            const mask = (@as(u64, 1) << @as(u6, @intCast(chunk_bits))) - 1;
-            const byte = packed_values.payload[bit_offset / 8];
-            const chunk = (@as(u64, byte) >> @as(u6, @intCast(bit_index))) & mask;
-            offset |= chunk << @as(u6, @intCast(written));
-            bit_offset += chunk_bits;
-            written += chunk_bits;
-        }
+        value.* = try readWordAccum(packed_values.payload, packed_values.bit_width, bit_offset, packed_values.base);
+        bit_offset += packed_values.bit_width;
+    }
+    return values;
+}
 
-        const sum = @addWithOverflow(packed_values.base, offset);
-        if (sum[1] != 0) return error.Overflow;
-        value.* = sum[0];
+/// One FOR value from `payload` at `bit_offset` (advanced by `bit_width`). Same wire as `unpackForU64`.
+pub fn unpackNextForValue(payload: []const u8, bit_width: u8, bit_offset: *usize, base: u64) !u64 {
+    if (bit_width == 0) return base;
+    if (bit_width > 64) return error.InvalidBitWidth;
+
+    const value = try readWordAccum(payload, bit_width, bit_offset.*, base);
+    bit_offset.* += bit_width;
+    return value;
+}
+
+fn readWordAccum(payload: []const u8, bit_width: u8, bit_offset: usize, base: u64) !u64 {
+    if (bit_width <= 57) {
+        return readWordAccumU64(payload, bit_width, bit_offset, base);
+    }
+    return readWordAccumU128(payload, bit_width, bit_offset, base);
+}
+
+fn readWordAccumU64(payload: []const u8, bit_width: u8, bit_offset: usize, base: u64) !u64 {
+    const mask = (@as(u64, 1) << @as(u6, @intCast(bit_width))) - 1;
+    const byte_i = bit_offset / 8;
+    const bit_i: u6 = @intCast(bit_offset & 7);
+    const need = @as(usize, bit_width) + bit_i;
+    const bytes_needed = (need + 7) / 8;
+
+    var acc: u64 = 0;
+    var b: usize = 0;
+    while (b < bytes_needed) : (b += 1) {
+        acc |= @as(u64, payload[byte_i + b]) << @as(u6, @intCast(b * 8));
     }
 
-    return values;
+    const offset = (acc >> bit_i) & mask;
+    const sum = @addWithOverflow(base, offset);
+    if (sum[1] != 0) return error.Overflow;
+    return sum[0];
+}
+
+fn readWordAccumU128(payload: []const u8, bit_width: u8, bit_offset: usize, base: u64) !u64 {
+    const mask: u64 = if (bit_width == 64)
+        std.math.maxInt(u64)
+    else
+        (@as(u64, 1) << @as(u6, @intCast(bit_width))) - 1;
+
+    const byte_i = bit_offset / 8;
+    const bit_i: u6 = @intCast(bit_offset & 7);
+    const need = @as(usize, bit_width) + bit_i;
+    const bytes_needed = (need + 7) / 8;
+
+    var acc: u128 = 0;
+    var b: usize = 0;
+    while (b < bytes_needed) : (b += 1) {
+        acc |= @as(u128, payload[byte_i + b]) << @as(u7, @intCast(b * 8));
+    }
+
+    const offset: u64 = @truncate((acc >> bit_i) & @as(u128, mask));
+    const sum = @addWithOverflow(base, offset);
+    if (sum[1] != 0) return error.Overflow;
+    return sum[0];
 }
 
 fn payloadByteLen(bit_width: u8, count: usize) !usize {
