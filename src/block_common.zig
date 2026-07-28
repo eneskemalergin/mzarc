@@ -20,7 +20,18 @@ pub const EncodeOptions = struct {
     mz_rans_min_gain_percent: u8 = 5,
     intensity_rans_min_gain_percent: u8 = 12,
     verbose_blocks: bool = false,
+    /// File `version_minor` for this block's m/z layout. `null` means write minor 3 (first-peak-split).
+    file_version_minor: ?u16 = null,
 };
+
+pub fn resolvedFileVersionMinor(options: EncodeOptions) u16 {
+    if (options.file_version_minor) |v| return v;
+    return 3;
+}
+
+pub fn usesMzFirstPeakSplit(file_version_minor: u16) bool {
+    return file_version_minor >= 3;
+}
 
 pub const IntensityEncodingMode = enum {
     raw_plain,

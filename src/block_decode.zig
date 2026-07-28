@@ -1,4 +1,5 @@
 //! Block decode and byte-breakdown inspection.
+//! M/z layout follows file `version_minor` (legacy `<=2`, first-peak-split `>=3`).
 //! Scratch must be an arena: temps are not freed individually. Fail closed on truncation, checksum, and overflow.
 
 const std = @import("std");
@@ -146,6 +147,98 @@ fn decodeFlatMzFromPackedForPayload(
     return decodeFlatMzBlockLevel(flat_mz, peak_counts, payload, bit_width, base, uses_f32, scale_factor);
 }
 
+fn countNonEmptySpectra(peak_counts: []const u32) usize {
+    var n: usize = 0;
+    for (peak_counts) |peak_count| {
+        if (peak_count != 0) n += 1;
+    }
+    return n;
+}
+
+fn countDeltas(peak_counts: []const u32) !usize {
+    var n: usize = 0;
+    for (peak_counts) |peak_count| {
+        if (peak_count == 0) continue;
+        n = try std.math.add(usize, n, peak_count - 1);
+    }
+    return n;
+}
+
+fn decodeMzFirstPeakSplit(
+    flat_mz: []f64,
+    peak_counts: []const u32,
+    body: []const u8,
+    bit_width: u8,
+    base: u64,
+    uses_f32: bool,
+    scale_factor: u32,
+    flags: u8,
+    scratch: Allocator,
+) !void {
+    if ((flags & common.flag_mz_per_spectrum_bit_widths) != 0) return error.InvalidMzPayload;
+    if (bit_width > 64) return error.InvalidBitWidth;
+    if (body.len < 5) return error.UnexpectedEndOfStream;
+
+    const first_count = common.readIntLe(u32, body[0..4]);
+    const first_size = body[4];
+    if (first_size != 4 and first_size != 8) return error.InvalidFirstSize;
+    if (uses_f32 and first_size != 4) return error.InvalidFirstSize;
+    if (!uses_f32 and first_size != 8) return error.InvalidFirstSize;
+    if (first_count != countNonEmptySpectra(peak_counts)) return error.InvalidFirstCount;
+
+    const first_bytes = try std.math.mul(usize, first_count, first_size);
+    const header_and_firsts = try std.math.add(usize, 5, first_bytes);
+    if (body.len < header_and_firsts) return error.UnexpectedEndOfStream;
+
+    const delta_count = try countDeltas(peak_counts);
+    const delta_payload = body[header_and_firsts..];
+
+    if (delta_count == 0) {
+        if ((flags & common.flag_rans_mz) != 0) return error.InvalidMzPayload;
+        if (bit_width != 0) return error.InvalidMzPayload;
+        if (base != 0) return error.InvalidMzPayload;
+        if (delta_payload.len != 0) return error.TrailingBlockPayload;
+    }
+
+    const expected_for_len = try common.packedByteLen(bit_width, delta_count);
+    const for_bytes = if ((flags & common.flag_rans_mz) != 0) blk: {
+        if (delta_count == 0) return error.InvalidMzPayload;
+        const decoded = try scratch.alloc(u8, expected_for_len);
+        try rans.decodeInto(delta_payload, decoded);
+        break :blk decoded;
+    } else blk: {
+        if (delta_payload.len != expected_for_len) return error.InvalidMzPayload;
+        break :blk delta_payload;
+    };
+
+    var bit_offset: usize = 0;
+    var mz_cursor: usize = 0;
+    var first_cursor: usize = 0;
+    for (peak_counts) |peak_count| {
+        if (peak_count == 0) continue;
+
+        const first_off = try std.math.add(usize, 5, try std.math.mul(usize, first_cursor, first_size));
+        const first_raw: u64 = if (first_size == 4)
+            common.readIntLe(u32, body[first_off .. first_off + 4])
+        else
+            common.readIntLe(u64, body[first_off .. first_off + 8]);
+        first_cursor += 1;
+
+        flat_mz[mz_cursor] = try decodeFlatMzOne(first_raw, uses_f32, scale_factor);
+        var previous = first_raw;
+
+        var i: u32 = 1;
+        while (i < peak_count) : (i += 1) {
+            const delta = try unpackNextForValue(for_bytes, bit_width, &bit_offset, base);
+            const sum = @addWithOverflow(previous, delta);
+            if (sum[1] != 0) return error.Overflow;
+            flat_mz[mz_cursor + i] = try decodeFlatMzOne(sum[0], uses_f32, scale_factor);
+            previous = sum[0];
+        }
+        mz_cursor += peak_count;
+    }
+}
+
 pub fn parseHeader(bytes: []const u8) !common.BlockHeader {
     if (bytes.len < common.header_len) return error.UnexpectedEndOfStream;
 
@@ -168,14 +261,14 @@ pub fn parseHeader(bytes: []const u8) !common.BlockHeader {
     };
 }
 
-pub fn decodeBlock(allocator: Allocator, block_bytes: []const u8) ![]binary_reader.RawSpectrum {
+pub fn decodeBlock(allocator: Allocator, block_bytes: []const u8, file_version_minor: u16) ![]binary_reader.RawSpectrum {
     var scratch_arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer scratch_arena.deinit();
-    return decodeBlockWithScratch(allocator, scratch_arena.allocator(), block_bytes);
+    return decodeBlockWithScratch(allocator, scratch_arena.allocator(), block_bytes, file_version_minor);
 }
 
 /// `scratch` must be an arena. Temps are not freed individually; reset or deinit the arena.
-pub fn decodeBlockWithScratch(allocator: Allocator, scratch: Allocator, block_bytes: []const u8) ![]binary_reader.RawSpectrum {
+pub fn decodeBlockWithScratch(allocator: Allocator, scratch: Allocator, block_bytes: []const u8, file_version_minor: u16) ![]binary_reader.RawSpectrum {
     const header = try parseHeader(block_bytes);
     const block_end = try std.math.add(usize, common.header_len, header.payload_bytes);
     if (block_bytes.len < block_end) return error.UnexpectedEndOfStream;
@@ -283,35 +376,52 @@ pub fn decodeBlockWithScratch(allocator: Allocator, scratch: Allocator, block_by
         offset += 8;
         const mz_payload_len = common.readIntLe(u32, payload[offset .. offset + 4]);
         offset += 4;
-        const mz_per_spectrum_bit_widths = if ((header.flags & common.flag_mz_per_spectrum_bit_widths) != 0) blk: {
-            if (payload.len - offset < spectrum_count) return error.UnexpectedEndOfStream;
-            const widths = payload[offset .. offset + spectrum_count];
-            offset += spectrum_count;
-            break :blk widths;
-        } else null;
-        if (payload.len - offset < mz_payload_len) return error.UnexpectedEndOfStream;
 
-        const mz_payload_bytes = if ((header.flags & common.flag_rans_mz) != 0) blk: {
-            const decoded_len = if (mz_per_spectrum_bit_widths) |widths|
-                try common.perSpectrumPayloadLen(widths, peak_counts)
-            else
-                try common.packedByteLen(header.mz_bit_width, total_peaks);
-            const decoded = try tmp.alloc(u8, decoded_len);
-            try rans.decodeInto(payload[offset .. offset + mz_payload_len], decoded);
-            break :blk decoded;
-        } else payload[offset .. offset + mz_payload_len];
+        if (common.usesMzFirstPeakSplit(file_version_minor)) {
+            if (payload.len - offset < mz_payload_len) return error.UnexpectedEndOfStream;
+            try decodeMzFirstPeakSplit(
+                flat_mz,
+                peak_counts,
+                payload[offset .. offset + mz_payload_len],
+                header.mz_bit_width,
+                mz_base,
+                mz_uses_f32,
+                header.mz_scale_factor,
+                header.flags,
+                tmp,
+            );
+            offset += mz_payload_len;
+        } else {
+            const mz_per_spectrum_bit_widths = if ((header.flags & common.flag_mz_per_spectrum_bit_widths) != 0) blk: {
+                if (payload.len - offset < spectrum_count) return error.UnexpectedEndOfStream;
+                const widths = payload[offset .. offset + spectrum_count];
+                offset += spectrum_count;
+                break :blk widths;
+            } else null;
+            if (payload.len - offset < mz_payload_len) return error.UnexpectedEndOfStream;
 
-        try decodeFlatMzFromPackedForPayload(
-            flat_mz,
-            peak_counts,
-            mz_payload_bytes,
-            header.mz_bit_width,
-            mz_per_spectrum_bit_widths,
-            mz_base,
-            mz_uses_f32,
-            header.mz_scale_factor,
-        );
-        offset += mz_payload_len;
+            const mz_payload_bytes = if ((header.flags & common.flag_rans_mz) != 0) blk: {
+                const decoded_len = if (mz_per_spectrum_bit_widths) |widths|
+                    try common.perSpectrumPayloadLen(widths, peak_counts)
+                else
+                    try common.packedByteLen(header.mz_bit_width, total_peaks);
+                const decoded = try tmp.alloc(u8, decoded_len);
+                try rans.decodeInto(payload[offset .. offset + mz_payload_len], decoded);
+                break :blk decoded;
+            } else payload[offset .. offset + mz_payload_len];
+
+            try decodeFlatMzFromPackedForPayload(
+                flat_mz,
+                peak_counts,
+                mz_payload_bytes,
+                header.mz_bit_width,
+                mz_per_spectrum_bit_widths,
+                mz_base,
+                mz_uses_f32,
+                header.mz_scale_factor,
+            );
+            offset += mz_payload_len;
+        }
     }
 
     const flat_intensity = try tmp.alloc(f32, total_peaks);

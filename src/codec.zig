@@ -24,7 +24,7 @@ fn nsPct(part: u64, total: u64) f64 {
 pub const magic = "MZAR".*;
 pub const header_len = 32;
 pub const version_major: u16 = 1;
-pub const version_minor: u16 = 2;
+pub const version_minor: u16 = 3;
 
 pub const flag_lossless: u32 = 0b0000_0001;
 pub const flag_contains_ms1: u32 = 0b0000_0010;
@@ -252,6 +252,11 @@ fn totalPeaks(spectra: []const binary_reader.RawSpectrum) !u64 {
     return total;
 }
 
+fn writeVersionMinor(options: EncodeOptions) u16 {
+    if (options.block_options.file_version_minor) |v| return v;
+    return version_minor;
+}
+
 fn flushBlock(
     file_bytes: *std.ArrayList(u8),
     allocator: Allocator,
@@ -260,7 +265,11 @@ fn flushBlock(
     options: EncodeOptions,
     block_count: *u32,
 ) !void {
-    const encoded = try block.encodeBlockDetailed(allocator, scratch_arena.allocator(), spectra, options.block_options);
+    var block_options = options.block_options;
+    if (block_options.file_version_minor == null) {
+        block_options.file_version_minor = writeVersionMinor(options);
+    }
+    const encoded = try block.encodeBlockDetailed(allocator, scratch_arena.allocator(), spectra, block_options);
     defer encoded.deinit(allocator);
     _ = scratch_arena.reset(.retain_capacity);
     maybePrintBlockStats(block_count.*, encoded.stats, options);
@@ -356,7 +365,7 @@ pub fn encodeFileAlloc(io: std.Io, allocator: Allocator, spectra: []const binary
     const header: FileHeader = .{
         .magic_bytes = magic,
         .version_major = version_major,
-        .version_minor = version_minor,
+        .version_minor = writeVersionMinor(options),
         .flags = flags,
         .block_size = options.block_size,
         .reserved0 = 0,
@@ -478,7 +487,12 @@ pub fn decodeFileAlloc(io: std.Io, allocator: Allocator, bytes: []const u8, opti
     var decode_scratch_arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer decode_scratch_arena.deinit();
     for (inspection.blocks) |block_info| {
-        const decoded = try block.decodeBlockWithScratch(allocator, decode_scratch_arena.allocator(), bytes[block_info.offset .. block_info.offset + block_info.total_bytes]);
+        const decoded = try block.decodeBlockWithScratch(
+            allocator,
+            decode_scratch_arena.allocator(),
+            bytes[block_info.offset .. block_info.offset + block_info.total_bytes],
+            inspection.header.version_minor,
+        );
         _ = decode_scratch_arena.reset(.retain_capacity);
 
         const next = try std.math.add(usize, spectrum_offset, decoded.len);
