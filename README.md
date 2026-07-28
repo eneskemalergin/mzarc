@@ -4,7 +4,7 @@
 </p>
 
 <p align="center">
-    Domain-specific compression for mzML-derived mass spectrometry spectra. 75 MB mzML to 15 MB lossless, exact round-trip, 155 MB/s decode.
+    Domain-specific compression for mzML-derived mass spectrometry spectra. 75 MB mzML to 14.5 MB lossless, exact round-trip, 170 MB/s decode.
 </p>
 
 <p align="center">
@@ -74,13 +74,13 @@ Benchmark dataset: `data/PXD075509/15HCD_1.mzML` (9,001 spectra, 2.67M peaks). F
 | codec               |      size | vs mzML |
 | ------------------- | --------: | ------: |
 | mzML                | 75.55 MiB |  100.0% |
-| mzarc lossless      | 15.27 MiB |   20.2% |
-| mzarc lossy q=16384 | 12.62 MiB |   16.7% |
+| mzarc lossless      | 14.46 MiB |   19.1% |
+| mzarc lossy q=16384 | 12.66 MiB |   16.8% |
 | mzMLb               | 16.25 MiB |   21.5% |
 | xz dump             | 15.77 MiB |   20.9% |
 | zstd dump           | 17.85 MiB |   23.6% |
 
-mzarc lossless beats every other codec in the comparison. It is 3.1% smaller than xz on the same binary dump and 1.3% smaller than mzMLb. The lossy path at q=16384 reaches 16.7% of raw mzML size with p95 relative intensity error of 0.055%.
+mzarc lossless beats every other codec in the comparison. It is 8.3% smaller than xz on the same binary dump and 11.0% smaller than mzMLb. The lossy path at q=16384 reaches 16.8% of raw mzML size with p95 relative intensity error of 0.055%.
 
 <p align="center">
   <img src="benchmark/plots/size_comparison.png" width="720" alt="Artifact size comparison across mzarc, MS-domain codecs, and generic compressors on 15HCD_1" />
@@ -89,8 +89,8 @@ mzarc lossless beats every other codec in the comparison. It is 3.1% smaller tha
 
 Throughput (zebrac medians, release build, single thread):
 
-- encode lossless: `51.92 MiB/s` (median wall time `0.294 s`)
-- decode lossless: `155.4 MiB/s` (median wall time `0.198 s`)
+- encode lossless: `56.81 MiB/s` (median wall time `0.255 s`)
+- decode lossless: `169.8 MiB/s` (median wall time `0.181 s`)
 
 <p align="center">
   <img src="benchmark/plots/performance_overview.png" width="720" alt="Encode and decode throughput across all tested codecs on 15HCD_1" />

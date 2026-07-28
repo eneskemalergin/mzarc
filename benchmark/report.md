@@ -8,14 +8,14 @@ mzarc is a domain-specific MS codec: it strips mzML interchange overhead and app
 
 | codec | size | vs mzML | encode MiB/s | decode MiB/s | fidelity |
 | --- | ---: | ---: | ---: | ---: | --- |
-| mzarc lossless | 15.27 MiB | 20.2% | 51.92 | 155.4 | exact |
-| mzarc lossy q=16384 | 12.62 MiB | 16.7% | 31.89 | 139.4 | lossy |
+| mzarc lossless | 14.46 MiB | 19.1% | 56.81 | 169.8 | exact |
+| mzarc lossy q=16384 | 12.66 MiB | 16.8% | 38.95 | 127 | lossy |
 | mzMLb | 16.25 MiB | 21.5% | 0.6856 | 5.791 | exact |
 | MScompress | 21.53 MiB | 28.5% | 75.47 | 5.63 | exact |
 | MScompress (1T) | 21.63 MiB | 28.6% | 25.22 | 4.259 | exact |
 | MS-Numpress in mzML | 66.67 MiB | 88.2% | 2.755 | 4.803 | lossy |
 
-Best single-thread generic size on the binary dump: `xz dump` at 15.77 MiB (20.9% of mzML). mzarc lossless is 3.1% smaller.
+Best single-thread generic size on the binary dump: `xz dump` at 15.77 MiB (20.9% of mzML). mzarc lossless is 8.3% smaller.
 
 External MS-domain codecs benchmarked in this run: mzMLb, MS-Numpress in mzML, MScompress, MScompress (1T).
 
@@ -37,8 +37,8 @@ External MS-domain codecs benchmarked in this run: mzMLb, MS-Numpress in mzML, M
 | bzip2 mzML | 23.58 MiB | 31.20% | 76.60% |
 | lz4 mzML | 33.21 MiB | 43.96% | 107.91% |
 | xz mzML | 23.40 MiB | 30.97% | 76.03% |
-| mzarc lossless | 15.27 MiB | 20.22% | 49.63% |
-| mzarc lossy q=16384 | 12.62 MiB | 16.70% | 41.00% |
+| mzarc lossless | 14.46 MiB | 19.14% | 46.99% |
+| mzarc lossy q=16384 | 12.66 MiB | 16.76% | 41.14% |
 | pigz dump | 19.77 MiB | 26.17% | 64.24% |
 | pigz mzML | 24.22 MiB | 32.06% | 78.69% |
 | zstd mt dump | 17.85 MiB | 23.63% | 58.01% |
@@ -52,8 +52,8 @@ External MS-domain codecs benchmarked in this run: mzMLb, MS-Numpress in mzML, M
 
 | artifact | structural | spectrum metadata | m/z stream | intensity stream | total |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| mzarc lossless | 0.04 MiB (0.2%) | 0.15 MiB (1.0%) | 6.81 MiB (44.6%) | 8.27 MiB (54.2%) | 15.27 MiB |
-| mzarc lossy q=16384 | 0.04 MiB (0.3%) | 0.15 MiB (1.2%) | 7.99 MiB (63.3%) | 4.44 MiB (35.2%) | 12.62 MiB |
+| mzarc lossless | 0.04 MiB (0.3%) | 0.15 MiB (1.1%) | 6.00 MiB (41.5%) | 8.27 MiB (57.2%) | 14.46 MiB |
+| mzarc lossy q=16384 | 0.04 MiB (0.3%) | 0.15 MiB (1.2%) | 8.04 MiB (63.5%) | 4.44 MiB (35.0%) | 12.66 MiB |
 
 ## Throughput
 
@@ -81,10 +81,10 @@ External MS-domain codecs benchmarked in this run: mzMLb, MS-Numpress in mzML, M
 | lz4 mzML | Generic (on mzML) | decompression | 684.6 MiB/s | 0.1104s | 28 |
 | xz mzML | Generic (on mzML) | compression | 4.431 MiB/s | 5.282s | 3 |
 | xz mzML | Generic (on mzML) | decompression | 194.6 MiB/s | 0.3882s | 8 |
-| mzarc lossless | MS-domain codec | compression | 51.92 MiB/s | 0.2942s | 11 |
-| mzarc lossless | MS-domain codec | decompression | 155.4 MiB/s | 0.198s | 16 |
-| mzarc lossy q=16384 | MS-domain codec | compression | 31.89 MiB/s | 0.3957s | 8 |
-| mzarc lossy q=16384 | MS-domain codec | decompression | 139.4 MiB/s | 0.2207s | 14 |
+| mzarc lossless | MS-domain codec | compression | 56.81 MiB/s | 0.2546s | 118 |
+| mzarc lossless | MS-domain codec | decompression | 169.8 MiB/s | 0.1813s | 165 |
+| mzarc lossy q=16384 | MS-domain codec | compression | 38.95 MiB/s | 0.3251s | 92 |
+| mzarc lossy q=16384 | MS-domain codec | decompression | 127 MiB/s | 0.2424s | 124 |
 | pigz dump | Parallel (multi-thread) | compression | 232.2 MiB/s | 0.08516s | 36 |
 | pigz dump | Parallel (multi-thread) | decompression | 242.7 MiB/s | 0.1268s | 24 |
 | pigz mzML | Parallel (multi-thread) | compression | 234.9 MiB/s | 0.1031s | 29 |
@@ -133,10 +133,10 @@ All values are zebrac medians from Linux perf counters. IPC = instructions / cyc
 | lz4 mzML -> mzML | 0.1104s | 8.1 MiB | 2.27e+08 | 1.48 | 4.619% | 28 |
 | mzML -> xz mzML | 5.282s | 426.7 MiB | 6.27e+10 | 1.23 | 31.589% | 3 |
 | xz mzML -> mzML | 0.3882s | 117.0 MiB | 7.2e+09 | 2.31 | 10.998% | 8 |
-| dump -> mzarc lossless | 0.2942s | 89.5 MiB | 1.36e+09 | 1.79 | 3.582% | 11 |
-| mzarc lossless -> dump | 0.198s | 79.4 MiB | 9.25e+08 | 1.87 | 3.188% | 16 |
-| dump -> mzarc lossy q=16384 | 0.3957s | 79.8 MiB | 2.31e+09 | 2.01 | 3.349% | 8 |
-| mzarc lossy q=16384 -> dump | 0.2207s | 76.8 MiB | 1.17e+09 | 2 | 3.244% | 14 |
+| dump -> mzarc lossless | 0.2546s | 85.7 MiB | 1.14e+09 | 1.86 | 3.376% | 118 |
+| mzarc lossless -> dump | 0.1813s | 78.7 MiB | 7.99e+08 | 1.94 | 2.753% | 165 |
+| dump -> mzarc lossy q=16384 | 0.3251s | 80.4 MiB | 1.74e+09 | 1.96 | 3.136% | 92 |
+| mzarc lossy q=16384 -> dump | 0.2424s | 76.9 MiB | 1.27e+09 | 2.03 | 2.816% | 124 |
 | dump -> pigz dump | 0.08516s | 20.4 MiB | 9.49e+09 | 1.34 | 2.506% | 36 |
 | pigz dump -> dump | 0.1268s | 1.9 MiB | 8.13e+08 | 1.61 | 10.897% | 24 |
 | mzML -> pigz mzML | 0.1031s | 19.6 MiB | 8.36e+09 | 1.25 | 1.931% | 29 |
@@ -162,8 +162,8 @@ Mann-Whitney U tests on log-normal samples drawn from zebrac summary statistics.
 
 | operation A | operation B | speed ratio | p-value | significant |
 | --- | --- | ---: | ---: | --- |
-| dump -> mzarc lossless | dump -> gzip dump | 0.178 | 0.0001242 | yes |
-| dump -> mzarc lossless | dump -> zstd dump | 1.54 | 1.576e-05 | yes |
+| dump -> mzarc lossless | dump -> gzip dump | 0.155 | 1.657e-07 | yes |
+| dump -> mzarc lossless | dump -> zstd dump | 1.34 | 9.542e-11 | yes |
 
 ## Data Fidelity
 
@@ -196,7 +196,7 @@ Mann-Whitney U tests on log-normal samples drawn from zebrac summary statistics.
 | 256 | 10.22 MiB | 13.5% | 3.499% | 3.813% | 1.820% |
 | 1024 | 11.35 MiB | 15.0% | 0.874% | 0.950% | 0.455% |
 | 4096 | 11.98 MiB | 15.9% | 0.218% | 0.238% | 0.114% |
-| 16384 | 12.62 MiB | 16.7% | 0.055% | 0.059% | 0.028% |
+| 16384 | 12.66 MiB | 16.8% | 0.055% | 0.059% | 0.028% |
 
 Higher q = more preserved log-intensity precision at the cost of a larger file. Selected q=16384 gives p95 relative intensity error of 0.055%. Relative error = abs(delta) / original, evaluated over strictly positive peaks after round-trip decode.
 

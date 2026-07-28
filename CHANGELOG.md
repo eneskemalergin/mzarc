@@ -1,9 +1,9 @@
-<!-- markdownlint-disable MD024 -->
+<!-- markdownlint-disable MD024 MD034 -->
 # Changelog
 
 All notable changes to mzarc are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This project follows [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [0.3.0] - Unreleased
 
 ### Added
 
@@ -19,10 +19,11 @@ All notable changes to mzarc are documented here. The format follows [Keep a Cha
 
 - Block header fields formerly named `reserved0` / `reserved1` are `intensity_log_scale_lo` / `intensity_log_scale_hi` (wire layout unchanged).
 - README / fixture docs: dump stats via `mzarc dump-inspect` (deleted `inspect_dump.py`).
+- Benchmark board and plots refreshed for mzarc encode/decode on 15HCD_1 (other codecs unchanged). Lossless `14.46 MiB`; lossy q=16384 `12.66 MiB`.
 
 ---
 
-## [0.2.0]: 2026-05-04 `tagged`
+## [0.2.0] - 2026-05-04 `tagged`
 
 ### Fixed
 
@@ -44,7 +45,7 @@ All notable changes to mzarc are documented here. The format follows [Keep a Cha
 
 ---
 
-## [0.1.13]: 2026-05-04
+## [0.1.13] - 2026-05-04
 
 ### Added
 
@@ -62,7 +63,7 @@ All notable changes to mzarc are documented here. The format follows [Keep a Cha
 - Dead code removed from `benchmark_stats.py`, `benchmark_report.py`, `collect_report.py`.
 - `.gitignore`: only `benchmark/raw/` ignored; plots, report, and baselines are tracked.
 
-## [0.1.12]: 2026-05-04
+## [0.1.12] - 2026-05-04
 
 ### Changed
 
@@ -81,7 +82,7 @@ All notable changes to mzarc are documented here. The format follows [Keep a Cha
 
 ---
 
-## [0.1.11]: 2026-05-04
+## [0.1.11] - 2026-05-04
 
 ### Fixed
 
@@ -100,7 +101,7 @@ All notable changes to mzarc are documented here. The format follows [Keep a Cha
 
 ---
 
-## [0.1.10]: 2026-05-03
+## [0.1.10] - 2026-05-03
 
 ### Added
 
@@ -122,7 +123,7 @@ All notable changes to mzarc are documented here. The format follows [Keep a Cha
 
 ---
 
-## [0.1.9]: 2026-05-03
+## [0.1.9] - 2026-05-03
 
 ### Changed
 
@@ -139,7 +140,7 @@ All notable changes to mzarc are documented here. The format follows [Keep a Cha
 
 ---
 
-## [0.1.8]: 2026-05-03
+## [0.1.8] - 2026-05-03
 
 ### Changed
 
@@ -154,7 +155,7 @@ All notable changes to mzarc are documented here. The format follows [Keep a Cha
 
 ---
 
-## [0.1.7]: 2026-05-03
+## [0.1.7] - 2026-05-03
 
 ### Changed
 
@@ -183,7 +184,7 @@ All notable changes to mzarc are documented here. The format follows [Keep a Cha
 
 ---
 
-## [0.1.6]: 2026-05-03
+## [0.1.6] - 2026-05-03
 
 ### Fixed
 
@@ -212,7 +213,7 @@ All notable changes to mzarc are documented here. The format follows [Keep a Cha
 
 ---
 
-## [0.1.5]: 2026-03-27 `tagged`
+## [0.1.5] - 2026-03-27 `tagged`
 
 ### Changed
 
@@ -221,7 +222,7 @@ All notable changes to mzarc are documented here. The format follows [Keep a Cha
 
 ---
 
-## [0.1.4]: 2026-03-26
+## [0.1.4] - 2026-03-26
 
 ### Changed
 
@@ -230,7 +231,7 @@ All notable changes to mzarc are documented here. The format follows [Keep a Cha
 
 ---
 
-## [0.1.3]: 2026-03-25
+## [0.1.3] - 2026-03-25
 
 ### Added
 
@@ -241,7 +242,7 @@ All notable changes to mzarc are documented here. The format follows [Keep a Cha
 
 ---
 
-## [0.1.2]: 2026-03-24
+## [0.1.2] - 2026-03-24
 
 ### Added
 
@@ -250,7 +251,7 @@ All notable changes to mzarc are documented here. The format follows [Keep a Cha
 
 ---
 
-## [0.1.1]: 2026-03-23
+## [0.1.1] - 2026-03-23
 
 ### Added
 
@@ -266,7 +267,7 @@ All notable changes to mzarc are documented here. The format follows [Keep a Cha
 
 ---
 
-## [0.1.0]: 2026-03-22 `tagged`
+## [0.1.0] - 2026-03-22 `tagged`
 
 ### Added
 
@@ -280,7 +281,7 @@ All notable changes to mzarc are documented here. The format follows [Keep a Cha
 
 ---
 
-## [0.0.1]: 2026-03-21 (bootstrap)
+## [0.0.1] - 2026-03-21 (bootstrap)
 
 ### Added
 
@@ -288,6 +289,6 @@ All notable changes to mzarc are documented here. The format follows [Keep a Cha
 - Basic block encoder/decoder skeleton in Zig.
 - `build.zig` project scaffold.
 
-[0.2.0]: https://github.com/eneskemalergin/mzarc/releases/tag/v0.2.0
-[0.1.5]: https://github.com/eneskemalergin/mzarc/releases/tag/v0.1.5
-[0.1.0]: https://github.com/eneskemalergin/mzarc/releases/tag/v0.1.0
+[0.2.0] - https://github.com/eneskemalergin/mzarc/releases/tag/v0.2.0
+[0.1.5] - https://github.com/eneskemalergin/mzarc/releases/tag/v0.1.5
+[0.1.0] - https://github.com/eneskemalergin/mzarc/releases/tag/v0.1.0
