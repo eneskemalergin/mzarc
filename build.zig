@@ -1,7 +1,6 @@
 //! mzarc build: CLI, unit tests, frozen-bin digest check, local `ci` gate.
 //! Optimize with `-Drelease=true` / `--release=safe|fast` (not `-Doptimize=`).
 //! Fixture digest uses `sha256sum`, or `shasum -a 256` when GNU coreutils is absent (macOS CI).
-
 const std = @import("std");
 
 const frozen_sha256 = "9d5a10167356db7afaa4e6c43832a7ea75a53e84dc74e679a881d5d8cf7cb2c6";
@@ -89,6 +88,7 @@ pub fn build(b: *std.Build) void {
             .root_source_file = b.path("src/main.zig"),
             .target = target,
             .optimize = optimize,
+            .single_threaded = true,
             .imports = &.{
                 .{ .name = "binary_reader", .module = binary_reader_module },
                 .{ .name = "block", .module = block_module },
@@ -150,41 +150,41 @@ pub fn build(b: *std.Build) void {
     const ci_step = b.step("ci", "Full local CI: tests + fixture + codec round-trips + adversarial + regression");
 
     const ci_enc_ls = b.addSystemCommand(&.{
-        "./zig-out/bin/mzarc", "encode", frozen_bin,
-        "-o", "/tmp/mzarc_ci_frozen.mzarc",
+        "./zig-out/bin/mzarc", "encode",                     frozen_bin,
+        "-o",                  "/tmp/mzarc_ci_frozen.mzarc",
     });
     ci_enc_ls.step.dependOn(b.getInstallStep());
     ci_enc_ls.step.dependOn(test_step);
     ci_enc_ls.step.dependOn(check_fixture_step);
 
     const ci_dec_ls = b.addSystemCommand(&.{
-        "./zig-out/bin/mzarc", "decode", "/tmp/mzarc_ci_frozen.mzarc",
-        "-o", "/tmp/mzarc_ci_frozen_rt.bin",
+        "./zig-out/bin/mzarc", "decode",                      "/tmp/mzarc_ci_frozen.mzarc",
+        "-o",                  "/tmp/mzarc_ci_frozen_rt.bin",
     });
     ci_dec_ls.step.dependOn(&ci_enc_ls.step);
 
     const ci_val_ls = b.addSystemCommand(&.{
         "./zig-out/bin/mzarc", "validate",
-        frozen_bin, "/tmp/mzarc_ci_frozen_rt.bin",
+        frozen_bin,            "/tmp/mzarc_ci_frozen_rt.bin",
         "--mode=lossless",
     });
     ci_val_ls.step.dependOn(&ci_dec_ls.step);
 
     const ci_enc_ly = b.addSystemCommand(&.{
-        "./zig-out/bin/mzarc", "encode", frozen_bin,
-        "-o", "/tmp/mzarc_ci_frozen_lossy.mzarc", "--lossy",
+        "./zig-out/bin/mzarc", "encode",                           frozen_bin,
+        "-o",                  "/tmp/mzarc_ci_frozen_lossy.mzarc", "--lossy",
     });
     ci_enc_ly.step.dependOn(&ci_val_ls.step);
 
     const ci_dec_ly = b.addSystemCommand(&.{
-        "./zig-out/bin/mzarc", "decode", "/tmp/mzarc_ci_frozen_lossy.mzarc",
-        "-o", "/tmp/mzarc_ci_frozen_lossy_rt.bin",
+        "./zig-out/bin/mzarc", "decode",                            "/tmp/mzarc_ci_frozen_lossy.mzarc",
+        "-o",                  "/tmp/mzarc_ci_frozen_lossy_rt.bin",
     });
     ci_dec_ly.step.dependOn(&ci_enc_ly.step);
 
     const ci_val_ly = b.addSystemCommand(&.{
         "./zig-out/bin/mzarc", "validate",
-        frozen_bin, "/tmp/mzarc_ci_frozen_lossy_rt.bin",
+        frozen_bin,            "/tmp/mzarc_ci_frozen_lossy_rt.bin",
         "--mode=lossy",
     });
     ci_val_ly.step.dependOn(&ci_dec_ly.step);

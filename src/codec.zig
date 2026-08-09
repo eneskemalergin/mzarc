@@ -565,24 +565,358 @@ pub fn writeFile(io: std.Io, path: []const u8, bytes: []const u8) !void {
     try std.Io.Dir.cwd().writeFile(io, .{ .sub_path = path, .data = bytes });
 }
 
+const ArchiveBlock = struct {
+    offset: u64,
+    total_bytes: u64,
+};
+
+const ArchiveFileIndex = struct {
+    header: FileHeader,
+    order: []u32,
+    blocks: []ArchiveBlock,
+    record_offsets: []u64,
+    output_bytes: u64,
+
+    fn deinit(self: ArchiveFileIndex, allocator: Allocator) void {
+        allocator.free(self.order);
+        allocator.free(self.blocks);
+        allocator.free(self.record_offsets);
+    }
+};
+
+fn readExactAt(file: std.Io.File, io: std.Io, bytes: []u8, offset: u64) !void {
+    if (try file.readPositionalAll(io, bytes, offset) != bytes.len) return error.UnexpectedEndOfStream;
+}
+
+fn addU64(a: u64, b: u64) !u64 {
+    return std.math.add(u64, a, b);
+}
+
+fn streamBlockCount(spectrum_count: usize, block_size: usize) !usize {
+    if (spectrum_count == 0) return 0;
+    return (try std.math.add(usize, spectrum_count, block_size - 1)) / block_size;
+}
+
+fn writeOrderPrefix(prefix: []u8, entries: []const binary_reader.DumpEntry) !void {
+    var cursor: usize = header_len;
+    inline for (.{ @as(u8, 1), @as(u8, 2) }) |level| {
+        for (entries, 0..) |entry, original_index| {
+            if (entry.ms_level != level) continue;
+            try writeOrderEntry(prefix[header_len..], (cursor - header_len) / @sizeOf(u32), @intCast(original_index));
+            cursor = try std.math.add(usize, cursor, @sizeOf(u32));
+        }
+    }
+    if (cursor != prefix.len) return error.InvalidOrderTable;
+}
+
+fn encodeBlockToFile(
+    io: std.Io,
+    output: std.Io.File,
+    arena: *std.heap.ArenaAllocator,
+    spectra: []const binary_reader.RawSpectrum,
+    options: EncodeOptions,
+    block_index: u32,
+    file_offset: *u64,
+) !void {
+    var block_options = options.block_options;
+    if (block_options.file_version_minor == null) block_options.file_version_minor = writeVersionMinor(options);
+    const encoded = try block.encodeBlockDetailed(arena.allocator(), arena.allocator(), spectra, block_options);
+    maybePrintBlockStats(block_index, encoded.stats, options);
+    try output.writePositionalAll(io, encoded.bytes, file_offset.*);
+    file_offset.* = try addU64(file_offset.*, encoded.bytes.len);
+}
+
+fn encodeLevelToFile(
+    allocator: Allocator,
+    io: std.Io,
+    input: std.Io.File,
+    output: std.Io.File,
+    index: binary_reader.DumpIndex,
+    level: u8,
+    options: EncodeOptions,
+    first_block_index: u32,
+    file_offset: *u64,
+) !u32 {
+    const block_capacity: usize = options.block_size;
+    const block_spectra = try allocator.alloc(binary_reader.RawSpectrum, block_capacity);
+    defer allocator.free(block_spectra);
+
+    var block_arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer block_arena.deinit();
+
+    var block_count: u32 = 0;
+    var used: usize = 0;
+    for (index.entries) |entry| {
+        if (entry.ms_level != level) continue;
+        block_spectra[used] = try binary_reader.readSpectrumAt(block_arena.allocator(), io, input, entry);
+        used += 1;
+        if (used != block_capacity) continue;
+
+        try encodeBlockToFile(io, output, &block_arena, block_spectra[0..used], options, try std.math.add(u32, first_block_index, block_count), file_offset);
+        block_count = try std.math.add(u32, block_count, 1);
+        used = 0;
+        _ = block_arena.reset(.retain_capacity);
+    }
+
+    if (used != 0) {
+        try encodeBlockToFile(io, output, &block_arena, block_spectra[0..used], options, try std.math.add(u32, first_block_index, block_count), file_offset);
+        block_count = try std.math.add(u32, block_count, 1);
+    }
+    return block_count;
+}
+
 pub fn encodeDumpFile(io: std.Io, allocator: Allocator, input_path: []const u8, output_path: []const u8, options: EncodeOptions) !void {
-    const spectra = try binary_reader.readBinaryDump(io, input_path, allocator);
-    defer binary_reader.freeSpectra(allocator, spectra);
+    if (options.block_size == 0) return error.InvalidBlockSize;
+    const t0 = monotonicNs(io);
+    const cwd = std.Io.Dir.cwd();
+    const input = try cwd.openFile(io, input_path, .{});
+    defer input.close(io);
 
-    const encoded = try encodeFileAlloc(io, allocator, spectra, options);
-    defer allocator.free(encoded);
+    const index = try binary_reader.scanFile(allocator, io, input);
+    defer index.deinit(allocator);
+    const block_size: usize = options.block_size;
+    const expected_blocks = try std.math.add(
+        usize,
+        try streamBlockCount(index.ms1_count, block_size),
+        try streamBlockCount(index.ms2_count, block_size),
+    );
+    if (expected_blocks > std.math.maxInt(u32)) return error.TooManyBlocks;
 
-    try writeFile(io, output_path, encoded);
+    const order_len = try globalOrderTableLen(@intCast(index.entries.len));
+    const prefix_len = try std.math.add(usize, header_len, order_len);
+    const prefix = try allocator.alloc(u8, prefix_len);
+    defer allocator.free(prefix);
+
+    var flags: u32 = flag_has_global_order;
+    if (options.block_options.mode == .lossless) flags |= flag_lossless;
+    if (index.ms1_count != 0) flags |= flag_contains_ms1;
+    if (index.ms2_count != 0) flags |= flag_contains_ms2;
+    writeHeaderInto(prefix[0..header_len], .{
+        .magic_bytes = magic,
+        .version_major = version_major,
+        .version_minor = writeVersionMinor(options),
+        .flags = flags,
+        .block_size = options.block_size,
+        .reserved0 = 0,
+        .spectrum_count = @intCast(index.entries.len),
+        .block_count = @intCast(expected_blocks),
+        .total_peaks = index.total_peaks,
+    });
+    try writeOrderPrefix(prefix, index.entries);
+
+    var atomic = try cwd.createFileAtomic(io, output_path, .{ .replace = true });
+    defer atomic.deinit(io);
+    try atomic.file.writePositionalAll(io, prefix, 0);
+    const t1 = monotonicNs(io);
+
+    var file_offset: u64 = prefix.len;
+    const ms1_blocks = try encodeLevelToFile(allocator, io, input, atomic.file, index, 1, options, 0, &file_offset);
+    const t2 = monotonicNs(io);
+    const ms2_blocks = try encodeLevelToFile(allocator, io, input, atomic.file, index, 2, options, ms1_blocks, &file_offset);
+    const t3 = monotonicNs(io);
+    const actual_blocks = try std.math.add(u32, ms1_blocks, ms2_blocks);
+    if (actual_blocks != expected_blocks) return error.BlockCountMismatch;
+    try atomic.replace(io);
+
+    if (options.verbose_timing) {
+        const t4 = monotonicNs(io);
+        const total_ns = t4 - t0;
+        const setup_ns = t1 - t0;
+        const ms1_ns = t2 - t1;
+        const ms2_ns = t3 - t2;
+        const finalize_ns = t4 - t3;
+        std.debug.print(
+            "[encode timing] setup={d:.2}ms  ms1_blocks={d:.2}ms  ms2_blocks={d:.2}ms  finalize={d:.2}ms  total={d:.2}ms\n" ++
+                "[encode timing] setup={d:.1}%  ms1_blocks={d:.1}%  ms2_blocks={d:.1}%  finalize={d:.1}%\n",
+            .{
+                nsToMs(setup_ns),          nsToMs(ms1_ns),          nsToMs(ms2_ns),          nsToMs(finalize_ns),          nsToMs(total_ns),
+                nsPct(setup_ns, total_ns), nsPct(ms1_ns, total_ns), nsPct(ms2_ns, total_ns), nsPct(finalize_ns, total_ns),
+            },
+        );
+    }
+}
+
+fn skipMetadataSection(bytes: []const u8, offset: *usize, compressed: bool, spectrum_count: u16) !void {
+    if (!compressed) {
+        const section_len = try std.math.mul(usize, spectrum_count, @sizeOf(u32));
+        if (bytes.len - offset.* < section_len) return error.UnexpectedEndOfStream;
+        offset.* += section_len;
+        return;
+    }
+    if (bytes.len - offset.* < 13) return error.UnexpectedEndOfStream;
+    const packed_len = readIntLe(u32, bytes[offset.* + 9 .. offset.* + 13]);
+    const section_len = try std.math.add(usize, 13, packed_len);
+    if (bytes.len - offset.* < section_len) return error.UnexpectedEndOfStream;
+    offset.* += section_len;
+}
+
+fn appendBlockPeakCounts(
+    allocator: Allocator,
+    counts: *std.ArrayList(u32),
+    block_bytes: []const u8,
+    block_header: block.BlockHeader,
+) !void {
+    const payload = block_bytes[block.header_len..];
+    var offset: usize = 0;
+    try skipMetadataSection(payload, &offset, (block_header.flags & block.flag_delta_scan_id) != 0, block_header.spectrum_count);
+    try skipMetadataSection(payload, &offset, (block_header.flags & block.flag_delta_rt) != 0, block_header.spectrum_count);
+    const precursor_len = try std.math.mul(usize, block_header.spectrum_count, @sizeOf(f64));
+    if (payload.len - offset < precursor_len) return error.UnexpectedEndOfStream;
+    offset += precursor_len;
+    const count_len = try std.math.mul(usize, block_header.spectrum_count, @sizeOf(u32));
+    if (payload.len - offset < count_len) return error.UnexpectedEndOfStream;
+    try counts.ensureUnusedCapacity(allocator, block_header.spectrum_count);
+    for (0..block_header.spectrum_count) |idx| {
+        counts.appendAssumeCapacity(readIntLe(u32, payload[offset + idx * @sizeOf(u32) ..][0..@sizeOf(u32)]));
+    }
+}
+
+fn readArchiveOrder(
+    allocator: Allocator,
+    io: std.Io,
+    input: std.Io.File,
+    header: FileHeader,
+    order_len: usize,
+) ![]u32 {
+    const order = try allocator.alloc(u32, header.spectrum_count);
+    errdefer allocator.free(order);
+    if ((header.flags & flag_has_global_order) == 0) {
+        for (order, 0..) |*entry, idx| entry.* = @intCast(idx);
+        return order;
+    }
+
+    const raw = try allocator.alloc(u8, order_len);
+    defer allocator.free(raw);
+    try readExactAt(input, io, raw, header_len);
+    const seen = try allocator.alloc(bool, header.spectrum_count);
+    defer allocator.free(seen);
+    @memset(seen, false);
+    for (order, 0..) |*entry, file_index| {
+        const original_index = readIntLe(u32, raw[file_index * @sizeOf(u32) ..][0..@sizeOf(u32)]);
+        if (original_index >= order.len or seen[original_index]) return error.InvalidOrderTable;
+        seen[original_index] = true;
+        entry.* = original_index;
+    }
+    return order;
+}
+
+fn scanArchiveFile(allocator: Allocator, io: std.Io, input: std.Io.File) !ArchiveFileIndex {
+    const file_size = (try input.stat(io)).size;
+    var header_bytes: [header_len]u8 = undefined;
+    try readExactAt(input, io, &header_bytes, 0);
+    const header = try parseHeader(&header_bytes);
+
+    const order_len = if ((header.flags & flag_has_global_order) != 0)
+        try globalOrderTableLen(header.spectrum_count)
+    else
+        0;
+    var offset = try addU64(header_len, order_len);
+    if (offset > file_size) return error.UnexpectedEndOfStream;
+
+    var blocks: std.ArrayList(ArchiveBlock) = .empty;
+    errdefer blocks.deinit(allocator);
+    var peak_counts: std.ArrayList(u32) = .empty;
+    defer peak_counts.deinit(allocator);
+    var scan_arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer scan_arena.deinit();
+
+    for (0..header.block_count) |_| {
+        if (offset > file_size or file_size - offset < block.header_len) return error.UnexpectedEndOfStream;
+        var block_header_bytes: [block.header_len]u8 = undefined;
+        try readExactAt(input, io, &block_header_bytes, offset);
+        const block_header = try block.parseHeader(&block_header_bytes);
+        const total_bytes = try addU64(block.header_len, block_header.payload_bytes);
+        if (total_bytes > file_size - offset) return error.UnexpectedEndOfStream;
+        if (total_bytes > std.math.maxInt(usize)) return error.Overflow;
+
+        const bytes = try scan_arena.allocator().alloc(u8, @intCast(total_bytes));
+        try readExactAt(input, io, bytes, offset);
+        _ = try block.inspectBlockByteBreakdown(bytes);
+        switch (block_header.ms_level) {
+            1, 2 => {},
+            else => return error.UnsupportedMsLevel,
+        }
+        try appendBlockPeakCounts(allocator, &peak_counts, bytes, block_header);
+        try blocks.append(allocator, .{ .offset = offset, .total_bytes = total_bytes });
+        offset = try addU64(offset, total_bytes);
+        _ = scan_arena.reset(.retain_capacity);
+    }
+    if (offset != file_size) return error.TrailingFileData;
+
+    if ((header.flags & flag_has_global_order) == 0 and peak_counts.items.len != header.spectrum_count) {
+        return error.SpectrumCountMismatch;
+    }
+    const order = try readArchiveOrder(allocator, io, input, header, order_len);
+    errdefer allocator.free(order);
+    if (peak_counts.items.len != order.len) return error.SpectrumCountMismatch;
+
+    const record_offsets = try allocator.alloc(u64, order.len);
+    errdefer allocator.free(record_offsets);
+    for (peak_counts.items, 0..) |peak_count, file_index| {
+        record_offsets[order[file_index]] = try binary_reader.recordLen(peak_count);
+    }
+    var output_bytes: u64 = 0;
+    for (record_offsets) |*record_offset| {
+        const record_len = record_offset.*;
+        record_offset.* = output_bytes;
+        output_bytes = try addU64(output_bytes, record_len);
+    }
+    return .{
+        .header = header,
+        .order = order,
+        .blocks = try blocks.toOwnedSlice(allocator),
+        .record_offsets = record_offsets,
+        .output_bytes = output_bytes,
+    };
 }
 
 pub fn decodeToDumpFile(io: std.Io, allocator: Allocator, input_path: []const u8, output_path: []const u8, options: DecodeOptions) !void {
-    const bytes = try readFileAlloc(io, input_path, allocator);
-    defer allocator.free(bytes);
+    const t0 = monotonicNs(io);
+    const cwd = std.Io.Dir.cwd();
+    const input = try cwd.openFile(io, input_path, .{});
+    defer input.close(io);
+    const index = try scanArchiveFile(allocator, io, input);
+    defer index.deinit(allocator);
 
-    const spectra = try decodeFileAlloc(io, allocator, bytes, options);
-    defer binary_reader.freeSpectra(allocator, spectra);
+    var atomic = try cwd.createFileAtomic(io, output_path, .{ .replace = true });
+    defer atomic.deinit(io);
+    try atomic.file.setLength(io, index.output_bytes);
+    const t1 = monotonicNs(io);
 
-    try binary_reader.writeBinaryDump(io, output_path, spectra, allocator);
+    var block_arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer block_arena.deinit();
+    var file_index: usize = 0;
+    for (index.blocks) |entry| {
+        if (entry.total_bytes > std.math.maxInt(usize)) return error.Overflow;
+        const block_bytes = try block_arena.allocator().alloc(u8, @intCast(entry.total_bytes));
+        try readExactAt(input, io, block_bytes, entry.offset);
+        const decoded = try block.decodeBlockWithScratch(block_arena.allocator(), block_arena.allocator(), block_bytes, index.header.version_minor);
+        for (decoded) |spectrum| {
+            if (file_index >= index.order.len) return error.SpectrumCountMismatch;
+            try binary_reader.writeSpectrumAt(block_arena.allocator(), io, atomic.file, spectrum, index.record_offsets[index.order[file_index]]);
+            file_index += 1;
+        }
+        _ = block_arena.reset(.retain_capacity);
+    }
+    if (file_index != index.order.len) return error.SpectrumCountMismatch;
+    const t2 = monotonicNs(io);
+    try atomic.replace(io);
+
+    if (options.verbose_timing) {
+        const t3 = monotonicNs(io);
+        const total_ns = t3 - t0;
+        const setup_ns = t1 - t0;
+        const blocks_ns = t2 - t1;
+        const finalize_ns = t3 - t2;
+        std.debug.print(
+            "[decode timing] setup={d:.2}ms  block_loop={d:.2}ms  reorder={d:.2}ms  total={d:.2}ms\n" ++
+                "[decode timing] setup={d:.1}%  block_loop={d:.1}%  reorder={d:.1}%\n",
+            .{
+                nsToMs(setup_ns),          nsToMs(blocks_ns),          nsToMs(finalize_ns),          nsToMs(total_ns),
+                nsPct(setup_ns, total_ns), nsPct(blocks_ns, total_ns), nsPct(finalize_ns, total_ns),
+            },
+        );
+    }
 }
 
 pub fn inspectFileAlloc(io: std.Io, allocator: Allocator, path: []const u8) !Inspection {

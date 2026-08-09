@@ -1,12 +1,23 @@
+//! Exercises `.mzarc` layout, compatibility, fidelity, and file orchestration.
+
 const std = @import("std");
 const binary_reader = @import("binary_reader");
 const block = @import("block");
 const codec = @import("codec");
 const quantize = @import("quantize");
 
-
 fn decodeForOptions(encoded: []const u8, options: block.EncodeOptions) ![]binary_reader.RawSpectrum {
     return block.decodeBlock(std.testing.allocator, encoded, block.resolvedFileVersionMinor(options));
+}
+
+fn tmpPath(allocator: std.mem.Allocator, tmp: *const std.testing.TmpDir, name: []const u8) ![]u8 {
+    return std.fs.path.join(allocator, &.{ ".zig-cache", "tmp", tmp.sub_path[0..], name });
+}
+
+fn expectFileContents(path: []const u8, expected: []const u8) !void {
+    const actual = try codec.readFileAlloc(std.testing.io, path, std.testing.allocator);
+    defer std.testing.allocator.free(actual);
+    try std.testing.expectEqualSlices(u8, expected, actual);
 }
 
 /// Assert every decoded m/z is within 0.001 ppm of the original.
@@ -588,6 +599,139 @@ test "codec encode rejects block_size of zero" {
     };
 
     try std.testing.expectError(error.InvalidBlockSize, codec.encodeFileAlloc(std.testing.io, std.testing.allocator, &input, .{ .block_size = 0 }));
+}
+
+test "[integration] - [codec file path]: matches allocating path across supported minors" {
+    var corpus = try makeSyntheticCorpus(std.testing.allocator, 24);
+    defer corpus.deinit();
+    const dump = try binary_reader.writeDumpAlloc(std.testing.allocator, corpus.spectra);
+    defer std.testing.allocator.free(dump);
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    try tmp.dir.writeFile(std.testing.io, .{ .sub_path = "input.bin", .data = dump });
+    const input_path = try tmpPath(std.testing.allocator, &tmp, "input.bin");
+    defer std.testing.allocator.free(input_path);
+    const archive_path = try tmpPath(std.testing.allocator, &tmp, "output.mzarc");
+    defer std.testing.allocator.free(archive_path);
+    const dump_path = try tmpPath(std.testing.allocator, &tmp, "decoded.bin");
+    defer std.testing.allocator.free(dump_path);
+
+    inline for (0..codec.version_minor + 1) |minor| {
+        const options: codec.EncodeOptions = .{
+            .block_options = .{ .mode = .lossless, .file_version_minor = minor },
+            .block_size = 3,
+        };
+        const expected_archive = try codec.encodeFileAlloc(std.testing.io, std.testing.allocator, corpus.spectra, options);
+        defer std.testing.allocator.free(expected_archive);
+        try codec.encodeDumpFile(std.testing.io, std.testing.allocator, input_path, archive_path, options);
+        const actual_archive = try codec.readFileAlloc(std.testing.io, archive_path, std.testing.allocator);
+        defer std.testing.allocator.free(actual_archive);
+        try std.testing.expectEqualSlices(u8, expected_archive, actual_archive);
+
+        const expected_spectra = try codec.decodeFileAlloc(std.testing.io, std.testing.allocator, expected_archive, .{});
+        defer binary_reader.freeSpectra(std.testing.allocator, expected_spectra);
+        const expected_dump = try binary_reader.writeDumpAlloc(std.testing.allocator, expected_spectra);
+        defer std.testing.allocator.free(expected_dump);
+        try codec.decodeToDumpFile(std.testing.io, std.testing.allocator, archive_path, dump_path, .{});
+        const actual_dump = try codec.readFileAlloc(std.testing.io, dump_path, std.testing.allocator);
+        defer std.testing.allocator.free(actual_dump);
+        try std.testing.expectEqualSlices(u8, expected_dump, actual_dump);
+    }
+}
+
+test "[integration] - [.mzarc reader]: accepts archives without a global order table" {
+    var corpus = try makeSyntheticCorpus(std.testing.allocator, 24);
+    defer corpus.deinit();
+    const encoded = try codec.encodeFileAlloc(std.testing.io, std.testing.allocator, corpus.spectra, .{
+        .block_options = .{ .mode = .lossless },
+        .block_size = 3,
+    });
+    defer std.testing.allocator.free(encoded);
+
+    const order_len = corpus.spectra.len * @sizeOf(u32);
+    const without_order = try std.testing.allocator.alloc(u8, encoded.len - order_len);
+    defer std.testing.allocator.free(without_order);
+    @memcpy(without_order[0..codec.header_len], encoded[0..codec.header_len]);
+    const flags = std.mem.readInt(u32, without_order[8..12], .little) & ~codec.flag_has_global_order;
+    std.mem.writeInt(u32, without_order[8..12], flags, .little);
+    @memcpy(without_order[codec.header_len..], encoded[codec.header_len + order_len ..]);
+
+    const expected_spectra = try codec.decodeFileAlloc(std.testing.io, std.testing.allocator, without_order, .{});
+    defer binary_reader.freeSpectra(std.testing.allocator, expected_spectra);
+    const expected_dump = try binary_reader.writeDumpAlloc(std.testing.allocator, expected_spectra);
+    defer std.testing.allocator.free(expected_dump);
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    try tmp.dir.writeFile(std.testing.io, .{ .sub_path = "input.mzarc", .data = without_order });
+    const input_path = try tmpPath(std.testing.allocator, &tmp, "input.mzarc");
+    defer std.testing.allocator.free(input_path);
+    const output_path = try tmpPath(std.testing.allocator, &tmp, "output.bin");
+    defer std.testing.allocator.free(output_path);
+    try codec.decodeToDumpFile(std.testing.io, std.testing.allocator, input_path, output_path, .{});
+    const actual_dump = try codec.readFileAlloc(std.testing.io, output_path, std.testing.allocator);
+    defer std.testing.allocator.free(actual_dump);
+    try std.testing.expectEqualSlices(u8, expected_dump, actual_dump);
+}
+
+test "[integration] - [codec file path]: rejects hostile input and preserves destinations" {
+    var corpus = try makeSyntheticCorpus(std.testing.allocator, 8);
+    defer corpus.deinit();
+    const dump = try binary_reader.writeDumpAlloc(std.testing.allocator, corpus.spectra);
+    defer std.testing.allocator.free(dump);
+    const encoded = try codec.encodeFileAlloc(std.testing.io, std.testing.allocator, corpus.spectra, .{
+        .block_options = .{ .mode = .lossless },
+        .block_size = 3,
+    });
+    defer std.testing.allocator.free(encoded);
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const input_path = try tmpPath(std.testing.allocator, &tmp, "input.bin");
+    defer std.testing.allocator.free(input_path);
+    const output_path = try tmpPath(std.testing.allocator, &tmp, "output.bin");
+    defer std.testing.allocator.free(output_path);
+    const sentinel = "existing destination";
+
+    try tmp.dir.writeFile(std.testing.io, .{ .sub_path = "input.bin", .data = dump[0 .. dump.len - 1] });
+    try tmp.dir.writeFile(std.testing.io, .{ .sub_path = "output.bin", .data = sentinel });
+    try std.testing.expectError(error.UnexpectedEndOfStream, codec.encodeDumpFile(std.testing.io, std.testing.allocator, input_path, output_path, .{}));
+    try expectFileContents(output_path, sentinel);
+
+    const corrupt = try std.testing.allocator.dupe(u8, encoded);
+    defer std.testing.allocator.free(corrupt);
+    corrupt[corrupt.len - 1] ^= 1;
+    try tmp.dir.writeFile(std.testing.io, .{ .sub_path = "input.bin", .data = corrupt });
+    try std.testing.expectError(error.ChecksumMismatch, codec.decodeToDumpFile(std.testing.io, std.testing.allocator, input_path, output_path, .{}));
+    try expectFileContents(output_path, sentinel);
+
+    const invalid_order = try std.testing.allocator.dupe(u8, encoded);
+    defer std.testing.allocator.free(invalid_order);
+    @memcpy(invalid_order[codec.header_len + @sizeOf(u32) ..][0..@sizeOf(u32)], invalid_order[codec.header_len..][0..@sizeOf(u32)]);
+    try tmp.dir.writeFile(std.testing.io, .{ .sub_path = "input.bin", .data = invalid_order });
+    try std.testing.expectError(error.InvalidOrderTable, codec.decodeToDumpFile(std.testing.io, std.testing.allocator, input_path, output_path, .{}));
+
+    const bad_block = try std.testing.allocator.dupe(u8, encoded);
+    defer std.testing.allocator.free(bad_block);
+    bad_block[codec.header_len + corpus.spectra.len * @sizeOf(u32) + 2] = 3;
+    try tmp.dir.writeFile(std.testing.io, .{ .sub_path = "input.bin", .data = bad_block });
+    try std.testing.expectError(error.UnsupportedMsLevel, codec.decodeToDumpFile(std.testing.io, std.testing.allocator, input_path, output_path, .{}));
+
+    const with_trailing = try std.testing.allocator.alloc(u8, encoded.len + 1);
+    defer std.testing.allocator.free(with_trailing);
+    @memcpy(with_trailing[0..encoded.len], encoded);
+    with_trailing[encoded.len] = 0;
+    try tmp.dir.writeFile(std.testing.io, .{ .sub_path = "input.bin", .data = with_trailing });
+    try std.testing.expectError(error.TrailingFileData, codec.decodeToDumpFile(std.testing.io, std.testing.allocator, input_path, output_path, .{}));
+
+    var hostile_header: [codec.header_len]u8 = undefined;
+    @memcpy(&hostile_header, encoded[0..codec.header_len]);
+    std.mem.writeInt(u32, hostile_header[16..20], std.math.maxInt(u32), .little);
+    std.mem.writeInt(u32, hostile_header[20..24], 0, .little);
+    try tmp.dir.writeFile(std.testing.io, .{ .sub_path = "input.bin", .data = &hostile_header });
+    try std.testing.expectError(error.UnexpectedEndOfStream, codec.decodeToDumpFile(std.testing.io, std.testing.allocator, input_path, output_path, .{}));
+    try expectFileContents(output_path, sentinel);
 }
 
 test "empirical error bounds: lossless m/z error ≤ 0.5 / scale_factor" {

@@ -19,6 +19,26 @@ const record_header_len = 28;
 const pad_after_ms_level = [_]u8{ 0, 0, 0 };
 const pad_after_peak_count = [_]u8{ 0, 0, 0, 0 };
 
+pub const DumpEntry = struct {
+    payload_offset: u64,
+    precursor_bits: u64,
+    scan_id: u32,
+    rt_bits: u32,
+    peak_count: u32,
+    ms_level: u8,
+};
+
+pub const DumpIndex = struct {
+    entries: []DumpEntry,
+    total_peaks: u64,
+    ms1_count: usize,
+    ms2_count: usize,
+
+    pub fn deinit(self: DumpIndex, allocator: Allocator) void {
+        allocator.free(self.entries);
+    }
+};
+
 pub fn freeSpectra(allocator: Allocator, spectra: []RawSpectrum) void {
     for (spectra) |spectrum| {
         allocator.free(spectrum.mz);
@@ -114,6 +134,176 @@ pub fn readBinaryDump(io: std.Io, path: []const u8, allocator: Allocator) ![]Raw
     defer file_arena.deinit();
     const bytes = try std.Io.Dir.cwd().readFileAlloc(io, path, file_arena.allocator(), .limited(std.math.maxInt(usize)));
     return parseDump(bytes, allocator);
+}
+
+fn checkedAddU64(a: u64, b: u64) !u64 {
+    return std.math.add(u64, a, b);
+}
+
+fn checkedMulU64(a: u64, b: u64) !u64 {
+    return std.math.mul(u64, a, b);
+}
+
+fn readExactAt(file: std.Io.File, io: std.Io, bytes: []u8, offset: u64) !void {
+    if (try file.readPositionalAll(io, bytes, offset) != bytes.len) return error.UnexpectedEndOfStream;
+}
+
+/// Scan Dump V1 structure without retaining peak arrays. Caller owns `entries`.
+pub fn scanFile(allocator: Allocator, io: std.Io, file: std.Io.File) !DumpIndex {
+    const file_size = (try file.stat(io)).size;
+    var entries: std.ArrayList(DumpEntry) = .empty;
+    errdefer entries.deinit(allocator);
+
+    var total_peaks: u64 = 0;
+    var ms1_count: usize = 0;
+    var ms2_count: usize = 0;
+    var has_unsupported_ms_level = false;
+    var offset: u64 = 0;
+    while (offset < file_size) {
+        if (file_size - offset < record_header_len) return error.UnexpectedEndOfStream;
+
+        var header: [record_header_len]u8 = undefined;
+        try readExactAt(file, io, &header, offset);
+        const peak_count = readIntLe(u32, header[20..24]);
+        const payload_bytes = try checkedMulU64(peak_count, @sizeOf(f64) + @sizeOf(f32));
+        const payload_offset = try checkedAddU64(offset, record_header_len);
+        const next_offset = try checkedAddU64(payload_offset, payload_bytes);
+        if (next_offset > file_size) return error.UnexpectedEndOfStream;
+
+        if (entries.items.len == std.math.maxInt(u32)) return error.TooManySpectra;
+        const ms_level = header[8];
+        switch (ms_level) {
+            1 => ms1_count += 1,
+            2 => ms2_count += 1,
+            else => has_unsupported_ms_level = true,
+        }
+        total_peaks = try checkedAddU64(total_peaks, peak_count);
+        try entries.append(allocator, .{
+            .payload_offset = payload_offset,
+            .precursor_bits = readIntLe(u64, header[12..20]),
+            .scan_id = readIntLe(u32, header[0..4]),
+            .rt_bits = readIntLe(u32, header[4..8]),
+            .peak_count = peak_count,
+            .ms_level = ms_level,
+        });
+        offset = next_offset;
+    }
+    if (has_unsupported_ms_level) return error.UnsupportedMsLevel;
+
+    return .{
+        .entries = try entries.toOwnedSlice(allocator),
+        .total_peaks = total_peaks,
+        .ms1_count = ms1_count,
+        .ms2_count = ms2_count,
+    };
+}
+
+fn readFloatSliceAt(
+    scratch: Allocator,
+    comptime T: type,
+    io: std.Io,
+    file: std.Io.File,
+    values: []T,
+    offset: u64,
+) !void {
+    const byte_len = try std.math.mul(usize, values.len, @sizeOf(T));
+    if (builtin.cpu.arch.endian() == .little) {
+        try readExactAt(file, io, std.mem.sliceAsBytes(values), offset);
+        return;
+    }
+
+    const bytes = try scratch.alloc(u8, byte_len);
+    try readExactAt(file, io, bytes, offset);
+    readFloatsLe(T, values, bytes);
+}
+
+/// Read one indexed spectrum. `scratch` must be an arena reset after the active block.
+pub fn readSpectrumAt(scratch: Allocator, io: std.Io, file: std.Io.File, entry: DumpEntry) !RawSpectrum {
+    const mz = try scratch.alloc(f64, entry.peak_count);
+    const intensity = try scratch.alloc(f32, entry.peak_count);
+    try readFloatSliceAt(scratch, f64, io, file, mz, entry.payload_offset);
+    const intensity_offset = try checkedAddU64(entry.payload_offset, try checkedMulU64(entry.peak_count, @sizeOf(f64)));
+    try readFloatSliceAt(scratch, f32, io, file, intensity, intensity_offset);
+    return .{
+        .scan_id = entry.scan_id,
+        .rt_seconds = @bitCast(entry.rt_bits),
+        .ms_level = entry.ms_level,
+        .precursor_mz = @bitCast(entry.precursor_bits),
+        .mz = mz,
+        .intensity = intensity,
+    };
+}
+
+/// Return the serialized Dump V1 length for one spectrum.
+pub fn recordLen(peak_count: u32) !u64 {
+    return checkedAddU64(record_header_len, try checkedMulU64(peak_count, @sizeOf(f64) + @sizeOf(f32)));
+}
+
+fn floatBytesLe(scratch: Allocator, comptime T: type, values: []const T) ![]const u8 {
+    if (builtin.cpu.arch.endian() == .little) return std.mem.sliceAsBytes(values);
+
+    const bytes = try scratch.alloc(u8, try std.math.mul(usize, values.len, @sizeOf(T)));
+    const Int = std.meta.Int(.unsigned, @bitSizeOf(T));
+    for (values, 0..) |value, idx| {
+        const start = idx * @sizeOf(T);
+        std.mem.writeInt(Int, bytes[start..][0..@sizeOf(T)], @bitCast(value), .little);
+    }
+    return bytes;
+}
+
+fn writeVectorsAll(file: std.Io.File, io: std.Io, vectors: *const [3][]const u8, offset: u64) !void {
+    var vector_index: usize = 0;
+    var vector_offset: usize = 0;
+    var file_offset = offset;
+    while (vector_index < vectors.len) {
+        while (vector_index < vectors.len and vector_offset == vectors[vector_index].len) {
+            vector_index += 1;
+            vector_offset = 0;
+        }
+        if (vector_index == vectors.len) break;
+
+        var active: [3][]const u8 = undefined;
+        var active_len: usize = 0;
+        active[active_len] = vectors[vector_index][vector_offset..];
+        active_len += 1;
+        for (vectors[vector_index + 1 ..]) |vector| {
+            if (vector.len == 0) continue;
+            active[active_len] = vector;
+            active_len += 1;
+        }
+
+        var remaining = try file.writePositional(io, active[0..active_len], file_offset);
+        if (remaining == 0) return error.WriteZero;
+        file_offset = try checkedAddU64(file_offset, remaining);
+        while (remaining != 0) {
+            const available = vectors[vector_index].len - vector_offset;
+            if (remaining < available) {
+                vector_offset += remaining;
+                remaining = 0;
+            } else {
+                remaining -= available;
+                vector_index += 1;
+                vector_offset = 0;
+                while (vector_index < vectors.len and vectors[vector_index].len == 0) vector_index += 1;
+            }
+        }
+    }
+}
+
+/// Write one spectrum at its final Dump V1 offset. `scratch` is block-scoped.
+pub fn writeSpectrumAt(scratch: Allocator, io: std.Io, file: std.Io.File, spectrum: RawSpectrum, offset: u64) !void {
+    if (spectrum.mz.len != spectrum.intensity.len) return error.MismatchedPeakArrays;
+    if (spectrum.mz.len > std.math.maxInt(u32)) return error.Overflow;
+
+    var header: [record_header_len]u8 = @splat(0);
+    std.mem.writeInt(u32, header[0..4], spectrum.scan_id, .little);
+    std.mem.writeInt(u32, header[4..8], @bitCast(spectrum.rt_seconds), .little);
+    header[8] = spectrum.ms_level;
+    std.mem.writeInt(u64, header[12..20], @bitCast(spectrum.precursor_mz), .little);
+    std.mem.writeInt(u32, header[20..24], @intCast(spectrum.mz.len), .little);
+    const mz_bytes = try floatBytesLe(scratch, f64, spectrum.mz);
+    const intensity_bytes = try floatBytesLe(scratch, f32, spectrum.intensity);
+    try writeVectorsAll(file, io, &.{ &header, mz_bytes, intensity_bytes }, offset);
 }
 
 pub fn writeBinaryDump(io: std.Io, path: []const u8, spectra: []const RawSpectrum, allocator: Allocator) !void {
