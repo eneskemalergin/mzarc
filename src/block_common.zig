@@ -1,5 +1,5 @@
 //! Shared block types, flag bits, and helpers for encode/decode.
-//! Flag bits 0-7 are fully assigned; new layouts need a version bump or extended header.
+//! Bit 1 is reserved in format 1.0 and must be zero.
 
 const std = @import("std");
 const binary_reader = @import("binary_reader");
@@ -20,18 +20,7 @@ pub const EncodeOptions = struct {
     mz_rans_min_gain_percent: u8 = 5,
     intensity_rans_min_gain_percent: u8 = 12,
     verbose_blocks: bool = false,
-    /// File `version_minor` for this block's m/z layout. `null` means write minor 3 (first-peak-split).
-    file_version_minor: ?u16 = null,
 };
-
-pub fn resolvedFileVersionMinor(options: EncodeOptions) u16 {
-    if (options.file_version_minor) |v| return v;
-    return 3;
-}
-
-pub fn usesMzFirstPeakSplit(file_version_minor: u16) bool {
-    return file_version_minor >= 3;
-}
 
 pub const IntensityEncodingMode = enum {
     raw_plain,
@@ -45,7 +34,6 @@ pub const BlockEncodeStats = struct {
     ms_level: u8,
     spectrum_count: usize,
     total_peaks: usize,
-    mz_per_spectrum_widths: bool,
     mz_raw_bytes: usize,
     mz_stored_bytes: usize,
     mz_rans_used: bool,
@@ -117,7 +105,7 @@ pub const BlockByteBreakdown = struct {
 };
 
 pub const flag_lossless_intensity_raw: u8 = 0b0000_0001;
-pub const flag_mz_per_spectrum_bit_widths: u8 = 0b0000_0010;
+pub const flag_reserved_1: u8 = 0b0000_0010;
 pub const flag_split_exponent: u8 = 0b0000_0100;
 pub const flag_lossless_mz_f32: u8 = 0b0000_1000;
 pub const flag_delta_scan_id: u8 = 0b0001_0000;
@@ -190,16 +178,6 @@ pub fn allMzExactlyF32(spectra: []const binary_reader.RawSpectrum) bool {
         }
     }
     return true;
-}
-
-pub fn perSpectrumPayloadLen(bit_widths: []const u8, peak_counts: []const u32) !usize {
-    if (bit_widths.len != peak_counts.len) return error.InvalidPeakCount;
-
-    var total: usize = 0;
-    for (peak_counts, 0..) |peak_count, idx| {
-        total = try std.math.add(usize, total, try packedByteLen(bit_widths[idx], peak_count));
-    }
-    return total;
 }
 
 pub fn shouldUseRans(encoded_len: usize, raw_len: usize, min_gain_percent: u8) bool {

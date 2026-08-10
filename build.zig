@@ -30,6 +30,11 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
+    const crc32_module = b.createModule(.{
+        .root_source_file = b.path("src/crc32.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
     const block_common_module = b.createModule(.{
         .root_source_file = b.path("src/block_common.zig"),
         .target = target,
@@ -48,6 +53,7 @@ pub fn build(b: *std.Build) void {
             .{ .name = "binary_reader", .module = binary_reader_module },
             .{ .name = "quantize", .module = quantize_module },
             .{ .name = "bitpack", .module = bitpack_module },
+            .{ .name = "crc32", .module = crc32_module },
         },
     });
     const block_decode_module = b.createModule(.{
@@ -60,6 +66,7 @@ pub fn build(b: *std.Build) void {
             .{ .name = "quantize", .module = quantize_module },
             .{ .name = "bitpack", .module = bitpack_module },
             .{ .name = "rans", .module = rans_module },
+            .{ .name = "crc32", .module = crc32_module },
         },
     });
     const block_module = b.createModule(.{
@@ -112,6 +119,8 @@ pub fn build(b: *std.Build) void {
         "test/test_quantize.zig",
         "test/test_bitpack.zig",
         "test/test_rans.zig",
+        "test/test_crc32.zig",
+        "src/crc32.zig",
         "test/test_block.zig",
         "test/test_codec.zig",
     };
@@ -127,6 +136,7 @@ pub fn build(b: *std.Build) void {
                     .{ .name = "quantize", .module = quantize_module },
                     .{ .name = "bitpack", .module = bitpack_module },
                     .{ .name = "rans", .module = rans_module },
+                    .{ .name = "crc32", .module = crc32_module },
                     .{ .name = "block", .module = block_module },
                     .{ .name = "codec", .module = codec_module },
                 },

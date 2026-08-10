@@ -1,5 +1,5 @@
 //! Order-0 rANS for byte streams (12-bit frequency precision); encode/decode bit-exact.
-//! Wire: 256×u16 LE freqs, u32 LE state, then renorm bytes (decode reads low-address-first).
+//! Wire: 256 x u16 LE freqs, u32 LE state, then renorm bytes (decode reads low-address-first).
 //! Fail closed on truncation, trailing bytes, bad freqs, and invalid state.
 //! Caller owns `*Alloc` buffers; `decodeInto` writes into caller `out`.
 
@@ -18,8 +18,10 @@ const precision: usize = 1 << precision_bits;
 const table_entry_count = 256;
 const freq_table_bytes = table_entry_count * @sizeOf(u16);
 const state_bytes = @sizeOf(u32);
+const encoded_header_bytes = freq_table_bytes + state_bytes;
 const rans_lower_bound: u32 = 1 << 23;
 const decode_table_mask: u32 = precision - 1;
+const reciprocal_scale: u64 = 1 << 32;
 
 pub fn analyze(symbols: []const u8) Analysis {
     return buildAnalysis(countSymbols(symbols), symbols.len);
@@ -39,7 +41,7 @@ pub fn decodeInto(encoded: []const u8, out: []u8) !void {
         if (encoded.len != 0) return error.TrailingData;
         return;
     }
-    if (encoded.len < freq_table_bytes + state_bytes) return error.UnexpectedEndOfStream;
+    if (encoded.len < encoded_header_bytes) return error.UnexpectedEndOfStream;
 
     var freqs = [_]u16{0} ** table_entry_count;
     var offset: usize = 0;
@@ -87,12 +89,6 @@ pub fn decodeAlloc(allocator: Allocator, encoded: []const u8, expected_len: usiz
     errdefer allocator.free(decoded);
     try decodeInto(encoded, decoded);
     return decoded;
-}
-
-fn appendIntLe(list: *std.ArrayList(u8), allocator: Allocator, comptime T: type, value: T) !void {
-    var buffer: [@sizeOf(T)]u8 = undefined;
-    std.mem.writeInt(T, &buffer, value, .little);
-    try list.appendSlice(allocator, &buffer);
 }
 
 fn readIntLe(comptime T: type, bytes: []const u8) T {
@@ -221,14 +217,32 @@ fn validateFreqTable(freqs: [table_entry_count]u16, expected_len: usize) !void {
     if (total != precision) return error.InvalidFrequencyTable;
 }
 
+fn reciprocalFor(freq: u16) u64 {
+    return (reciprocal_scale + freq - 1) / freq;
+}
+
+fn exactQuotient(state: u32, freq: u16, reciprocal: u64) u64 {
+    const state_wide: u64 = state;
+    const freq_wide: u64 = freq;
+    // The ceil reciprocal can overestimate the u32 quotient by at most one.
+    const estimate = (state_wide * reciprocal) >> 32;
+    return estimate - @intFromBool(estimate * freq_wide > state_wide);
+}
+
 fn encodeFromCountsAlloc(allocator: Allocator, symbols: []const u8, counts: [table_entry_count]u32) ![]u8 {
     if (symbols.len == 0) return allocator.alloc(u8, 0);
 
     const freqs = normalizeCounts(counts);
     const starts = buildStarts(freqs);
+    var reciprocals = [_]u64{0} ** table_entry_count;
+    for (freqs, 0..) |freq, idx| {
+        if (freq != 0) reciprocals[idx] = reciprocalFor(freq);
+    }
+    const initial_capacity = std.math.add(usize, encoded_header_bytes, symbols.len) catch return error.OutOfMemory;
 
-    var renorm_bytes: std.ArrayList(u8) = .empty;
-    defer renorm_bytes.deinit(allocator);
+    var encoded = try std.ArrayList(u8).initCapacity(allocator, initial_capacity);
+    errdefer encoded.deinit(allocator);
+    _ = encoded.addManyAsSliceAssumeCapacity(encoded_header_bytes);
 
     var state: u32 = rans_lower_bound;
     var index = symbols.len;
@@ -238,28 +252,24 @@ fn encodeFromCountsAlloc(allocator: Allocator, symbols: []const u8, counts: [tab
         const freq = freqs[symbol];
         if (freq == 0) return error.InvalidFrequencyTable;
 
-        const x_max = @as(u32, @intCast((((@as(u64, rans_lower_bound) >> precision_bits) << 8) * freq)));
+        const x_max: u32 = @intCast((((@as(u64, rans_lower_bound) >> precision_bits) << 8) * freq));
         while (state >= x_max) {
-            try renorm_bytes.append(allocator, @truncate(state & 0xff));
+            try encoded.append(allocator, @truncate(state & 0xff));
             state >>= 8;
         }
 
-        const quotient = @as(u64, state) / freq;
-        const remainder = @as(u64, state) % freq;
+        const quotient = exactQuotient(state, freq, reciprocals[symbol]);
+        const remainder = @as(u64, state) - quotient * freq;
         state = @intCast((quotient << precision_bits) + remainder + starts[symbol]);
     }
 
-    var encoded: std.ArrayList(u8) = .empty;
-    errdefer encoded.deinit(allocator);
-
-    for (freqs) |freq| try appendIntLe(&encoded, allocator, u16, freq);
-    try appendIntLe(&encoded, allocator, u32, state);
-
-    var renorm_idx = renorm_bytes.items.len;
-    while (renorm_idx > 0) {
-        renorm_idx -= 1;
-        try encoded.append(allocator, renorm_bytes.items[renorm_idx]);
+    std.mem.reverse(u8, encoded.items[encoded_header_bytes..]);
+    var offset: usize = 0;
+    for (freqs) |freq| {
+        std.mem.writeInt(u16, encoded.items[offset..][0..@sizeOf(u16)], freq, .little);
+        offset += @sizeOf(u16);
     }
+    std.mem.writeInt(u32, encoded.items[offset..][0..state_bytes], state, .little);
 
     return encoded.toOwnedSlice(allocator);
 }

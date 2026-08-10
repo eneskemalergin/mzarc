@@ -24,7 +24,7 @@ fn nsPct(part: u64, total: u64) f64 {
 pub const magic = "MZAR".*;
 pub const header_len = 32;
 pub const version_major: u16 = 1;
-pub const version_minor: u16 = 3;
+pub const version_minor: u16 = 0;
 
 pub const flag_lossless: u32 = 0b0000_0001;
 pub const flag_contains_ms1: u32 = 0b0000_0010;
@@ -75,10 +75,6 @@ fn intensityModeLabel(mode: block.IntensityEncodingMode) []const u8 {
     };
 }
 
-fn mzLayoutLabel(stats: block.BlockEncodeStats) []const u8 {
-    return if (stats.mz_per_spectrum_widths) "per-spectrum" else "block";
-}
-
 fn maybePrintBlockStats(block_index: u32, stats: block.BlockEncodeStats, options: EncodeOptions) void {
     if (!options.block_options.verbose_blocks) return;
     std.debug.print(
@@ -88,7 +84,7 @@ fn maybePrintBlockStats(block_index: u32, stats: block.BlockEncodeStats, options
             stats.ms_level,
             stats.total_peaks,
             stats.spectrum_count,
-            mzLayoutLabel(stats),
+            "first-split",
             if (stats.mz_rans_used) "yes" else "no",
             stats.mz_raw_bytes,
             stats.mz_stored_bytes,
@@ -181,7 +177,7 @@ fn parseHeader(bytes: []const u8) !FileHeader {
     };
 
     if (!std.mem.eql(u8, &parsed.magic_bytes, &magic)) return error.InvalidMagic;
-    if (parsed.version_major != version_major or parsed.version_minor > version_minor) {
+    if (parsed.version_major != version_major or parsed.version_minor != version_minor) {
         return error.UnsupportedVersion;
     }
 
@@ -252,11 +248,6 @@ fn totalPeaks(spectra: []const binary_reader.RawSpectrum) !u64 {
     return total;
 }
 
-fn writeVersionMinor(options: EncodeOptions) u16 {
-    if (options.block_options.file_version_minor) |v| return v;
-    return version_minor;
-}
-
 fn flushBlock(
     file_bytes: *std.ArrayList(u8),
     allocator: Allocator,
@@ -265,11 +256,7 @@ fn flushBlock(
     options: EncodeOptions,
     block_count: *u32,
 ) !void {
-    var block_options = options.block_options;
-    if (block_options.file_version_minor == null) {
-        block_options.file_version_minor = writeVersionMinor(options);
-    }
-    const encoded = try block.encodeBlockDetailed(allocator, scratch_arena.allocator(), spectra, block_options);
+    const encoded = try block.encodeBlockDetailed(allocator, scratch_arena.allocator(), spectra, options.block_options);
     defer encoded.deinit(allocator);
     _ = scratch_arena.reset(.retain_capacity);
     maybePrintBlockStats(block_count.*, encoded.stats, options);
@@ -365,7 +352,7 @@ pub fn encodeFileAlloc(io: std.Io, allocator: Allocator, spectra: []const binary
     const header: FileHeader = .{
         .magic_bytes = magic,
         .version_major = version_major,
-        .version_minor = writeVersionMinor(options),
+        .version_minor = version_minor,
         .flags = flags,
         .block_size = options.block_size,
         .reserved0 = 0,
@@ -491,7 +478,6 @@ pub fn decodeFileAlloc(io: std.Io, allocator: Allocator, bytes: []const u8, opti
             allocator,
             decode_scratch_arena.allocator(),
             bytes[block_info.offset .. block_info.offset + block_info.total_bytes],
-            inspection.header.version_minor,
         );
         _ = decode_scratch_arena.reset(.retain_capacity);
 
@@ -618,9 +604,7 @@ fn encodeBlockToFile(
     block_index: u32,
     file_offset: *u64,
 ) !void {
-    var block_options = options.block_options;
-    if (block_options.file_version_minor == null) block_options.file_version_minor = writeVersionMinor(options);
-    const encoded = try block.encodeBlockDetailed(arena.allocator(), arena.allocator(), spectra, block_options);
+    const encoded = try block.encodeBlockDetailed(arena.allocator(), arena.allocator(), spectra, options.block_options);
     maybePrintBlockStats(block_index, encoded.stats, options);
     try output.writePositionalAll(io, encoded.bytes, file_offset.*);
     file_offset.* = try addU64(file_offset.*, encoded.bytes.len);
@@ -694,7 +678,7 @@ pub fn encodeDumpFile(io: std.Io, allocator: Allocator, input_path: []const u8, 
     writeHeaderInto(prefix[0..header_len], .{
         .magic_bytes = magic,
         .version_major = version_major,
-        .version_minor = writeVersionMinor(options),
+        .version_minor = version_minor,
         .flags = flags,
         .block_size = options.block_size,
         .reserved0 = 0,
@@ -890,7 +874,7 @@ pub fn decodeToDumpFile(io: std.Io, allocator: Allocator, input_path: []const u8
         if (entry.total_bytes > std.math.maxInt(usize)) return error.Overflow;
         const block_bytes = try block_arena.allocator().alloc(u8, @intCast(entry.total_bytes));
         try readExactAt(input, io, block_bytes, entry.offset);
-        const decoded = try block.decodeBlockWithScratch(block_arena.allocator(), block_arena.allocator(), block_bytes, index.header.version_minor);
+        const decoded = try block.decodeBlockWithScratch(block_arena.allocator(), block_arena.allocator(), block_bytes);
         for (decoded) |spectrum| {
             if (file_index >= index.order.len) return error.SpectrumCountMismatch;
             try binary_reader.writeSpectrumAt(block_arena.allocator(), io, atomic.file, spectrum, index.record_offsets[index.order[file_index]]);

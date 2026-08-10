@@ -1,6 +1,15 @@
 const std = @import("std");
 const rans = @import("rans");
 
+fn checkAllocationFailures(allocator: std.mem.Allocator, values: []const u8) !void {
+    const encoded = try rans.encodeAlloc(allocator, values);
+    defer allocator.free(encoded);
+
+    const decoded = try rans.decodeAlloc(allocator, encoded, values.len);
+    defer allocator.free(decoded);
+    try std.testing.expectEqualSlices(u8, values, decoded);
+}
+
 test "rans round-trips uniform byte distribution" {
     var values: [4096]u8 = undefined;
     for (0..values.len) |idx| values[idx] = @truncate(idx & 0xff);
@@ -100,4 +109,15 @@ test "rans decodeInto matches decodeAlloc" {
     try rans.decodeInto(encoded, decoded_into[0..]);
 
     try std.testing.expectEqualSlices(u8, decoded_alloc, decoded_into[0..]);
+}
+
+test "[failure] - [rANS allocation]: cleans up every induced encode and decode failure" {
+    var values: [8192]u8 = undefined;
+    for (&values, 0..) |*value, idx| value.* = if (idx % 17 == 0) @truncate(idx) else 9;
+
+    try std.testing.checkAllAllocationFailures(
+        std.testing.allocator,
+        checkAllocationFailures,
+        .{values[0..]},
+    );
 }

@@ -565,7 +565,6 @@ fn collectRansSections(
     allocator: std.mem.Allocator,
     block_bytes: []const u8,
     header: block.BlockHeader,
-    file_version_minor: u16,
     mz_sections: *std.ArrayList(RansSection),
     exponent_sections: *std.ArrayList(RansSection),
 ) !void {
@@ -610,48 +609,25 @@ fn collectRansSections(
     const mz_payload_len = readIntLe(u32, payload[offset .. offset + 4]);
     offset += 4;
 
-    if (block.usesMzFirstPeakSplit(file_version_minor)) {
-        if ((header.flags & block.flag_mz_per_spectrum_bit_widths) != 0) return error.InvalidMzPayload;
-        try requireBytes(payload, offset, mz_payload_len);
-        if ((header.flags & block.flag_rans_mz) != 0) {
-            try requireBytes(payload, offset, 5);
-            const first_count = readIntLe(u32, payload[offset .. offset + 4]);
-            const first_size = payload[offset + 4];
-            if (first_size != 4 and first_size != 8) return error.InvalidFirstSize;
-            const first_bytes = try std.math.mul(usize, first_count, first_size);
-            const header_and_firsts = try std.math.add(usize, 5, first_bytes);
-            if (mz_payload_len < header_and_firsts) return error.UnexpectedEndOfStream;
-            const encoded = payload[offset + header_and_firsts .. offset + mz_payload_len];
-            const raw_len = try block.packedByteLen(header.mz_bit_width, delta_count);
-            const raw = try rans.decodeAlloc(allocator, encoded, raw_len);
-            mz_sections.append(allocator, .{ .encoded = encoded, .raw = raw }) catch |err| {
-                allocator.free(raw);
-                return err;
-            };
-        }
-        offset = try std.math.add(usize, offset, mz_payload_len);
-    } else {
-        const mz_widths = if ((header.flags & block.flag_mz_per_spectrum_bit_widths) != 0) blk: {
-            try requireBytes(payload, offset, spectrum_count);
-            const widths = payload[offset .. offset + spectrum_count];
-            offset = try std.math.add(usize, offset, spectrum_count);
-            break :blk widths;
-        } else null;
-        try requireBytes(payload, offset, mz_payload_len);
-        if ((header.flags & block.flag_rans_mz) != 0) {
-            const encoded = payload[offset .. offset + mz_payload_len];
-            const raw_len = if (mz_widths) |widths|
-                try block.perSpectrumPayloadLen(widths, peak_counts)
-            else
-                try block.packedByteLen(header.mz_bit_width, total_peaks);
-            const raw = try rans.decodeAlloc(allocator, encoded, raw_len);
-            mz_sections.append(allocator, .{ .encoded = encoded, .raw = raw }) catch |err| {
-                allocator.free(raw);
-                return err;
-            };
-        }
-        offset = try std.math.add(usize, offset, mz_payload_len);
+    if ((header.flags & block.flag_reserved_1) != 0) return error.InvalidMzPayload;
+    try requireBytes(payload, offset, mz_payload_len);
+    if ((header.flags & block.flag_rans_mz) != 0) {
+        try requireBytes(payload, offset, 5);
+        const first_count = readIntLe(u32, payload[offset .. offset + 4]);
+        const first_size = payload[offset + 4];
+        if (first_size != 4 and first_size != 8) return error.InvalidFirstSize;
+        const first_bytes = try std.math.mul(usize, first_count, first_size);
+        const header_and_firsts = try std.math.add(usize, 5, first_bytes);
+        if (mz_payload_len < header_and_firsts) return error.UnexpectedEndOfStream;
+        const encoded = payload[offset + header_and_firsts .. offset + mz_payload_len];
+        const raw_len = try block.packedByteLen(header.mz_bit_width, delta_count);
+        const raw = try rans.decodeAlloc(allocator, encoded, raw_len);
+        mz_sections.append(allocator, .{ .encoded = encoded, .raw = raw }) catch |err| {
+            allocator.free(raw);
+            return err;
+        };
     }
+    offset = try std.math.add(usize, offset, mz_payload_len);
 
     if ((header.flags & block.flag_lossless_intensity_raw) != 0) {
         if ((header.flags & block.flag_rans_intensity) != 0) {
@@ -803,7 +779,6 @@ fn commandBenchmarkRansCore(io: std.Io, allocator: std.mem.Allocator, args: []co
             allocator,
             bytes[block_info.offset..end],
             block_info.header,
-            inspection.header.version_minor,
             &mz_sections,
             &exponent_sections,
         );

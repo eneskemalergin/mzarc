@@ -1,14 +1,10 @@
-//! Exercises `.mzarc` layout, compatibility, fidelity, and file orchestration.
+//! Exercises `.mzarc` layout, version rejection, fidelity, and file orchestration.
 
 const std = @import("std");
 const binary_reader = @import("binary_reader");
 const block = @import("block");
 const codec = @import("codec");
 const quantize = @import("quantize");
-
-fn decodeForOptions(encoded: []const u8, options: block.EncodeOptions) ![]binary_reader.RawSpectrum {
-    return block.decodeBlock(std.testing.allocator, encoded, block.resolvedFileVersionMinor(options));
-}
 
 fn tmpPath(allocator: std.mem.Allocator, tmp: *const std.testing.TmpDir, name: []const u8) ![]u8 {
     return std.fs.path.join(allocator, &.{ ".zig-cache", "tmp", tmp.sub_path[0..], name });
@@ -318,7 +314,7 @@ test "codec decode rejects spectrum_count mismatch with block contents" {
     try std.testing.expectError(error.SpectrumCountMismatch, codec.decodeFileAlloc(std.testing.io, std.testing.allocator, deflated.items, .{}));
 }
 
-test "codec inspect rejects invalid magic, unsupported version, trailing data, and unsupported ms level" {
+test "[failure] - [.mzarc reader]: rejects invalid metadata and trailing data" {
     var mz = [_]f64{ 400.00000125, 401.00000375 };
     var intensity = [_]f32{ 10.0, 11.0 };
     const input = [_]binary_reader.RawSpectrum{
@@ -338,6 +334,11 @@ test "codec inspect rejects invalid magic, unsupported version, trailing data, a
     std.mem.writeInt(u16, bad_version[4..6], codec.version_major + 1, .little);
     try std.testing.expectError(error.UnsupportedVersion, codec.inspectAlloc(std.testing.allocator, bad_version));
 
+    const future_minor = try std.testing.allocator.dupe(u8, encoded);
+    defer std.testing.allocator.free(future_minor);
+    std.mem.writeInt(u16, future_minor[6..8], codec.version_minor + 1, .little);
+    try std.testing.expectError(error.UnsupportedVersion, codec.inspectAlloc(std.testing.allocator, future_minor));
+
     const with_trailing = try std.testing.allocator.alloc(u8, encoded.len + 1);
     defer std.testing.allocator.free(with_trailing);
     @memcpy(with_trailing[0..encoded.len], encoded);
@@ -351,31 +352,7 @@ test "codec inspect rejects invalid magic, unsupported version, trailing data, a
     try std.testing.expectError(error.UnsupportedMsLevel, codec.inspectAlloc(std.testing.allocator, bad_ms_level));
 }
 
-test "codec inspect accepts prior minor version files" {
-    var mz = [_]f64{ 123.000000001, 123.000000003, 123.000000004 };
-    var intensity = [_]f32{ 10.0, 11.0, 12.0 };
-    const input = [_]binary_reader.RawSpectrum{
-        .{ .scan_id = 1, .rt_seconds = 1.0, .ms_level = 2, .precursor_mz = 600.0, .mz = mz[0..], .intensity = intensity[0..] },
-    };
-
-    const encoded = try codec.encodeFileAlloc(std.testing.io, std.testing.allocator, &input, .{ .block_options = .{ .mode = .lossless, .file_version_minor = 2 }, .block_size = 1 });
-    defer std.testing.allocator.free(encoded);
-
-    const old_minor = try std.testing.allocator.dupe(u8, encoded);
-    defer std.testing.allocator.free(old_minor);
-    std.mem.writeInt(u16, old_minor[6..8], 0, .little);
-
-    const inspection = try codec.inspectAlloc(std.testing.allocator, old_minor);
-    defer codec.freeInspection(std.testing.allocator, inspection);
-
-    try std.testing.expectEqual(@as(u16, 0), inspection.header.version_minor);
-
-    const decoded = try codec.decodeFileAlloc(std.testing.io, std.testing.allocator, old_minor, .{});
-    defer binary_reader.freeSpectra(std.testing.allocator, decoded);
-    try expectLosslessRoundTrip(&input, decoded);
-}
-
-test "codec lossless and lossy both write minor 3" {
+test "[integration] - [.mzarc writer]: writes format 1.0 in both modes" {
     var mz = [_]f64{ 123.0, 124.0 };
     var intensity = [_]f32{ 10.0, 11.0 };
     const input = [_]binary_reader.RawSpectrum{
@@ -392,53 +369,14 @@ test "codec lossless and lossy both write minor 3" {
     const lossy_insp = try codec.inspectAlloc(std.testing.allocator, lossy);
     defer codec.freeInspection(std.testing.allocator, lossy_insp);
 
-    try std.testing.expectEqual(@as(u16, 3), lossless_insp.header.version_minor);
-    try std.testing.expectEqual(@as(u16, 3), lossy_insp.header.version_minor);
+    try std.testing.expectEqual(@as(u16, 1), std.mem.readInt(u16, lossless[4..6], .little));
+    try std.testing.expectEqual(@as(u16, 0), std.mem.readInt(u16, lossless[6..8], .little));
+    try std.testing.expectEqual(@as(u16, 1), lossless_insp.header.version_major);
+    try std.testing.expectEqual(@as(u16, 0), lossless_insp.header.version_minor);
+    try std.testing.expectEqual(@as(u16, 1), lossy_insp.header.version_major);
+    try std.testing.expectEqual(@as(u16, 0), lossy_insp.header.version_minor);
     try std.testing.expect((lossless_insp.header.flags & codec.flag_lossless) != 0);
     try std.testing.expect((lossy_insp.header.flags & codec.flag_lossless) == 0);
-}
-
-test "codec lossless round-trip preserves per-spectrum m/z width blocks" {
-    const peak_count = 256;
-    const mz_a = try std.testing.allocator.alloc(f64, peak_count);
-    defer std.testing.allocator.free(mz_a);
-    const mz_b = try std.testing.allocator.alloc(f64, peak_count);
-    defer std.testing.allocator.free(mz_b);
-    const intensity_a = try std.testing.allocator.alloc(f32, peak_count);
-    defer std.testing.allocator.free(intensity_a);
-    const intensity_b = try std.testing.allocator.alloc(f32, peak_count);
-    defer std.testing.allocator.free(intensity_b);
-
-    var current_a: f64 = 100.000000001;
-    var current_b: f64 = 1900.000000001;
-    for (0..peak_count) |idx| {
-        current_a += if ((idx & 1) == 0) 0.000000001 else 0.000000002;
-        current_b += if ((idx & 1) == 0) 0.000000041 else 0.000000059;
-        mz_a[idx] = current_a;
-        mz_b[idx] = current_b;
-        intensity_a[idx] = @floatFromInt(10 + idx);
-        intensity_b[idx] = @floatFromInt(20 + idx);
-    }
-
-    const input = [_]binary_reader.RawSpectrum{
-        .{ .scan_id = 1, .rt_seconds = 1.0, .ms_level = 2, .precursor_mz = 600.0, .mz = mz_a, .intensity = intensity_a },
-        .{ .scan_id = 2, .rt_seconds = 1.1, .ms_level = 2, .precursor_mz = 601.0, .mz = mz_b, .intensity = intensity_b },
-    };
-
-    const encoded = try codec.encodeFileAlloc(std.testing.io, std.testing.allocator, &input, .{ .block_options = .{ .mode = .lossless, .file_version_minor = 2, .mz_rans_min_gain_percent = 99 }, .block_size = 2 });
-    defer std.testing.allocator.free(encoded);
-
-    const inspection = try codec.inspectAlloc(std.testing.allocator, encoded);
-    defer codec.freeInspection(std.testing.allocator, inspection);
-
-    try std.testing.expectEqual(@as(u16, 2), inspection.header.version_minor);
-    try std.testing.expectEqual(@as(usize, 1), inspection.blocks.len);
-    try std.testing.expect((inspection.blocks[0].header.flags & block.flag_mz_per_spectrum_bit_widths) != 0);
-    try expectByteBreakdownSums(inspection, encoded.len);
-
-    const decoded = try codec.decodeFileAlloc(std.testing.io, std.testing.allocator, encoded, .{});
-    defer binary_reader.freeSpectra(std.testing.allocator, decoded);
-    try expectLosslessRoundTrip(&input, decoded);
 }
 
 test "codec inspect rejects truncated order tables and truncated blocks" {
@@ -601,7 +539,7 @@ test "codec encode rejects block_size of zero" {
     try std.testing.expectError(error.InvalidBlockSize, codec.encodeFileAlloc(std.testing.io, std.testing.allocator, &input, .{ .block_size = 0 }));
 }
 
-test "[integration] - [codec file path]: matches allocating path across supported minors" {
+test "[integration] - [codec file path]: matches allocating path for format 1.0" {
     var corpus = try makeSyntheticCorpus(std.testing.allocator, 24);
     defer corpus.deinit();
     const dump = try binary_reader.writeDumpAlloc(std.testing.allocator, corpus.spectra);
@@ -617,27 +555,22 @@ test "[integration] - [codec file path]: matches allocating path across supporte
     const dump_path = try tmpPath(std.testing.allocator, &tmp, "decoded.bin");
     defer std.testing.allocator.free(dump_path);
 
-    inline for (0..codec.version_minor + 1) |minor| {
-        const options: codec.EncodeOptions = .{
-            .block_options = .{ .mode = .lossless, .file_version_minor = minor },
-            .block_size = 3,
-        };
-        const expected_archive = try codec.encodeFileAlloc(std.testing.io, std.testing.allocator, corpus.spectra, options);
-        defer std.testing.allocator.free(expected_archive);
-        try codec.encodeDumpFile(std.testing.io, std.testing.allocator, input_path, archive_path, options);
-        const actual_archive = try codec.readFileAlloc(std.testing.io, archive_path, std.testing.allocator);
-        defer std.testing.allocator.free(actual_archive);
-        try std.testing.expectEqualSlices(u8, expected_archive, actual_archive);
+    const options: codec.EncodeOptions = .{ .block_options = .{ .mode = .lossless }, .block_size = 3 };
+    const expected_archive = try codec.encodeFileAlloc(std.testing.io, std.testing.allocator, corpus.spectra, options);
+    defer std.testing.allocator.free(expected_archive);
+    try codec.encodeDumpFile(std.testing.io, std.testing.allocator, input_path, archive_path, options);
+    const actual_archive = try codec.readFileAlloc(std.testing.io, archive_path, std.testing.allocator);
+    defer std.testing.allocator.free(actual_archive);
+    try std.testing.expectEqualSlices(u8, expected_archive, actual_archive);
 
-        const expected_spectra = try codec.decodeFileAlloc(std.testing.io, std.testing.allocator, expected_archive, .{});
-        defer binary_reader.freeSpectra(std.testing.allocator, expected_spectra);
-        const expected_dump = try binary_reader.writeDumpAlloc(std.testing.allocator, expected_spectra);
-        defer std.testing.allocator.free(expected_dump);
-        try codec.decodeToDumpFile(std.testing.io, std.testing.allocator, archive_path, dump_path, .{});
-        const actual_dump = try codec.readFileAlloc(std.testing.io, dump_path, std.testing.allocator);
-        defer std.testing.allocator.free(actual_dump);
-        try std.testing.expectEqualSlices(u8, expected_dump, actual_dump);
-    }
+    const expected_spectra = try codec.decodeFileAlloc(std.testing.io, std.testing.allocator, expected_archive, .{});
+    defer binary_reader.freeSpectra(std.testing.allocator, expected_spectra);
+    const expected_dump = try binary_reader.writeDumpAlloc(std.testing.allocator, expected_spectra);
+    defer std.testing.allocator.free(expected_dump);
+    try codec.decodeToDumpFile(std.testing.io, std.testing.allocator, archive_path, dump_path, .{});
+    const actual_dump = try codec.readFileAlloc(std.testing.io, dump_path, std.testing.allocator);
+    defer std.testing.allocator.free(actual_dump);
+    try std.testing.expectEqualSlices(u8, expected_dump, actual_dump);
 }
 
 test "[integration] - [.mzarc reader]: accepts archives without a global order table" {
@@ -751,7 +684,7 @@ test "empirical error bounds: lossless m/z error ≤ 0.5 / scale_factor" {
     const encoded = try block.encodeBlock(std.testing.allocator, &spectra, .{ .mode = .lossless });
     defer std.testing.allocator.free(encoded);
 
-    const decoded = try block.decodeBlock(std.testing.allocator, encoded, 3);
+    const decoded = try block.decodeBlock(std.testing.allocator, encoded);
     defer binary_reader.freeSpectra(std.testing.allocator, decoded);
 
     const max_allowed_error = 0.5 / @as(f64, @floatFromInt(1_000_000_000));
@@ -782,7 +715,7 @@ test "empirical error bounds: lossy m/z error ≤ 0.5 / scale_factor" {
     const encoded = try block.encodeBlock(std.testing.allocator, &spectra, .{ .mode = .lossy });
     defer std.testing.allocator.free(encoded);
 
-    const decoded = try block.decodeBlock(std.testing.allocator, encoded, 3);
+    const decoded = try block.decodeBlock(std.testing.allocator, encoded);
     defer binary_reader.freeSpectra(std.testing.allocator, decoded);
 
     const max_allowed_error = 0.5 / @as(f64, @floatFromInt(500_000));
@@ -815,7 +748,7 @@ test "empirical error bounds: lossy intensity rel error ≤ exp(log_max/quant) -
     const encoded = try block.encodeBlock(std.testing.allocator, &spectra, .{ .mode = .lossy, .intensity_quant = quant_factor });
     defer std.testing.allocator.free(encoded);
 
-    const decoded = try block.decodeBlock(std.testing.allocator, encoded, 3);
+    const decoded = try block.decodeBlock(std.testing.allocator, encoded);
     defer binary_reader.freeSpectra(std.testing.allocator, decoded);
 
     // Compute theoretical max relative error.
@@ -861,7 +794,7 @@ test "f32 bit-cast path produces exactly zero m/z error" {
     const header = try block.parseHeader(encoded);
     try std.testing.expect((header.flags & block.flag_lossless_mz_f32) != 0);
 
-    const decoded = try block.decodeBlock(std.testing.allocator, encoded, 3);
+    const decoded = try block.decodeBlock(std.testing.allocator, encoded);
     defer binary_reader.freeSpectra(std.testing.allocator, decoded);
 
     for (mz_buf[0..], decoded[0].mz) |orig, got| {
@@ -888,7 +821,7 @@ test "lossless m/z fixed-point path is used for non-f32 values" {
     const header = try block.parseHeader(encoded);
     try std.testing.expect((header.flags & block.flag_lossless_mz_f32) == 0);
 
-    const decoded = try block.decodeBlock(std.testing.allocator, encoded, 3);
+    const decoded = try block.decodeBlock(std.testing.allocator, encoded);
     defer binary_reader.freeSpectra(std.testing.allocator, decoded);
 
     const max_allowed = 0.5 / @as(f64, @floatFromInt(1_000_000_000));
@@ -918,7 +851,7 @@ test "lossy intensity extremes stay within error bound" {
     const encoded = try block.encodeBlock(std.testing.allocator, &spectra, .{ .mode = .lossy, .intensity_quant = quant_factor });
     defer std.testing.allocator.free(encoded);
 
-    const decoded = try block.decodeBlock(std.testing.allocator, encoded, 3);
+    const decoded = try block.decodeBlock(std.testing.allocator, encoded);
     defer binary_reader.freeSpectra(std.testing.allocator, decoded);
 
     var log_max: f32 = 0.0;
@@ -952,7 +885,7 @@ test "lossy smallest non-zero intensity has bounded relative error" {
     const encoded = try block.encodeBlock(std.testing.allocator, &spectra, .{ .mode = .lossy, .intensity_quant = quant_factor });
     defer std.testing.allocator.free(encoded);
 
-    const decoded = try block.decodeBlock(std.testing.allocator, encoded, 3);
+    const decoded = try block.decodeBlock(std.testing.allocator, encoded);
     defer binary_reader.freeSpectra(std.testing.allocator, decoded);
 
     const rel_err = @abs(@as(f64, decoded[0].intensity[0]) - @as(f64, 1.0)) / 1.0;

@@ -1,6 +1,56 @@
+//! Block codec round trips, malformed inputs, and allocation cleanup.
+
 const std = @import("std");
 const binary_reader = @import("binary_reader");
 const block = @import("block");
+
+fn expectIntensityBits(expected: []const f32, actual: []const f32) !void {
+    try std.testing.expectEqual(expected.len, actual.len);
+    for (expected, actual) |expected_value, actual_value| {
+        try std.testing.expectEqual(
+            @as(u32, @bitCast(expected_value)),
+            @as(u32, @bitCast(actual_value)),
+        );
+    }
+}
+
+fn losslessIntensityAllocationRoundTrip(allocator: std.mem.Allocator) !void {
+    var mz_a = [_]f64{ 100.0, 101.0, 102.0 };
+    var intensity_a = [_]f32{
+        @bitCast(@as(u32, 0x0000_0001)),
+        @bitCast(@as(u32, 0x8000_0000)),
+        @bitCast(@as(u32, 0x7fc0_1234)),
+    };
+    var mz_b = [_]f64{ 200.0, 201.0 };
+    var intensity_b = [_]f32{
+        @bitCast(@as(u32, 0x7f80_0000)),
+        @bitCast(@as(u32, 0xff80_0000)),
+    };
+    const spectra = [_]binary_reader.RawSpectrum{
+        .{ .scan_id = 1, .rt_seconds = 1.0, .ms_level = 2, .precursor_mz = 500.0, .mz = &mz_a, .intensity = &intensity_a },
+        .{ .scan_id = 2, .rt_seconds = 2.0, .ms_level = 2, .precursor_mz = 501.0, .mz = &mz_b, .intensity = &intensity_b },
+    };
+
+    const encoded = try block.encodeBlock(allocator, &spectra, .{ .mode = .lossless });
+    defer allocator.free(encoded);
+    const decoded = try block.decodeBlock(allocator, encoded);
+    defer binary_reader.freeSpectra(allocator, decoded);
+    try expectIntensityBits(&intensity_a, decoded[0].intensity);
+    try expectIntensityBits(&intensity_b, decoded[1].intensity);
+}
+
+fn intensitySectionOffset(encoded: []const u8) !usize {
+    const bytes = try block.inspectBlockByteBreakdown(encoded);
+    return block.header_len + bytes.scan_id_bytes + bytes.rt_bytes +
+        bytes.precursor_bytes + bytes.peak_count_bytes +
+        bytes.mz_metadata_bytes + bytes.mz_payload_bytes;
+}
+
+fn resealBlockPayload(encoded: []u8) !void {
+    const header = try block.parseHeader(encoded);
+    const payload = encoded[block.header_len .. block.header_len + header.payload_bytes];
+    std.mem.writeInt(u32, encoded[36..40], std.hash.crc.Crc32.hash(payload), .little);
+}
 
 /// Check that every decoded m/z value is within `max_ppm` of the original.
 /// The lossless fixed-point path guarantees < 0.001 ppm, so we use 0.001
@@ -36,7 +86,7 @@ test "lossless block round-trip preserves aligned spectra exactly" {
     try std.testing.expect((header.flags & block.flag_lossless_intensity_raw) != 0);
     // f32-exact data uses the f32 bit-cast path — this flag must be set.
     try std.testing.expect((header.flags & block.flag_lossless_mz_f32) != 0);
-    const decoded = try block.decodeBlock(std.testing.allocator, encoded, 3);
+    const decoded = try block.decodeBlock(std.testing.allocator, encoded);
     defer binary_reader.freeSpectra(std.testing.allocator, decoded);
 
     try std.testing.expectEqual(@as(usize, spectra.len), decoded.len);
@@ -72,7 +122,7 @@ test "lossless block round-trip preserves empty and adversarial spectra exactly"
     const encoded = try block.encodeBlock(std.testing.allocator, &spectra, .{ .mode = .lossless });
     defer std.testing.allocator.free(encoded);
 
-    const decoded = try block.decodeBlock(std.testing.allocator, encoded, 3);
+    const decoded = try block.decodeBlock(std.testing.allocator, encoded);
     defer binary_reader.freeSpectra(std.testing.allocator, decoded);
 
     try std.testing.expectEqual(@as(usize, spectra.len), decoded.len);
@@ -127,7 +177,7 @@ test "block decode rejects checksum corruption" {
     defer std.testing.allocator.free(corrupted);
     corrupted[block.header_len] ^= 0x01;
 
-    try std.testing.expectError(error.ChecksumMismatch, block.decodeBlock(std.testing.allocator, corrupted, 3));
+    try std.testing.expectError(error.ChecksumMismatch, block.decodeBlock(std.testing.allocator, corrupted));
 }
 
 test "block decode rejects mismatched peak totals" {
@@ -145,7 +195,7 @@ test "block decode rejects mismatched peak totals" {
     defer std.testing.allocator.free(corrupted);
     std.mem.writeInt(u32, corrupted[4..8], 3, .little);
 
-    try std.testing.expectError(error.InvalidPeakCount, block.decodeBlock(std.testing.allocator, corrupted, 3));
+    try std.testing.expectError(error.InvalidPeakCount, block.decodeBlock(std.testing.allocator, corrupted));
 }
 
 test "block decode rejects trailing payload bytes" {
@@ -169,7 +219,7 @@ test "block decode rejects trailing payload bytes" {
     const new_checksum = std.hash.crc.Crc32.hash(extended[block.header_len..]);
     std.mem.writeInt(u32, extended[36..40], new_checksum, .little);
 
-    try std.testing.expectError(error.TrailingBlockPayload, block.decodeBlock(std.testing.allocator, extended, 3));
+    try std.testing.expectError(error.TrailingBlockPayload, block.decodeBlock(std.testing.allocator, extended));
 }
 
 test "lossy block round-trip keeps intensity error bounded" {
@@ -189,7 +239,7 @@ test "lossy block round-trip keeps intensity error bounded" {
     const header = try block.parseHeader(encoded);
     try std.testing.expectEqual(@as(u8, 0), header.flags & block.flag_lossless_intensity_raw);
 
-    const decoded = try block.decodeBlock(std.testing.allocator, encoded, 3);
+    const decoded = try block.decodeBlock(std.testing.allocator, encoded);
     defer binary_reader.freeSpectra(std.testing.allocator, decoded);
 
     inline for (spectra, 0..) |expected, spectrum_idx| {
@@ -223,7 +273,7 @@ test "lossy block worst-case intensity error stays below 0.1%" {
     const encoded = try block.encodeBlock(std.testing.allocator, &spectra, .{ .mode = .lossy, .intensity_quant = 16384 });
     defer std.testing.allocator.free(encoded);
 
-    const decoded = try block.decodeBlock(std.testing.allocator, encoded, 3);
+    const decoded = try block.decodeBlock(std.testing.allocator, encoded);
     defer binary_reader.freeSpectra(std.testing.allocator, decoded);
 
     var max_rel_error: f64 = 0.0;
@@ -274,7 +324,7 @@ test "split-exponent: wide-range intensities activate split path and round-trip 
     try std.testing.expect((header.flags & block.flag_split_exponent) != 0);
     try std.testing.expect((header.flags & block.flag_lossless_intensity_raw) == 0);
 
-    const decoded = try block.decodeBlock(std.testing.allocator, encoded, 3);
+    const decoded = try block.decodeBlock(std.testing.allocator, encoded);
     defer binary_reader.freeSpectra(std.testing.allocator, decoded);
 
     try std.testing.expectEqual(@as(usize, 1), decoded.len);
@@ -300,7 +350,7 @@ test "split-exponent: degenerate small spectrum falls back to raw f32" {
     try std.testing.expect((header.flags & block.flag_split_exponent) == 0);
     try std.testing.expect((header.flags & block.flag_lossless_intensity_raw) != 0);
 
-    const decoded = try block.decodeBlock(std.testing.allocator, encoded, 3);
+    const decoded = try block.decodeBlock(std.testing.allocator, encoded);
     defer binary_reader.freeSpectra(std.testing.allocator, decoded);
 
     try std.testing.expectEqual(@as(usize, 1), decoded.len);
@@ -335,7 +385,7 @@ test "block entropy coding activates on structured m/z and exponent streams" {
     try std.testing.expect((header.flags & block.flag_split_exponent) != 0);
     try std.testing.expect((header.flags & block.flag_rans_intensity) != 0);
 
-    const decoded = try block.decodeBlock(std.testing.allocator, encoded, 3);
+    const decoded = try block.decodeBlock(std.testing.allocator, encoded);
     defer binary_reader.freeSpectra(std.testing.allocator, decoded);
 
     try std.testing.expectEqual(@as(usize, 1), decoded.len);
@@ -374,57 +424,11 @@ test "block accepts separate mz and intensity rans thresholds" {
     try std.testing.expect((header.flags & block.flag_rans_mz) != 0);
     try std.testing.expect((header.flags & block.flag_split_exponent) != 0);
 
-    const decoded = try block.decodeBlock(std.testing.allocator, encoded, 3);
+    const decoded = try block.decodeBlock(std.testing.allocator, encoded);
     defer binary_reader.freeSpectra(std.testing.allocator, decoded);
 
     try checkMzPpm(mz, decoded[0].mz);
     try std.testing.expectEqualSlices(f32, intensity, decoded[0].intensity);
-}
-
-test "block uses per-spectrum m/z widths when they shrink the payload" {
-    const peak_count = 256;
-    const mz_a = try std.testing.allocator.alloc(f64, peak_count);
-    defer std.testing.allocator.free(mz_a);
-    const mz_b = try std.testing.allocator.alloc(f64, peak_count);
-    defer std.testing.allocator.free(mz_b);
-    const intensity_a = try std.testing.allocator.alloc(f32, peak_count);
-    defer std.testing.allocator.free(intensity_a);
-    const intensity_b = try std.testing.allocator.alloc(f32, peak_count);
-    defer std.testing.allocator.free(intensity_b);
-
-    var current_a: f64 = 100.000000001;
-    var current_b: f64 = 1800.000000001;
-    for (0..peak_count) |idx| {
-        current_a += if ((idx & 1) == 0) 0.000000001 else 0.000000002;
-        current_b += if ((idx & 1) == 0) 0.000000041 else 0.000000059;
-        mz_a[idx] = current_a;
-        mz_b[idx] = current_b;
-        intensity_a[idx] = @floatFromInt(100 + idx);
-        intensity_b[idx] = @floatFromInt(1000 + idx);
-    }
-
-    const spectra = [_]binary_reader.RawSpectrum{
-        .{ .scan_id = 1, .rt_seconds = 1.0, .ms_level = 2, .precursor_mz = 500.0, .mz = mz_a, .intensity = intensity_a },
-        .{ .scan_id = 2, .rt_seconds = 1.1, .ms_level = 2, .precursor_mz = 501.0, .mz = mz_b, .intensity = intensity_b },
-    };
-
-    const encoded = try block.encodeBlock(std.testing.allocator, &spectra, .{ .mode = .lossless, .file_version_minor = 2, .mz_rans_min_gain_percent = 99 });
-    defer std.testing.allocator.free(encoded);
-
-    const header = try block.parseHeader(encoded);
-    try std.testing.expect((header.flags & block.flag_mz_per_spectrum_bit_widths) != 0);
-
-    const breakdown = try block.inspectBlockByteBreakdown(encoded);
-    try std.testing.expect(breakdown.mz_payload_bytes > spectra.len);
-
-    const decoded = try block.decodeBlock(std.testing.allocator, encoded, 2);
-    defer binary_reader.freeSpectra(std.testing.allocator, decoded);
-
-    try std.testing.expectEqual(@as(usize, spectra.len), decoded.len);
-    try checkMzPpm(mz_a, decoded[0].mz);
-    try checkMzPpm(mz_b, decoded[1].mz);
-    try std.testing.expectEqualSlices(f32, intensity_a, decoded[0].intensity);
-    try std.testing.expectEqualSlices(f32, intensity_b, decoded[1].intensity);
 }
 
 test "split-exponent: zero FOR bit-width still activates split when block is large enough" {
@@ -455,7 +459,7 @@ test "split-exponent: zero FOR bit-width still activates split when block is lar
     // is never attempted (raw.len == 0 short-circuits in maybeEncodeRansAlloc).
     try std.testing.expect((header.flags & block.flag_rans_intensity) == 0);
 
-    const decoded = try block.decodeBlock(std.testing.allocator, encoded, 3);
+    const decoded = try block.decodeBlock(std.testing.allocator, encoded);
     defer binary_reader.freeSpectra(std.testing.allocator, decoded);
 
     try std.testing.expectEqual(@as(usize, 1), decoded.len);
@@ -486,7 +490,7 @@ test "split-exponent: narrow range with 2 exponent levels activates split and ro
     try std.testing.expect((header.flags & block.flag_split_exponent) != 0);
     try std.testing.expect((header.flags & block.flag_lossless_intensity_raw) == 0);
 
-    const decoded = try block.decodeBlock(std.testing.allocator, encoded, 3);
+    const decoded = try block.decodeBlock(std.testing.allocator, encoded);
     defer binary_reader.freeSpectra(std.testing.allocator, decoded);
 
     try std.testing.expectEqual(@as(usize, 1), decoded.len);
@@ -525,7 +529,7 @@ test "split-exponent: split_plain mode activates when rANS gain is below thresho
     // rANS must NOT activate because the gain threshold is too high.
     try std.testing.expect((header.flags & block.flag_rans_intensity) == 0);
 
-    const decoded = try block.decodeBlock(std.testing.allocator, encoded, 3);
+    const decoded = try block.decodeBlock(std.testing.allocator, encoded);
     defer binary_reader.freeSpectra(std.testing.allocator, decoded);
 
     try std.testing.expectEqual(@as(usize, 1), decoded.len);
@@ -555,7 +559,7 @@ test "lossy intensity activates rANS on structured repeating data" {
     try std.testing.expect((header.flags & block.flag_rans_intensity) != 0);
     try std.testing.expect((header.flags & block.flag_lossless_intensity_raw) == 0);
 
-    const decoded = try block.decodeBlock(std.testing.allocator, encoded, 3);
+    const decoded = try block.decodeBlock(std.testing.allocator, encoded);
     defer binary_reader.freeSpectra(std.testing.allocator, decoded);
 
     try std.testing.expectEqual(@as(usize, 1), decoded.len);
@@ -584,7 +588,7 @@ test "non-monotonic rt_seconds falls back to raw encoding and round-trips" {
     const header = try block.parseHeader(encoded);
     try std.testing.expect((header.flags & block.flag_delta_rt) == 0);
 
-    const decoded = try block.decodeBlock(std.testing.allocator, encoded, 3);
+    const decoded = try block.decodeBlock(std.testing.allocator, encoded);
     defer binary_reader.freeSpectra(std.testing.allocator, decoded);
 
     try std.testing.expectEqual(@as(usize, 3), decoded.len);
@@ -609,7 +613,7 @@ test "non-monotonic scan_id falls back to raw encoding and round-trips" {
     const header = try block.parseHeader(encoded);
     try std.testing.expect((header.flags & block.flag_delta_scan_id) == 0);
 
-    const decoded = try block.decodeBlock(std.testing.allocator, encoded, 3);
+    const decoded = try block.decodeBlock(std.testing.allocator, encoded);
     defer binary_reader.freeSpectra(std.testing.allocator, decoded);
 
     try std.testing.expectEqual(@as(usize, 3), decoded.len);
@@ -678,7 +682,7 @@ test "decodeBlock rejects scan_id delta base exceeding u32 max" {
     const new_checksum = std.hash.crc.Crc32.hash(corrupted[block.header_len .. block.header_len + header.payload_bytes]);
     std.mem.writeInt(u32, corrupted[36..40], new_checksum, .little);
 
-    try std.testing.expectError(error.Overflow, block.decodeBlock(std.testing.allocator, corrupted, 3));
+    try std.testing.expectError(error.Overflow, block.decodeBlock(std.testing.allocator, corrupted));
 }
 
 test "decodeBlock rejects mz bit_width above 64" {
@@ -688,7 +692,7 @@ test "decodeBlock rejects mz bit_width above 64" {
         .{ .scan_id = 1, .rt_seconds = 1.0, .ms_level = 2, .precursor_mz = 300.0, .mz = mz[0..], .intensity = intensity[0..] },
     };
 
-    const encoded = try block.encodeBlock(std.testing.allocator, &spectra, .{ .mode = .lossless, .file_version_minor = 2 });
+    const encoded = try block.encodeBlock(std.testing.allocator, &spectra, .{ .mode = .lossless });
     defer std.testing.allocator.free(encoded);
 
     const corrupted = try std.testing.allocator.dupe(u8, encoded);
@@ -696,7 +700,7 @@ test "decodeBlock rejects mz bit_width above 64" {
     // mz_bit_width is header byte 16; checksum covers payload only.
     corrupted[16] = 65;
 
-    try std.testing.expectError(error.InvalidBitWidth, block.decodeBlock(std.testing.allocator, corrupted, 2));
+    try std.testing.expectError(error.InvalidBitWidth, block.decodeBlock(std.testing.allocator, corrupted));
 }
 
 test "rt_seconds = -0.0 followed by +0.0 does not trigger NonMonotonicRt" {
@@ -721,46 +725,13 @@ test "rt_seconds = -0.0 followed by +0.0 does not trigger NonMonotonicRt" {
     const header = try block.parseHeader(encoded);
     try std.testing.expect((header.flags & block.flag_delta_rt) != 0);
 
-    const decoded = try block.decodeBlock(std.testing.allocator, encoded, 3);
+    const decoded = try block.decodeBlock(std.testing.allocator, encoded);
     defer binary_reader.freeSpectra(std.testing.allocator, decoded);
 
     try std.testing.expectEqual(@as(usize, 2), decoded.len);
     // -0.0 and +0.0 are equal; accept either bit pattern after round-trip.
     try std.testing.expectEqual(@as(f32, 0.0), decoded[0].rt_seconds);
     try std.testing.expectEqual(@as(f32, 0.0), decoded[1].rt_seconds);
-}
-
-test "single-spectrum block always uses block-level mz path" {
-    // Per-spectrum bit-widths add one byte of overhead per spectrum (the
-    // bit_widths array). For a 1-spectrum block the overhead is never recovered,
-    // so the encoder must always prefer the block-level path. If the selection
-    // logic had an off-by-one the flag would be set incorrectly.
-    var mz: [128]f64 = undefined;
-    var intensity: [128]f32 = undefined;
-    var current_mz: f64 = 100.000000001;
-    for (0..128) |i| {
-        current_mz += if ((i & 1) == 0) 0.000000041 else 0.000000059;
-        mz[i] = current_mz;
-        intensity[i] = @floatFromInt(1000 + i);
-    }
-
-    const spectra = [_]binary_reader.RawSpectrum{
-        .{ .scan_id = 1, .rt_seconds = 1.0, .ms_level = 2, .precursor_mz = 500.0, .mz = mz[0..], .intensity = intensity[0..] },
-    };
-
-    const encoded = try block.encodeBlock(std.testing.allocator, &spectra, .{ .mode = .lossless, .mz_rans_min_gain_percent = 99 });
-    defer std.testing.allocator.free(encoded);
-
-    const header = try block.parseHeader(encoded);
-    // Must not use per-spectrum widths for a single-spectrum block.
-    try std.testing.expect((header.flags & block.flag_mz_per_spectrum_bit_widths) == 0);
-
-    const decoded = try block.decodeBlock(std.testing.allocator, encoded, 3);
-    defer binary_reader.freeSpectra(std.testing.allocator, decoded);
-
-    try std.testing.expectEqual(@as(usize, 1), decoded.len);
-    try checkMzPpm(mz[0..], decoded[0].mz);
-    try std.testing.expectEqualSlices(f32, intensity[0..], decoded[0].intensity);
 }
 
 test "decodeBlock rejects decompressed_bytes header field mismatch" {
@@ -783,10 +754,10 @@ test "decodeBlock rejects decompressed_bytes header field mismatch" {
     // wrong non-zero value. The checksum covers only the payload, not the header.
     std.mem.writeInt(u32, corrupted[32..36], 0xDEAD_BEEF, .little);
 
-    try std.testing.expectError(error.DecompressedBytesMismatch, block.decodeBlock(std.testing.allocator, corrupted, 3));
+    try std.testing.expectError(error.DecompressedBytesMismatch, block.decodeBlock(std.testing.allocator, corrupted));
 }
 
-test "decodeBlock rejects per-spectrum widths on first-peak-split layout" {
+test "[failure] - [block flags]: rejects reserved bit 1" {
     var mz = [_]f64{ 100.0, 101.0 };
     var intensity = [_]f32{ 1.0, 2.0 };
     const spectra = [_]binary_reader.RawSpectrum{
@@ -798,9 +769,9 @@ test "decodeBlock rejects per-spectrum widths on first-peak-split layout" {
 
     const corrupted = try std.testing.allocator.dupe(u8, encoded);
     defer std.testing.allocator.free(corrupted);
-    corrupted[3] |= block.flag_mz_per_spectrum_bit_widths;
+    corrupted[3] |= block.flag_reserved_1;
 
-    try std.testing.expectError(error.InvalidMzPayload, block.decodeBlock(std.testing.allocator, corrupted, 3));
+    try std.testing.expectError(error.InvalidMzPayload, block.decodeBlock(std.testing.allocator, corrupted));
 }
 
 test "decodeBlock rejects truncated first-peak-split mz body" {
@@ -818,7 +789,7 @@ test "decodeBlock rejects truncated first-peak-split mz body" {
     defer std.testing.allocator.free(truncated);
     std.mem.writeInt(u32, truncated[28..32], header.payload_bytes - 1, .little);
     // Payload bytes changed without resealing CRC: fail closed (checksum before structural parse).
-    try std.testing.expectError(error.ChecksumMismatch, block.decodeBlock(std.testing.allocator, truncated, 3));
+    try std.testing.expectError(error.ChecksumMismatch, block.decodeBlock(std.testing.allocator, truncated));
 }
 
 test "decodeBlock rejects first_count mismatch on first-peak-split layout" {
@@ -848,7 +819,7 @@ test "decodeBlock rejects first_count mismatch on first-peak-split layout" {
     const new_crc = std.hash.Crc32.hash(corrupted[block.header_len .. block.header_len + header.payload_bytes]);
     std.mem.writeInt(u32, corrupted[36..40], new_crc, .little);
 
-    try std.testing.expectError(error.InvalidFirstCount, block.decodeBlock(std.testing.allocator, corrupted, 3));
+    try std.testing.expectError(error.InvalidFirstCount, block.decodeBlock(std.testing.allocator, corrupted));
 }
 
 test "lossless and lossy encode both use first-peak-split by default" {
@@ -863,12 +834,104 @@ test "lossless and lossy encode both use first-peak-split by default" {
     const lossy = try block.encodeBlock(std.testing.allocator, &spectra, .{ .mode = .lossy });
     defer std.testing.allocator.free(lossy);
 
-    const lossless_decoded = try block.decodeBlock(std.testing.allocator, lossless, 3);
+    const lossless_decoded = try block.decodeBlock(std.testing.allocator, lossless);
     defer binary_reader.freeSpectra(std.testing.allocator, lossless_decoded);
-    const lossy_decoded = try block.decodeBlock(std.testing.allocator, lossy, 3);
+    const lossy_decoded = try block.decodeBlock(std.testing.allocator, lossy);
     defer binary_reader.freeSpectra(std.testing.allocator, lossy_decoded);
 
     try std.testing.expectEqual(@as(usize, 1), lossless_decoded.len);
     try std.testing.expectEqual(@as(usize, 1), lossy_decoded.len);
     try std.testing.expectEqualSlices(f64, mz[0..], lossless_decoded[0].mz);
+}
+
+test "[property] - [lossless intensity]: preserves every top-byte domain" {
+    const low_bits = [_]u32{
+        0x000000,
+        0x000001,
+        0x7fffff,
+        0x800000,
+        0x800001,
+        0xffffff,
+        0x001234,
+        0x400000,
+    };
+    var mz: [20]f64 = undefined;
+    for (&mz, 0..) |*value, idx| value.* = @floatFromInt(100 + idx);
+
+    for (0..256) |top_byte| {
+        var intensity: [20]f32 = undefined;
+        for (&intensity, 0..) |*value, idx| {
+            const bits = (@as(u32, @intCast(top_byte)) << 24) | low_bits[idx % low_bits.len];
+            value.* = @bitCast(bits);
+        }
+        const spectra = [_]binary_reader.RawSpectrum{
+            .{ .scan_id = 1, .rt_seconds = 1.0, .ms_level = 2, .precursor_mz = 500.0, .mz = &mz, .intensity = &intensity },
+        };
+
+        const encoded = try block.encodeBlock(std.testing.allocator, &spectra, .{ .mode = .lossless });
+        defer std.testing.allocator.free(encoded);
+        const header = try block.parseHeader(encoded);
+        try std.testing.expect((header.flags & block.flag_split_exponent) != 0);
+
+        const decoded = try block.decodeBlock(std.testing.allocator, encoded);
+        defer binary_reader.freeSpectra(std.testing.allocator, decoded);
+        try expectIntensityBits(&intensity, decoded[0].intensity);
+    }
+}
+
+test "[failure] - [lossless intensity]: cleans up every induced allocation failure" {
+    try std.testing.checkAllAllocationFailures(
+        std.testing.allocator,
+        losslessIntensityAllocationRoundTrip,
+        .{},
+    );
+}
+
+test "[failure] - [lossless intensity]: rejects malformed exponent payloads" {
+    var mz: [40]f64 = undefined;
+    var intensity: [40]f32 = undefined;
+    for (&mz, &intensity, 0..) |*mz_value, *intensity_value, idx| {
+        mz_value.* = @floatFromInt(100 + idx);
+        intensity_value.* = if ((idx & 1) == 0) 65_536.0 else 131_072.0;
+    }
+    const spectra = [_]binary_reader.RawSpectrum{
+        .{ .scan_id = 1, .rt_seconds = 1.0, .ms_level = 2, .precursor_mz = 500.0, .mz = &mz, .intensity = &intensity },
+    };
+    const encoded = try block.encodeBlock(std.testing.allocator, &spectra, .{
+        .mode = .lossless,
+        .intensity_rans_min_gain_percent = 99,
+    });
+    defer std.testing.allocator.free(encoded);
+    const header = try block.parseHeader(encoded);
+    try std.testing.expect((header.flags & block.flag_split_exponent) != 0);
+    try std.testing.expect((header.flags & block.flag_rans_intensity) == 0);
+    const intensity_offset = try intensitySectionOffset(encoded);
+
+    const invalid_width = try std.testing.allocator.dupe(u8, encoded);
+    defer std.testing.allocator.free(invalid_width);
+    invalid_width[intensity_offset] = 65;
+    try resealBlockPayload(invalid_width);
+    try std.testing.expectError(
+        error.InvalidBitWidth,
+        block.decodeBlock(std.testing.allocator, invalid_width),
+    );
+
+    const short_packed = try std.testing.allocator.dupe(u8, encoded);
+    defer std.testing.allocator.free(short_packed);
+    std.mem.writeInt(u32, short_packed[intensity_offset + 9 ..][0..4], 0, .little);
+    try resealBlockPayload(short_packed);
+    try std.testing.expectError(
+        error.UnexpectedEndOfStream,
+        block.decodeBlock(std.testing.allocator, short_packed),
+    );
+
+    const overflow = try std.testing.allocator.dupe(u8, encoded);
+    defer std.testing.allocator.free(overflow);
+    std.mem.writeInt(u64, overflow[intensity_offset + 1 ..][0..8], std.math.maxInt(u64), .little);
+    overflow[intensity_offset + 13] |= 1;
+    try resealBlockPayload(overflow);
+    try std.testing.expectError(
+        error.Overflow,
+        block.decodeBlock(std.testing.allocator, overflow),
+    );
 }

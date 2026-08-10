@@ -10,6 +10,8 @@
         "src",
         "test",
         "tools",
+        "LICENSE",
+        "LICENSES",
         "README.md",
     },
 }
