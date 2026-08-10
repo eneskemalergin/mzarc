@@ -41,16 +41,18 @@ The pipeline is intentionally split:
 mzML -> Python dump tool -> flat binary -> Zig codec -> .mzarc
 ```
 
-Python handles mzML ingestion. Zig owns the codec, validation, and performance-sensitive transforms. This keeps XML and schema handling outside the current codec. Native mzML input and output belong to v0.4.0.
+Python handles mzML ingestion. Zig owns the codec, validation, and performance-sensitive transforms. This keeps XML and schema handling outside the current codec. Native mzML input belongs to v0.4.0, followed by indexed mzML output in v0.5.0.
 
 ## Quick Start
 
-The repo carries its own Zig 0.16.0 toolchain. Python is managed with `uv`.
+The project uses Zig 0.16.0 and Python managed with `uv`. The commands below assume Zig 0.16.0 is installed at `./zig-0.16.0/zig`; the local toolchain directory is not tracked.
 
 ```bash
 uv sync
 ./zig-0.16.0/zig build --release=fast
 ```
+
+The release command installs a stripped, single-threaded ReleaseFast CLI for the host architecture's baseline CPU. It retains frame pointers and unwind metadata. Run `./zig-0.16.0/zig build` for a native-host Debug CLI with symbols.
 
 Convert, encode, and inspect:
 
@@ -64,9 +66,7 @@ Run the local test and codec gates:
 
 ```bash
 ./zig-0.16.0/zig build test --summary all
-./zig-0.16.0/zig build check-fixture
-./zig-0.16.0/zig build --release=fast
-bash tools/smoke_test.sh
+./zig-0.16.0/zig build ci --release=fast --summary all
 ```
 
 ## Benchmark Summary
@@ -136,9 +136,9 @@ The benchmark pipeline will be corrected in v0.2.6. The current runner and repor
 
 The workflow runs on Ubuntu and macOS on every push and pull request. No mzML data or Python required. Checks use the frozen binary fixture in `test/fixtures/`.
 
-Jobs: build with `-Drelease=true`, unit tests, frozen fixture SHA-256 integrity check, lossless/lossy roundtrips and adversarial corpus via `tools/smoke_test.sh`.
+Each host runs the Debug unit tests, then the complete ReleaseFast `ci` gate: optimized tests, the stripped installed CLI, frozen fixture integrity, lossless and lossy round trips, and the adversarial corpus.
 
-The local `zig build ci` step also invokes the regression script. That script still targets the missing `benchmark/baseline_v0.1.1.json`, so it currently reports a skip instead of enforcing a performance regression comparison.
+The local `zig build ci` step runs unit tests, fixture integrity, and the same CLI smoke checks. It does not invoke the regression script while that script targets the missing `benchmark/baseline_v0.1.1.json` and treats missing inputs as a skip.
 
 ## Validation State
 

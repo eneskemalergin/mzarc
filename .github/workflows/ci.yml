@@ -27,14 +27,8 @@ jobs:
         with:
           version: "0.16.0"
 
-      - name: Build
-        run: zig build -Drelease=true
+      - name: Debug unit tests
+        run: zig build test --summary all
 
-      - name: Unit tests
-        run: zig build test
-
-      - name: Fixture integrity
-        run: zig build check-fixture
-
-      - name: Codec roundtrips and adversarial
-        run: bash tools/smoke_test.sh
+      - name: ReleaseFast gate
+        run: zig build ci --release=fast --summary all
