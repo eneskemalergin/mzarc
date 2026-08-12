@@ -20,6 +20,8 @@ __pycache__/
 *.pyc
 *.pyo
 
+# Locally built peer tools
+/tools/bin/
 
 # Ignored folders (dev only)
 tmp/
