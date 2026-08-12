@@ -66,30 +66,28 @@ Run the local test and codec gates:
 
 ```bash
 ./zig-0.16.0/zig build test --summary all
-./zig-0.16.0/zig build ci --release=fast --summary all
+./zig-0.16.0/zig build test --release=fast --summary all
+./zig-0.16.0/zig build check-fixture
 ```
 
 ## Benchmark Summary
 
-Benchmark dataset: `data/PXD075509/15HCD_1.mzML` (9,001 spectra, 2.67 million peaks). The [tracked report](benchmark/report.md) was generated on 2026-07-28. Its artifact sizes describe the current format 1.0 payload layout. Its timing, RSS, throughput, ranking, and statistical sections are historical and are not v0.2.5 release claims.
+The [reference report](benchmark/report.md) measures `data/PXD075509/15HCD_1.mzML` with 9,001 spectra and 2.67 million peaks. Each operation has five measured samples after one warmup. Rows marked `[P]` use four workers; mzarc remains single-threaded.
 
-| codec               |      size | vs mzML |
-| ------------------- | --------: | ------: |
-| mzML                | 75.55 MiB |  100.0% |
-| mzarc lossless      | 14.46 MiB |   19.1% |
-| mzarc lossy q=16384 | 12.66 MiB |   16.8% |
-| mzMLb               | 16.25 MiB |   21.5% |
-| xz dump             | 15.77 MiB |   20.9% |
-| zstd dump           | 17.85 MiB |   23.6% |
+| Representation | Size | Representation / original mzML |
+| --- | ---: | ---: |
+| Original mzML | 75.55 MiB | 100.00% |
+| Dump V1 retained fields | 30.78 MiB | 40.74% |
+| mzarc lossless | 14.46 MiB | 19.14% |
 
-mzarc lossless is the smallest lossless artifact in the tracked comparison. It is 8.3% smaller than xz on the same binary dump and 11.0% smaller than the tracked mzMLb artifact. The lossy path at `q=16384` reaches 16.8% of the original mzML size with p95 relative intensity error of 0.055%.
+mzarc produces the smallest artifact and the fastest single-threaded encode among the retained Dump V1 methods. It is 8.23% smaller than single-threaded xz on the same dump. Single-threaded zstd decodes faster, while gzip and zstd use less peak RSS. mzarc preserves the Dump V1 retained spectrum fields; it does not reproduce the original mzML document.
 
 <p align="center">
-  <img src="benchmark/plots/size_comparison.png" width="720" alt="Artifact size comparison across mzarc, MS-domain codecs, and generic compressors on 15HCD_1" />
-  <br><em>Size comparison: mzarc lossless and lossy vs MS-domain and generic alternatives.</em>
+  <img src="benchmark/dump-summary.svg" width="960" alt="Artifact size, throughput, and peak RSS for the Dump V1 comparison" />
+  <br><em>Dump V1 comparison. Lower is better for size and RSS; higher is better for throughput.</em>
 </p>
 
-v0.2.5 writes format 1.0 through a single-threaded file path that retains compact metadata plus one active block. Lossless fidelity remains exact against Dump V1, and global scan order is preserved. This release does not declare format 1.0 use-ready. The benchmark harness and public report will be corrected in v0.2.6.
+v0.2.5 writes format 1.0 through a single-threaded file path that retains compact metadata plus one active block. Lossless fidelity remains exact against Dump V1, and global scan order is preserved. This release does not declare format 1.0 use-ready. The v0.2.6 benchmark regression and scaling-memory gates remain open.
 
 ## v0.2.5 Release
 
@@ -102,7 +100,7 @@ v0.2.5 writes format 1.0 through a single-threaded file path that retains compac
 - CRC-32/ISO-HDLC uses runtime-selected PCLMUL on supported x86-64 processors and a portable fallback everywhere else.
 - The CLI remains natively single-threaded.
 
-The tracked report does not describe the final combined v0.2.5 implementation. This release therefore makes no new timing, throughput, RSS, ranking, or significance claim.
+The current reference report measures the combined lossless implementation. It covers one acquisition shape and does not establish performance or memory behavior across the broader corpus.
 
 ## Implementation
 
@@ -123,22 +121,20 @@ The tracked report does not describe the final combined v0.2.5 implementation. T
 - `src/binary_reader.zig`: Dump V1 scanning, positional reads, and positional writes
 - `src/main.zig`: CLI subcommands, validation, inspection, and rANS benchmark command
 
-### Benchmark and analysis
+### Benchmark tools
 
-- `tools/benchmark.sh`: historical real-data orchestration for mzarc and peer codecs
-- `tools/validate.sh`: adversarial, binary roundtrip, fidelity, and regression checks
-- `tools/collect_report.py`: assembles report.json, generates 8 plots, writes report.md
-- `tools/check_regression.py`: regression comparison owner; currently targets a missing baseline
+- `tools/benchmark.sh`: builds ReleaseFast, creates one Dump V1 input, validates every round trip, measures direct commands with zebrac, and writes the two input comparisons
+- `tools/benchmark_plot.gp`: optionally adds SVG summaries without a Python reporting dependency
+- `tools/build_mscompress.sh`: builds and tests the pinned native MScompress CLI without Python
+- `tools/README.md`: records the local tool setup and the byte-exact versus Dump V1-exact comparison boundary
 
-The benchmark pipeline will be corrected in v0.2.6. The current runner and report must not be used for new timing, throughput, RSS, ranking, or significance claims.
+The runner covers mzarc, gzip, pigz, zstd, xz, and native MScompress. [`benchmark/report.md`](benchmark/report.md) records the current five-sample reference comparison. A fail-closed regression check is still pending.
 
 ## CI
 
 The workflow runs on Ubuntu and macOS on every push and pull request. No mzML data or Python required. Checks use the frozen binary fixture in `test/fixtures/`.
 
-Each host runs the Debug unit tests, then the complete ReleaseFast `ci` gate: optimized tests, the stripped installed CLI, frozen fixture integrity, lossless and lossy round trips, and the adversarial corpus.
-
-The local `zig build ci` step runs unit tests, fixture integrity, and the same CLI smoke checks. It does not invoke the regression script while that script targets the missing `benchmark/baseline_v0.1.1.json` and treats missing inputs as a skip.
+The Debug and ReleaseFast unit tests and frozen fixture check remain available. The combined `zig build ci` step currently names the removed `tools/smoke_test.sh`, so it is not a working gate. v0.2.6 must repair that owner before the project claims the combined local or hosted gate.
 
 ## Validation State
 
@@ -156,7 +152,7 @@ mzarc/
   data/        local datasets and benchmark workdirs (gitignored)
   src/         Zig codec implementation
   test/        Zig tests, frozen fixtures, and adversarial inputs
-  tools/       Python ingest, benchmark, and analysis scripts
+  tools/       Python ingest and local benchmark tools
   build.zig
   build.zig.zon
   pyproject.toml
@@ -169,8 +165,9 @@ v0.2.5 is the current release. The next releases have separate scopes:
 
 **v0.2.6: benchmark harness**
 
-- Correct benchmark execution, provenance, validation, byte bases, thread labels, statistics, and regression handling.
-- Replace the historical report only after clean matched Tier B and Tier C runs.
+- Add focused failure checks for the benchmark runner.
+- Complete the scaling-memory check and add a fail-closed regression command against the accepted reference rows.
+- Restore the missing CLI smoke owner used by `zig build ci`.
 
 **v0.2.7: code quality and optimization**
 
