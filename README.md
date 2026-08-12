@@ -1,232 +1,181 @@
-<!-- markdownlint-disable MD033 MD036 MD041 -->
+<!-- markdownlint-disable MD033 MD041 -->
+
 <p align="center">
-    <img src="assets/mzarc-readme-header.svg" alt="mzarc header logo" width="860" />
+  <img src="assets/mzarc-readme-header.svg" alt="mzarc" width="760" />
 </p>
 
 <p align="center">
-    Domain-specific compression for mzML-derived mass spectrometry spectra. 75.55 MiB mzML to a 14.46 MiB lossless archive with an exact retained-field round trip.
+  Domain-specific compression for mzML-derived mass spectrometry spectra.<br />
+  On the current reference file: 75.55 MiB mzML to a 14.46 MiB lossless archive with an exact retained-field round trip.
 </p>
 
 <p align="center">
-    <strong>Research prototype.</strong> Functional codec with a narrow validation corpus.
+  <a href="#quick-start"><img src="https://img.shields.io/badge/zig-0.16.0-F7A41D?style=flat-square&amp;logo=zig&amp;logoColor=white" alt="Zig 0.16.0" /></a>
+  <a href="#format-and-validation"><img src="https://img.shields.io/badge/status-research%20prototype-C17D10?style=flat-square" alt="Research prototype" /></a>
+  <a href="CHANGELOG.md#025---2026-08-09"><img src="https://img.shields.io/badge/version-0.2.5-8B5CF6?style=flat-square" alt="Version 0.2.5" /></a>
+  <a href="https://github.com/eneskemalergin/mzarc/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/eneskemalergin/mzarc/ci.yml?branch=main&amp;style=flat-square&amp;logo=github&amp;label=CI" alt="CI" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-4B9D6E?style=flat-square" alt="MIT License" /></a>
 </p>
 
 <p align="center">
-    <a href="#v025-release"><img src="https://img.shields.io/badge/version-v0.2.5-0f766e?style=for-the-badge" alt="Version v0.2.5" /></a>
-    <a href="#quick-start"><img src="https://img.shields.io/badge/zig-0.16.0-f7a41d?style=for-the-badge" alt="Zig 0.16.0" /></a>
-    <a href="#quick-start"><img src="https://img.shields.io/badge/python-3.12-3776AB?style=for-the-badge" alt="Python 3.12" /></a>
-</p>
-
-<p align="center">
-    <a href="#validation-state"><img src="https://img.shields.io/badge/status-research%20prototype-orange?style=for-the-badge" alt="Research prototype status" /></a>
-</p>
-
-<p align="center">
-    <a href="https://github.com/eneskemalergin/mzarc/actions/workflows/ci.yml"><img src="https://github.com/eneskemalergin/mzarc/actions/workflows/ci.yml/badge.svg" alt="GitHub CI" /></a>
+  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/changelog-CHANGELOG-E05D44?style=flat-square" alt="Changelog" /></a>
+  <a href="benchmark/report.md"><img src="https://img.shields.io/badge/benchmark-REPORT-0066CC?style=flat-square" alt="Benchmark report" /></a>
+  <a href="https://github.com/eneskemalergin/mzarc/issues"><img src="https://img.shields.io/badge/issues-GitHub-8B5CF6?style=flat-square" alt="GitHub issues" /></a>
 </p>
 
 ---
 
-## What This Is
+## What mzarc does
 
-`mzarc` is a research codec for mzML-derived spectra. It asks whether a domain-specific entropy-coded pipeline can beat generic compression on a real proteomics benchmark while staying operationally simple and exactly lossless for the retained spectrum fields.
+`mzarc` is a research codec for mass spectrometry spectra retained from mzML. It combines spectrum-aware transforms with entropy coding, keeps the CLI natively single-threaded, and processes one active block at a time.
 
-The tracked `15HCD_1` artifacts answer yes for size. mzarc lossless is smaller than xz on the same binary dump and smaller than the tracked mzMLb artifact. The lossy path trades controlled intensity precision for a smaller archive.
+The current input path is intentionally split:
 
-These formats do not have identical storage contracts. xz stores Dump V1 bytes, mzMLb stores mzML semantics in HDF5, and mzarc stores the fields retained by the dump boundary. A lossless mzarc round trip is exact against Dump V1, not byte-identical to the original mzML document.
-
-The pipeline is intentionally split:
-
-```txt
-mzML -> Python dump tool -> flat binary -> Zig codec -> .mzarc
+```text
+mzML -> Python Dump V1 converter -> Zig codec -> .mzarc
 ```
 
-Python handles mzML ingestion. Zig owns the codec, validation, and performance-sensitive transforms. This keeps XML and schema handling outside the current codec. Native mzML input belongs to v0.4.0, followed by indexed mzML output in v0.5.0.
+Python handles mzML parsing through Pyteomics. Zig owns Dump V1 validation, compression, decompression, and the performance-sensitive transforms. A lossless mzarc round trip preserves the fields retained by Dump V1; it does not reproduce the original mzML document.
 
-## Quick Start
+The CLI also provides a controlled lossy intensity mode. The `.mzarc` 1.0 format remains under development, so neither mode is use-ready yet.
 
-The project uses Zig 0.16.0 and Python managed with `uv`. The commands below assume Zig 0.16.0 is installed at `./zig-0.16.0/zig`; the local toolchain directory is not tracked.
+## Quick start
+
+mzarc uses Zig 0.16.0. The current mzML converter requires Python 3.12 or 3.13 and is managed with [uv](https://docs.astral.sh/uv/). Place Zig at `./zig-0.16.0/zig`; the local compiler directory is not tracked.
 
 ```bash
 uv sync
 ./zig-0.16.0/zig build --release=fast
 ```
 
-The release command installs a stripped, single-threaded ReleaseFast CLI for the host architecture's baseline CPU. It retains frame pointers and unwind metadata. Run `./zig-0.16.0/zig build` for a native-host Debug CLI with symbols.
-
-Convert, encode, and inspect:
+Convert an mzML file, encode its retained spectra, and inspect the archive:
 
 ```bash
-uv run python tools/mzml_dump.py data/PXD075509/15HCD_1.mzML -o 15HCD_1.bin
-./zig-out/bin/mzarc encode 15HCD_1.bin -o 15HCD_1.mzarc
-./zig-out/bin/mzarc inspect 15HCD_1.mzarc
+uv run python tools/mzml_dump.py input.mzML -o input.bin
+./zig-out/bin/mzarc encode input.bin -o input.mzarc
+./zig-out/bin/mzarc inspect input.mzarc
 ```
 
-Run the local test and codec gates:
+Decode and validate a lossless round trip:
+
+```bash
+./zig-out/bin/mzarc decode input.mzarc -o restored.bin
+./zig-out/bin/mzarc validate input.bin restored.bin --mode=lossless
+```
+
+The release build installs a stripped ReleaseFast binary for the host architecture's baseline CPU. It retains frame pointers and unwind metadata. Run `./zig-0.16.0/zig build` for a native-host Debug binary with symbols.
+
+## Benchmark
+
+The [reference report](benchmark/report.md) measures `data/PXD075509/15HCD_1.mzML`: 9,001 spectra and 2,668,458 peaks. Each operation has five measured samples after one warmup. Rows marked `[P]` use four workers; mzarc remains single-threaded.
+
+| Representation          | Size      | Relative to original mzML |
+| ----------------------- | --------: | ------------------------: |
+| Original mzML           | 75.55 MiB |                   100.00% |
+| Dump V1 retained fields | 30.78 MiB |                    40.74% |
+| mzarc lossless          | 14.46 MiB |                    19.14% |
+
+Against the shared Dump V1 input, mzarc writes a 14.46 MiB artifact, 46.99% of that input and 8.23% smaller than single-threaded xz. mzarc records the fastest single-threaded encode at 206.22 MiB/s. zstd decodes faster, while gzip records lower peak RSS.
+
+The 19.14% figure describes the current mzML-to-Dump-V1-to-mzarc storage path. It does not mean mzarc can reconstruct the original XML document.
+
+<p align="center">
+  <img src="benchmark/dump-summary.svg" width="900" alt="Artifact size, throughput, and peak RSS for the Dump V1 comparison" />
+  <br /><em>Dump V1 comparison. Lower is better for size and RSS; higher is better for throughput.</em>
+</p>
+
+These are measured results from one file, one acquisition shape, and one host. The report records the commands, tool versions, validation boundaries, direct-child RSS, and separate original-mzML comparison.
+
+## Format and validation
+
+Version 0.2.5 writes `.mzarc` format 1.0 through a single-threaded file path. The codec keeps compact metadata plus one active block, preserves global scan order, and leaves an existing destination unchanged when encode or decode fails.
+
+The current lossless mode passes the semantic validator on the tracked Dump V1 fixture and reference file; the reference file is also byte exact. Format closure still has to define the public m/z fidelity rule for every supported Dump V1 value. Until format 1.0 is declared use-ready, development archives may need regeneration and no compatibility with earlier development layouts is promised.
+
+CRC-32/ISO-HDLC uses runtime-selected PCLMUL on supported x86-64 processors and a portable fallback on other targets. CI verifies Debug and ReleaseFast behavior on Ubuntu and macOS. Windows and aarch64 are not supported claims.
+
+## Development
+
+Run the focused and combined local gates with the pinned compiler:
 
 ```bash
 ./zig-0.16.0/zig build test --summary all
-./zig-0.16.0/zig build test --release=fast --summary all
-./zig-0.16.0/zig build check-fixture
+./zig-0.16.0/zig build ci --release=fast --summary all
 ```
 
-## Benchmark Summary
+The combined release gate runs ReleaseFast tests, verifies the frozen fixture, and exercises adversarial, lossless, and lossy CLI round trips against the stripped binary. It does not require Python or local mzML data.
 
-The [reference report](benchmark/report.md) measures `data/PXD075509/15HCD_1.mzML` with 9,001 spectra and 2.67 million peaks. Each operation has five measured samples after one warmup. Rows marked `[P]` use four workers; mzarc remains single-threaded.
+The local comparison requires the peer tools described in [tools/README.md](tools/README.md) and an ignored local copy of the reference mzML file:
 
-| Representation | Size | Representation / original mzML |
-| --- | ---: | ---: |
-| Original mzML | 75.55 MiB | 100.00% |
-| Dump V1 retained fields | 30.78 MiB | 40.74% |
-| mzarc lossless | 14.46 MiB | 19.14% |
+```bash
+bash tools/benchmark.sh data/PXD075509/15HCD_1.mzML
+```
 
-mzarc produces the smallest artifact and the fastest single-threaded encode among the retained Dump V1 methods. It is 8.23% smaller than single-threaded xz on the same dump. Single-threaded zstd decodes faster, while gzip and zstd use less peak RSS. mzarc preserves the Dump V1 retained spectrum fields; it does not reproduce the original mzML document.
-
-<p align="center">
-  <img src="benchmark/dump-summary.svg" width="960" alt="Artifact size, throughput, and peak RSS for the Dump V1 comparison" />
-  <br><em>Dump V1 comparison. Lower is better for size and RSS; higher is better for throughput.</em>
-</p>
-
-v0.2.5 writes format 1.0 through a single-threaded file path that retains compact metadata plus one active block. Lossless fidelity remains exact against Dump V1, and global scan order is preserved. This release does not declare format 1.0 use-ready. The v0.2.6 benchmark regression and scaling-memory gates remain open.
-
-## v0.2.5 Release
-
-`v0.2.5` is a research snapshot of the current codec. Key changes since v0.2.0:
-
-- `.mzarc` format 1.0 stores the first m/z value directly and compresses the remaining differences.
-- Encode and decode retain compact metadata plus one active block instead of all peak data.
-- Failed encode or decode commands leave an existing destination unchanged.
-- The rANS, FOR, intensity, and checksum paths perform less repeated work and allocate fewer temporary buffers.
-- CRC-32/ISO-HDLC uses runtime-selected PCLMUL on supported x86-64 processors and a portable fallback everywhere else.
-- The CLI remains natively single-threaded.
-
-The current reference report measures the combined lossless implementation. It covers one acquisition shape and does not establish performance or memory behavior across the broader corpus.
-
-## Implementation
-
-### Ingest and dump layer
-
-`tools/mzml_dump.py` converts mzML to the flat binary format the codec expects. The Python dump is intentional: it isolates XML parsing from the codec. A native Zig ingest path is planned once the codec core is stable.
-
-`src/binary_reader.zig` reads and writes the dump format. `mzarc dump-inspect` reports dump statistics.
-
-### Codec core
-
-- `src/quantize.zig`: m/z fixed-point conversion and lossy intensity quantization
-- `src/bitpack.zig`: FOR bit-packing and multi-byte unpacking
-- `src/block_encode.zig` and `src/block_decode.zig`: block transforms, entropy decisions, and validation
-- `src/crc32.zig`: portable CRC-32/ISO-HDLC with runtime-selected x86-64 PCLMUL
-- `src/block.zig`: shared block namespace
-- `src/codec.zig`: `.mzarc` file processing with one active block and destination preservation after failure
-- `src/binary_reader.zig`: Dump V1 scanning, positional reads, and positional writes
-- `src/main.zig`: CLI subcommands, validation, inspection, and rANS benchmark command
-
-### Benchmark tools
-
-- `tools/benchmark.sh`: builds ReleaseFast, creates one Dump V1 input, validates every round trip, measures direct commands with zebrac, and writes the two input comparisons
-- `tools/benchmark_plot.gp`: draws the optional size, throughput, and RSS comparison figures
-- `tools/build_mscompress.sh`: builds and tests the pinned native MScompress CLI without Python
-- `tools/README.md`: records the local tool setup and the byte-exact versus Dump V1-exact comparison boundary
-
-The runner covers mzarc, gzip, pigz, zstd, xz, and native MScompress. [`benchmark/report.md`](benchmark/report.md) records the current five-sample reference comparison. A fail-closed regression check is still pending.
-
-## CI
-
-The workflow runs on Ubuntu and macOS on every push and pull request. No mzML data or Python required. Checks use the frozen binary fixture in `test/fixtures/`.
-
-The Debug and ReleaseFast unit tests and frozen fixture check remain available. The combined `zig build ci` step currently names the removed `tools/smoke_test.sh`, so it is not a working gate. v0.2.6 must repair that owner before the project claims the combined local or hosted gate.
-
-## Validation State
-
-Lossless fidelity on `15HCD_1` is exact against Dump V1: zero m/z error and preserved scan order. The lossy path at `q=16384` yields p95 relative intensity error of 0.055%.
-
-This is a research prototype. It has been validated on one dataset from one instrument type. Quirks in edge cases are expected and will surface with broader use.
-
-The `.mzarc` 1.0 format is still under development and is not use-ready. Development archives may need regeneration until the project explicitly declares 1.0 use-ready. After that declaration, persisted-layout changes require a new file version and compatibility coverage.
-
-## Repository Layout
+Repository responsibilities stay narrow:
 
 ```text
-mzarc/
-  benchmark/   public benchmark artifacts and plots
-  data/        local datasets and benchmark workdirs (gitignored)
-  src/         Zig codec implementation
-  test/        Zig tests, frozen fixtures, and adversarial inputs
-  tools/       Python ingest and local benchmark tools
-  build.zig
-  build.zig.zon
-  pyproject.toml
-  README.md
+src/         Zig codec and CLI
+test/        Unit, property, malformed-input, fixture, and CLI data
+tools/       mzML conversion and local benchmark commands
+benchmark/   Reference report, baseline row, and summary figures
+data/        Local real-data inputs, ignored by Git
 ```
 
 ## Roadmap
 
-v0.2.5 is the current release. The next releases have separate scopes:
+Current directions include:
 
-**v0.2.6: benchmark harness**
+- Close the format, fidelity, and bounded-memory contracts before declaring `.mzarc` use-ready.
+- Replace the Python conversion boundary with native, bounded mzML input and validated indexed mzML output.
+- Broaden correctness, performance, and memory checks across acquisition shapes, file sizes, and supported hosts.
+- Keep improving archive size, throughput, and RSS where measurements show a material cost.
+- Explore DIA-specific coding and native vendor-format readers when representative data and stable interfaces justify them.
 
-- Add focused failure checks for the benchmark runner.
-- Complete the scaling-memory check and add a fail-closed regression command against the accepted reference rows.
-- Restore the missing CLI smoke owner used by `zig build ci`.
-
-**v0.2.7: code quality and optimization**
-
-- Audit source, tests, and tools for consistent project standards and simpler ownership.
-- Continue optimization only where current measurements show a material program cost.
-
-**v0.3.0: codec closure, in progress**
-
-- Reduce file read and write calls without whole-file loading, default mapping, or threading.
-- Retest block sizes 64, 128, 256, and 512 for wall time, archive size, and peak RSS.
-- Decide whether rANS4 earns inclusion in format 1.0 before it is declared use-ready.
-- Measure and verify the final combined artifact on the primary benchmark, the retained scaling corpus, Ubuntu, and macOS.
-
-**v0.4.0: native mzML I/O**
-
-- Native streaming mzML reader with Python dump parity and mzValidate-backed reliability.
-- Indexed mzML writer with round-trip parity and validation.
-- Direct mzML-to-mzarc integration with one active block through the finalized v0.3.0 codec boundary.
-
-Later directions include DIA-specific coding after DIA data exists, native vendor-format readers as the ecosystem matures, and multi-instrument validation beyond the current E. coli benchmark.
+Concurrency remains outside the current product scope.
 
 ## References
 
-**Format and codec**
+### Formats and compression
 
 - Martens, L. et al. [mzML -- a community standard for mass spectrometry data](https://doi.org/10.1074/mcp.R110.000133). _Molecular & Cellular Proteomics_.
 - Bhamber, R. S. et al. (2020). [mzMLb: a future-proof raw mass spectrometry data format based on standards-compliant mzML and optimized for speed and storage requirements](https://doi.org/10.1021/acs.jproteome.0c00192). _Journal of Proteome Research_.
-- [ms-numpress](https://github.com/ms-numpress/ms-numpress): Numerical compression methods for mass spectrometry data.
-- [mscompress](https://github.com/chrisagrams/mscompress): Domain-specific compression for tandem mass spectrometry data.
-
-**Entropy coding**
-
 - Duda, J. (2013). [Asymmetric numeral systems: entropy coding combining speed of Huffman coding with compression rate of arithmetic coding](https://arxiv.org/abs/1311.2540). _arXiv:1311.2540_.
-- Giesen, F. (2014). [rANS notes](https://fgiesen.wordpress.com/2014/02/02/rans-notes/). Practical derivation and proofs for streaming rANS; reference implementation at [github.com/rygorous/ryg_rans](https://github.com/rygorous/ryg_rans).
+- Giesen, F. (2014). [rANS notes](https://fgiesen.wordpress.com/2014/02/02/rans-notes/) and the [ryg_rans reference implementation](https://github.com/rygorous/ryg_rans).
+- [ms-numpress](https://github.com/ms-numpress/ms-numpress) and [MScompress](https://github.com/chrisagrams/mscompress), mass-spectrometry compression peers.
 
-**Dataset**
+### Data and tooling
 
-- [PXD075509](https://www.ebi.ac.uk/pride/archive/projects/PXD075509): HCD fragmentation energy series, _E. coli_ rRNA digest. Primary benchmark dataset.
-
-**Tooling**
-
-- [Zig](https://ziglang.org): systems programming language used for the codec, CLI, and test harness.
-- [pyteomics](https://github.com/levitsky/pyteomics): Python library for mzML/mzMLb ingestion in the dump tool. Cite: Goloborodko et al. (2013), DOI [10.1007/s13361-012-0516-6](https://doi.org/10.1007/s13361-012-0516-6); Levitsky et al. (2018), DOI [10.1021/acs.jproteome.8b00717](https://doi.org/10.1021/acs.jproteome.8b00717).
-- [zebrac](https://github.com/eneskemalergin/zebrac): Linux measurement tool. The bundled 0.6.2 binary provides the wall-time and direct-child RSS summaries used by the current reference report.
+- [PXD075509](https://www.ebi.ac.uk/pride/archive/projects/PXD075509), the current reference dataset.
+- [Zig](https://ziglang.org), the language used for the codec, CLI, and tests.
+- [Pyteomics](https://github.com/levitsky/pyteomics), the current mzML ingestion library.
+- [zebrac](https://github.com/eneskemalergin/zebrac), the Linux measurement tool used by the reference report.
 
 ---
 
-## License
+## License and acknowledgements
 
-MIT. See [LICENSE](LICENSE). The x86-64 CRC path includes an MIT-licensed adaptation from `crc32fast`; see [LICENSES/crc32fast-MIT.txt](LICENSES/crc32fast-MIT.txt).
+**mzarc is licensed under the MIT License.** See [LICENSE](LICENSE) for the full terms.
+
+**mzarc stands on the shoulders of giants.** I am building the codec in Zig, but rewriting an idea does not erase where it came from. The list below distinguishes design references from adapted code and records the logic mzarc uses from each. The full bibliography, external dependencies, and benchmark peers remain in [References](#references).
+
+- **[rANS and `ryg_rans`](https://github.com/rygorous/ryg_rans)**
+  - **Relationship:** Design reference, not vendored code.
+  - **Credit:** Jarek Duda for asymmetric numeral systems and Fabian Giesen for the byte-aligned reference implementation and notes.
+  - **Terms:** [`ryg_rans` is released into the public domain](https://github.com/rygorous/ryg_rans/blob/master/LICENSE).
+  - **Logic used:** The reverse-order encoder, state update, and byte-renormalization model behind order-0 rANS.
+  - **How it is used:** `src/rans.zig` implements a local 32-bit rANS codec with 12-bit frequency precision, its own normalized frequency table and wire layout, and mzarc-specific validation.
+- **[`crc32fast` 1.5.0](https://github.com/srijs/rust-crc32fast/tree/v1.5.0)**
+  - **Relationship:** Adapted code.
+  - **Credit:** Sam Rijs, Alex Crichton, and contributors.
+  - **License:** Upstream offers MIT or Apache-2.0. mzarc uses the MIT option and retains the full notice in [LICENSES/crc32fast-MIT.txt](LICENSES/crc32fast-MIT.txt).
+  - **Logic used:** The x86-64 PCLMUL folding schedule and polynomial constants.
+  - **How it is used:** `src/crc32.zig` adapts that path to Zig and selects it at runtime on supported x86-64 processors. The local slicing-by-8 implementation remains the portable fallback.
+  - **Integration:** No upstream crate or binary is linked or vendored.
 
 ---
-
-<br />
 
 <p align="center">
-    <em>
-        Ions drift to ground<br />
-        Folded into bit-packed frames -<br />
-        The machine breathes light.
-    </em>
+  <em>Ions drift to ground</em><br />
+  <em>Folded into bit-packed frames -</em><br />
+  <em>The machine breathes light.</em>
 </p>
