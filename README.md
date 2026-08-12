@@ -124,7 +124,7 @@ The current reference report measures the combined lossless implementation. It c
 ### Benchmark tools
 
 - `tools/benchmark.sh`: builds ReleaseFast, creates one Dump V1 input, validates every round trip, measures direct commands with zebrac, and writes the two input comparisons
-- `tools/benchmark_plot.gp`: optionally adds SVG summaries without a Python reporting dependency
+- `tools/benchmark_plot.gp`: draws the optional size, throughput, and RSS comparison figures
 - `tools/build_mscompress.sh`: builds and tests the pinned native MScompress CLI without Python
 - `tools/README.md`: records the local tool setup and the byte-exact versus Dump V1-exact comparison boundary
 
@@ -211,7 +211,7 @@ Later directions include DIA-specific coding after DIA data exists, native vendo
 
 - [Zig](https://ziglang.org): systems programming language used for the codec, CLI, and test harness.
 - [pyteomics](https://github.com/levitsky/pyteomics): Python library for mzML/mzMLb ingestion in the dump tool. Cite: Goloborodko et al. (2013), DOI [10.1007/s13361-012-0516-6](https://doi.org/10.1007/s13361-012-0516-6); Levitsky et al. (2018), DOI [10.1021/acs.jproteome.8b00717](https://doi.org/10.1021/acs.jproteome.8b00717).
-- [zebrac](https://github.com/eneskemalergin/zebrac): Linux measurement tool. The bundled 0.6.1 binary produced historical results; new hardware-counter claims wait for the 0.6.2 interface audit.
+- [zebrac](https://github.com/eneskemalergin/zebrac): Linux measurement tool. The bundled 0.6.2 binary provides the wall-time and direct-child RSS summaries used by the current reference report.
 
 ---
 

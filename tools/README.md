@@ -22,6 +22,10 @@ bash tools/benchmark.sh data/PXD075509/15HCD_1.mzML
 
 The reference report uses five measured samples after one warmup. Parallel rows use four workers and are marked `[P]`. Use `--help` for the output, worker, and sample controls.
 
+Each operation runs as one direct zebrac command. The runner requires the reported command arguments, sampling configuration, result count, failure count, wall-time unit, RSS unit, and summary sample counts to match the request. It does not use shell wrappers or zebrac's multi-command comparison display.
+
+The tracked zebrac binary is Linux-only and requires access to `perf_event_open`. The runner has no macOS or permission-denied fallback and does not substitute another measurement source.
+
 Files under `data/examples/` are parser sanity inputs. They require `--sanity`, which labels the report as a wiring check and omits figures. Their measurements are not benchmark results.
 
 The benchmark report contains two input sections:
@@ -29,7 +33,7 @@ The benchmark report contains two input sections:
 - one Dump V1 input compressed by mzarc, gzip, pigz, zstd, and xz;
 - the original mzML compressed by gzip, pigz, zstd, xz, and MScompress.
 
-Generic compressors must reproduce the exact input bytes. MScompress must reproduce the exact Dump V1 spectrum fields; it may rewrite the mzML document representation.
+Generic compressors must reproduce the exact input bytes. MScompress must reproduce the fields retained by Dump V1; it may rewrite the mzML document representation.
 
 Each percentage column names its denominator. Compare methods within a section, not across the Dump V1 and original mzML sections. Each section keeps the complete results in separate artifact, encode, and decode tables. The report also records the source shape, measurement method, validation boundaries, limits, and tool versions. If `gnuplot` is available, it adds one comparison figure for each input. Each figure title names the source file and comparison-input size. Artifact percentages are labeled directly. The Dump V1 figure highlights mzarc and labels its throughput and RSS without repeating every table value. Plotting does not use Python.
 

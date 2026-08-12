@@ -20,6 +20,7 @@ This report compares lossless compression of one mzML-derived Dump V1 input and 
 - mzarc build: stripped ReleaseFast, single-threaded
 - Sampling: 5 measurements per operation after one warmup
 - Parallel rows: 4 workers, marked `[P]`; direction-specific behavior remains in the tables
+- Execution: each operation is measured independently; files are reused after untimed validation and one warmup
 - Throughput: uncompressed input bytes divided by mean wall time
 - Peak RSS: median zebrac direct-child RSS
 
@@ -130,12 +131,13 @@ Comparison input: original mzML, 75.55 MiB (79221306 bytes).
 
 - mzarc, gzip, pigz, zstd, and xz reproduce their Dump V1 input byte for byte.
 - gzip, pigz, zstd, and xz reproduce the original mzML document byte for byte.
-- MScompress is spectrum-lossless here, not necessarily document-byte-lossless. Its decoded mzML is converted through the same Dump V1 converter and compared byte for byte with the source dump.
+- MScompress reproduces the fields retained by Dump V1 here, not necessarily the original document bytes. Its decoded mzML is converted through the same Dump V1 converter and compared byte for byte with the source dump.
 
 ## Limits
 
 - This report covers one file and one acquisition shape. It does not establish performance or RSS behavior across the broader corpus.
 - mzarc currently starts from Dump V1. The original mzML section therefore has no mzarc row.
+- The runner does not clear filesystem caches, randomize operation order, isolate CPUs, or control system load and CPU frequency.
 - Wall time and RSS are measurements from one host, not portable guarantees.
 
 ## Tool versions

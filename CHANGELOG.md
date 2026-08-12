@@ -6,6 +6,20 @@ All notable changes to mzarc are documented here. The format follows [Keep a Cha
 
 ## Unreleased
 
+### Added
+
+- `tools/benchmark.sh` builds a stripped ReleaseFast binary, creates one Dump V1 input, and compares mzarc with gzip, pigz, zstd, xz, and native MScompress. Dump V1 and original mzML results remain separate because their inputs and validation contracts differ.
+- `tools/build_mscompress.sh` builds and tests the pinned native MScompress 1.0.16 CLI. `tools/benchmark_plot.gp` can add size, throughput, and peak RSS summaries without Python plotting dependencies.
+
+### Changed
+
+- Benchmark commands run directly under zebrac 0.6.2 with one warmup and an exact sample count. A result is rejected when the command fails or the measurement record does not match the request.
+- The reference report now records complete artifact, encode, and decode tables, fixed worker counts, validation boundaries, source shape, measurement limits, and queried tool versions for both benchmark inputs.
+
+### Removed
+
+- The former Python reporting and plotting stack and historical benchmark output. The tracked benchmark now consists of one report, one full-precision Dump V1 table, and two SVG summaries.
+
 ## [0.2.5] - 2026-08-09
 
 ### Added

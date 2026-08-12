@@ -9,7 +9,7 @@ Usage: tools/benchmark.sh [options] input.mzML
 Options:
   --output DIR    New result directory under tmp/bench/runs by default.
   --threads N     Fixed parallel worker count (default: 4).
-  --samples N     Exact zebrac sample count per operation (default: 5).
+  --samples N     Exact zebrac sample count per operation, 1 to 10000 (default: 5).
   --sanity        Label parser-example output as a sanity check.
   -h, --help      Show this help.
 EOF
@@ -70,6 +70,10 @@ if [[ ! "$threads" =~ ^[1-9][0-9]*$ ]]; then
 fi
 if [[ ! "$samples" =~ ^[1-9][0-9]*$ ]]; then
     echo "error: --samples must be a positive integer" >&2
+    exit 1
+fi
+if ((samples > 10000)); then
+    echo "error: --samples cannot exceed zebrac's 10000-sample cap" >&2
     exit 1
 fi
 
@@ -210,10 +214,40 @@ readonly rows_mzml="$scratch/mzml.tsv"
 : >"$rows_dump"
 : >"$rows_mzml"
 
+zebrac_command() {
+    local command=""
+    local argument encoded character
+    local index
+
+    for argument in "$@"; do
+        encoded=""
+        if [[ -z "$argument" ]]; then
+            encoded="''"
+        else
+            for ((index = 0; index < ${#argument}; index++)); do
+                character=${argument:index:1}
+                case "$character" in
+                    [[:alnum:]]|'_'|'.'|'/'|'-'|':'|'='|','|'+'|'@'|'%') encoded+="$character" ;;
+                    *) encoded+="\\$character" ;;
+                esac
+            done
+        fi
+        if [[ -n "$command" ]]; then
+            command+=' '
+        fi
+        command+="$encoded"
+    done
+    printf '%s' "$command"
+}
+
 measure() {
     local operation_id=$1
-    local command=$2
+    shift
+    local command expected_argv
     local json="$output_dir/zebrac/$operation_id.json"
+
+    command=$(zebrac_command "$@")
+    expected_argv=$("$jq_bin" -cn --args '$ARGS.positional' -- "$@")
 
     "$zebrac" --duration 0 \
         --min-samples "$samples" \
@@ -225,12 +259,28 @@ measure() {
 
     "$jq_bin" -e \
         --argjson samples "$samples" \
+        --argjson expected_argv "$expected_argv" \
+        --arg command "$command" \
         --arg zebrac_version "$zebrac_json_version" \
         '.schema_version == 1 and
          .zebrac_version == $zebrac_version and
+         .config.duration_ms == 0 and
+         .config.min_samples == $samples and
+         .config.max_samples == $samples and
+         .config.warmup == 1 and
+         .config.allow_failures == false and
          (.results | length) == 1 and
+         .results[0].command == $command and
+         .results[0].argv == $expected_argv and
          .results[0].sample_count == $samples and
-         .results[0].failed_sample_count == 0' \
+         .results[0].failed_sample_count == 0 and
+         .results[0].wall_time.unit == "nanoseconds" and
+         .results[0].wall_time.sample_count == $samples and
+         (.results[0].wall_time.mean | type == "number") and
+         (.results[0].wall_time.std_dev | type == "number") and
+         .results[0].peak_rss.unit == "bytes" and
+         .results[0].peak_rss.sample_count == $samples and
+         (.results[0].peak_rss.median | type == "number")' \
         "$json" >/dev/null
 }
 
@@ -430,8 +480,8 @@ run_mzarc_dump() {
         validation="byte exact"
     fi
 
-    measure dump-mzarc-encode "$mzarc encode $work/source.bin -o $work/archive.mzarc"
-    measure dump-mzarc-decode "$mzarc decode $work/archive.mzarc -o $work/decoded.bin"
+    measure dump-mzarc-encode "$mzarc" encode "$work/source.bin" -o "$work/archive.mzarc"
+    measure dump-mzarc-decode "$mzarc" decode "$work/archive.mzarc" -o "$work/decoded.bin"
     "$mzarc" validate "$work/source.bin" "$work/decoded.bin" --mode=lossless >/dev/null
     record_row "$rows_dump" 'mzarc lossless' 'single / single' "$validation" \
         "$dump_bytes" "$work/archive.mzarc" \
@@ -452,8 +502,8 @@ run_gzip() {
     "$gzip_bin" -d -f -k "$work/source.gz"
     cmp "$source" "$work/source"
 
-    measure "$lane-gzip-encode" "$gzip_bin -6 -n -f -k $work/source"
-    measure "$lane-gzip-decode" "$gzip_bin -d -f -k $work/source.gz"
+    measure "$lane-gzip-encode" "$gzip_bin" -6 -n -f -k "$work/source"
+    measure "$lane-gzip-decode" "$gzip_bin" -d -f -k "$work/source.gz"
     cmp "$source" "$work/source"
     record_row "$rows" 'gzip -6' 'single / single' 'byte exact' \
         "$input_bytes" "$work/source.gz" \
@@ -481,8 +531,8 @@ run_pigz() {
     "$pigz_bin" -d -p "$workers" -f -k "$work/source.gz"
     cmp "$source" "$work/source"
 
-    measure "$lane-pigz-$suffix-encode" "$pigz_bin -6 -p $workers -n -f -k $work/source"
-    measure "$lane-pigz-$suffix-decode" "$pigz_bin -d -p $workers -f -k $work/source.gz"
+    measure "$lane-pigz-$suffix-encode" "$pigz_bin" -6 -p "$workers" -n -f -k "$work/source"
+    measure "$lane-pigz-$suffix-decode" "$pigz_bin" -d -p "$workers" -f -k "$work/source.gz"
     cmp "$source" "$work/source"
     record_row "$rows" "$label" "$thread_class" 'byte exact' \
         "$input_bytes" "$work/source.gz" \
@@ -506,8 +556,8 @@ run_zstd() {
     "$zstd_bin" -q -d --no-asyncio -f "$work/archive.zst" -o "$work/decoded"
     cmp "$source" "$work/decoded"
 
-    measure "$lane-zstd-$suffix-encode" "$zstd_bin -q -3 $worker_arg --no-asyncio -f $source -o $work/archive.zst"
-    measure "$lane-zstd-$suffix-decode" "$zstd_bin -q -d --no-asyncio -f $work/archive.zst -o $work/decoded"
+    measure "$lane-zstd-$suffix-encode" "$zstd_bin" -q -3 "$worker_arg" --no-asyncio -f "$source" -o "$work/archive.zst"
+    measure "$lane-zstd-$suffix-decode" "$zstd_bin" -q -d --no-asyncio -f "$work/archive.zst" -o "$work/decoded"
     cmp "$source" "$work/decoded"
     record_row "$rows" "$label" "$thread_class" 'byte exact' \
         "$input_bytes" "$work/archive.zst" \
@@ -531,8 +581,8 @@ run_xz() {
     "$xz_bin" -d -T "$workers" -f -k "$work/source.xz"
     cmp "$source" "$work/source"
 
-    measure "$lane-xz-$suffix-encode" "$xz_bin -q -6 -T $workers -f -k $work/source"
-    measure "$lane-xz-$suffix-decode" "$xz_bin -q -d -T $workers -f -k $work/source.xz"
+    measure "$lane-xz-$suffix-encode" "$xz_bin" -q -6 -T "$workers" -f -k "$work/source"
+    measure "$lane-xz-$suffix-decode" "$xz_bin" -q -d -T "$workers" -f -k "$work/source.xz"
     cmp "$source" "$work/source"
     record_row "$rows" "$label" "$suffix / $suffix" 'byte exact' \
         "$input_bytes" "$work/source.xz" \
@@ -553,8 +603,8 @@ run_mscompress() {
         -o "$work/decoded.bin" >/dev/null
     cmp "$scratch/source.bin" "$work/decoded.bin"
 
-    measure "mzml-mscompress-$suffix-encode" "$mscompress -t $workers $scratch/source.mzML $work/archive.msz"
-    measure "mzml-mscompress-$suffix-decode" "$mscompress -t $workers $work/archive.msz $work/decoded.mzML"
+    measure "mzml-mscompress-$suffix-encode" "$mscompress" -t "$workers" "$scratch/source.mzML" "$work/archive.msz"
+    measure "mzml-mscompress-$suffix-decode" "$mscompress" -t "$workers" "$work/archive.msz" "$work/decoded.mzML"
     "$python" "$repo_root/tools/mzml_dump.py" "$work/decoded.mzML" \
         -o "$work/decoded.bin" >/dev/null
     cmp "$scratch/source.bin" "$work/decoded.bin"
@@ -634,6 +684,7 @@ run_mscompress "$threads" "fixed-$threads" "MScompress -t$threads [P]"
     echo '- mzarc build: stripped ReleaseFast, single-threaded'
     echo "- Sampling: $samples $measurement_word per operation after one warmup"
     echo "- Parallel rows: $threads workers, marked \`[P]\`; direction-specific behavior remains in the tables"
+    echo '- Execution: each operation is measured independently; files are reused after untimed validation and one warmup'
     echo '- Throughput: uncompressed input bytes divided by mean wall time'
     echo '- Peak RSS: median zebrac direct-child RSS'
     echo
@@ -664,12 +715,13 @@ write_comparison 'Original mzML round trip' 'original mzML' "$mzml_bytes" "$rows
     echo
     echo '- mzarc, gzip, pigz, zstd, and xz reproduce their Dump V1 input byte for byte.'
     echo '- gzip, pigz, zstd, and xz reproduce the original mzML document byte for byte.'
-    echo '- MScompress is spectrum-lossless here, not necessarily document-byte-lossless. Its decoded mzML is converted through the same Dump V1 converter and compared byte for byte with the source dump.'
+    echo '- MScompress reproduces the fields retained by Dump V1 here, not necessarily the original document bytes. Its decoded mzML is converted through the same Dump V1 converter and compared byte for byte with the source dump.'
     echo
     echo '## Limits'
     echo
     echo '- This report covers one file and one acquisition shape. It does not establish performance or RSS behavior across the broader corpus.'
     echo '- mzarc currently starts from Dump V1. The original mzML section therefore has no mzarc row.'
+    echo '- The runner does not clear filesystem caches, randomize operation order, isolate CPUs, or control system load and CPU frequency.'
     echo '- Wall time and RSS are measurements from one host, not portable guarantees.'
     echo
     echo '## Tool versions'
