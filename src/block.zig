@@ -22,6 +22,13 @@ pub const flag_rans_mz = common.flag_rans_mz;
 pub const flag_rans_intensity = common.flag_rans_intensity;
 pub const header_len = common.header_len;
 pub const packedByteLen = common.packedByteLen;
+pub const MAX_BLOCK_SPECTRA = common.MAX_BLOCK_SPECTRA;
+pub const MAX_BLOCK_PEAKS = common.MAX_BLOCK_PEAKS;
+pub const logicalBlockBytes = common.logicalBlockBytes;
+pub const maxBlockPayloadBytes = common.maxBlockPayloadBytes;
+pub const validateBlockCounts = common.validateBlockCounts;
+pub const validateBlockHeaderResources = common.validateBlockHeaderResources;
+pub const blockNeedsFlush = common.blockNeedsFlush;
 
 pub const encodeBlockDetailed = encode.encodeBlockDetailed;
 pub const encodeBlock = encode.encodeBlock;

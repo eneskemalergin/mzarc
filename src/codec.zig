@@ -283,18 +283,20 @@ fn appendFilteredStreamBlocks(
     defer scratch_arena.deinit();
 
     var used: usize = 0;
+    var block_peaks: usize = 0;
     for (spectra, 0..) |spectrum, spectrum_index| {
         if (spectrum.ms_level == level) {
+            if (try block.blockNeedsFlush(used, block_peaks, spectrum.mz.len, block_capacity)) {
+                try flushBlock(file_bytes, allocator, &scratch_arena, block_spectra[0..used], options, block_count);
+                used = 0;
+                block_peaks = 0;
+            }
             block_spectra[used] = spectrum;
             order_entries[order_cursor.*] = @intCast(spectrum_index);
             used += 1;
+            block_peaks = try std.math.add(usize, block_peaks, spectrum.mz.len);
             matched += 1;
             order_cursor.* += 1;
-
-            if (used == block_capacity) {
-                try flushBlock(file_bytes, allocator, &scratch_arena, block_spectra[0..used], options, block_count);
-                used = 0;
-            }
         }
     }
 
@@ -306,7 +308,9 @@ fn appendFilteredStreamBlocks(
 }
 
 pub fn encodeFileAlloc(io: std.Io, allocator: Allocator, spectra: []const binary_reader.RawSpectrum, options: EncodeOptions) ![]u8 {
-    if (options.block_size == 0) return error.InvalidBlockSize;
+    if (options.block_size == 0 or options.block_size > block.MAX_BLOCK_SPECTRA) {
+        return error.InvalidBlockSize;
+    }
     if (spectra.len > std.math.maxInt(u32)) return error.TooManySpectra;
 
     const t0 = monotonicNs(io);
@@ -578,9 +582,22 @@ fn addU64(a: u64, b: u64) !u64 {
     return std.math.add(u64, a, b);
 }
 
-fn streamBlockCount(spectrum_count: usize, block_size: usize) !usize {
-    if (spectrum_count == 0) return 0;
-    return (try std.math.add(usize, spectrum_count, block_size - 1)) / block_size;
+fn levelBlockCount(entries: []const binary_reader.DumpEntry, level: u8, block_size: usize) !usize {
+    var block_count: usize = 0;
+    var spectrum_count: usize = 0;
+    var total_peaks: usize = 0;
+    for (entries) |entry| {
+        if (entry.ms_level != level) continue;
+        if (try block.blockNeedsFlush(spectrum_count, total_peaks, entry.peak_count, block_size)) {
+            block_count = try std.math.add(usize, block_count, 1);
+            spectrum_count = 0;
+            total_peaks = 0;
+        }
+        spectrum_count += 1;
+        total_peaks = try std.math.add(usize, total_peaks, entry.peak_count);
+    }
+    if (spectrum_count != 0) block_count = try std.math.add(usize, block_count, 1);
+    return block_count;
 }
 
 fn writeOrderPrefix(prefix: []u8, entries: []const binary_reader.DumpEntry) !void {
@@ -630,16 +647,19 @@ fn encodeLevelToFile(
 
     var block_count: u32 = 0;
     var used: usize = 0;
+    var block_peaks: usize = 0;
     for (index.entries) |entry| {
         if (entry.ms_level != level) continue;
+        if (try block.blockNeedsFlush(used, block_peaks, entry.peak_count, block_capacity)) {
+            try encodeBlockToFile(io, output, &block_arena, block_spectra[0..used], options, try std.math.add(u32, first_block_index, block_count), file_offset);
+            block_count = try std.math.add(u32, block_count, 1);
+            used = 0;
+            block_peaks = 0;
+            _ = block_arena.reset(.retain_capacity);
+        }
         block_spectra[used] = try binary_reader.readSpectrumAt(block_arena.allocator(), io, input, entry);
         used += 1;
-        if (used != block_capacity) continue;
-
-        try encodeBlockToFile(io, output, &block_arena, block_spectra[0..used], options, try std.math.add(u32, first_block_index, block_count), file_offset);
-        block_count = try std.math.add(u32, block_count, 1);
-        used = 0;
-        _ = block_arena.reset(.retain_capacity);
+        block_peaks = try std.math.add(usize, block_peaks, entry.peak_count);
     }
 
     if (used != 0) {
@@ -650,7 +670,9 @@ fn encodeLevelToFile(
 }
 
 pub fn encodeDumpFile(io: std.Io, allocator: Allocator, input_path: []const u8, output_path: []const u8, options: EncodeOptions) !void {
-    if (options.block_size == 0) return error.InvalidBlockSize;
+    if (options.block_size == 0 or options.block_size > block.MAX_BLOCK_SPECTRA) {
+        return error.InvalidBlockSize;
+    }
     const t0 = monotonicNs(io);
     const cwd = std.Io.Dir.cwd();
     const input = try cwd.openFile(io, input_path, .{});
@@ -658,11 +680,10 @@ pub fn encodeDumpFile(io: std.Io, allocator: Allocator, input_path: []const u8, 
 
     const index = try binary_reader.scanFile(allocator, io, input);
     defer index.deinit(allocator);
-    const block_size: usize = options.block_size;
     const expected_blocks = try std.math.add(
         usize,
-        try streamBlockCount(index.ms1_count, block_size),
-        try streamBlockCount(index.ms2_count, block_size),
+        try levelBlockCount(index.entries, 1, options.block_size),
+        try levelBlockCount(index.entries, 2, options.block_size),
     );
     if (expected_blocks > std.math.maxInt(u32)) return error.TooManyBlocks;
 
@@ -728,7 +749,14 @@ fn skipMetadataSection(bytes: []const u8, offset: *usize, compressed: bool, spec
         return;
     }
     if (bytes.len - offset.* < 13) return error.UnexpectedEndOfStream;
+    const bit_width = bytes[offset.*];
+    if (bit_width > 64) return error.InvalidBitWidth;
     const packed_len = readIntLe(u32, bytes[offset.* + 9 .. offset.* + 13]);
+    const expected_len = try block.packedByteLen(bit_width, spectrum_count);
+    if (packed_len < expected_len) return error.UnexpectedEndOfStream;
+    if (packed_len != expected_len) {
+        return error.InvalidMetadataPayload;
+    }
     const section_len = try std.math.add(usize, 13, packed_len);
     if (bytes.len - offset.* < section_len) return error.UnexpectedEndOfStream;
     offset.* += section_len;
@@ -809,6 +837,7 @@ fn scanArchiveFile(allocator: Allocator, io: std.Io, input: std.Io.File) !Archiv
         var block_header_bytes: [block.header_len]u8 = undefined;
         try readExactAt(input, io, &block_header_bytes, offset);
         const block_header = try block.parseHeader(&block_header_bytes);
+        try block.validateBlockHeaderResources(block_header);
         const total_bytes = try addU64(block.header_len, block_header.payload_bytes);
         if (total_bytes > file_size - offset) return error.UnexpectedEndOfStream;
         if (total_bytes > std.math.maxInt(usize)) return error.Overflow;

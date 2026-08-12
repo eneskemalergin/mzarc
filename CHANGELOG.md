@@ -15,6 +15,8 @@ All notable changes to mzarc are documented here. The format follows [Keep a Cha
 
 - Benchmark commands run directly under zebrac 0.6.2 with one warmup and an exact sample count. A result is rejected when the command fails or the measurement record does not match the request.
 - The reference report now records complete artifact, encode, and decode tables, fixed worker counts, validation boundaries, source shape, measurement limits, and queried tool versions for both benchmark inputs.
+- Encode and decode now release temporary setup allocations before command exit. On the 984.91 MiB controlled dump, median RSS falls from 32.20 to 20.66 MiB for encode and from 13.06 to 9.61 MiB for decode without changing archive bytes.
+- Blocks are limited to 524,288 peaks and 128 spectra, with matching decode limits checked before proportional allocation or payload read. Profile lossless median RSS falls from 270.50 to 31.12 MiB on encode and from 161.34 to 16.79 MiB on decode while both operations become faster.
 
 ### Removed
 

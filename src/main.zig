@@ -873,12 +873,12 @@ pub fn main(init: std.process.Init) !void {
     }
 
     if (std.mem.eql(u8, args[1], "encode")) {
-        try commandEncode(io, allocator, args);
+        try commandEncode(io, init.gpa, args);
         return;
     }
 
     if (std.mem.eql(u8, args[1], "decode")) {
-        try commandDecode(io, allocator, args);
+        try commandDecode(io, init.gpa, args);
         return;
     }
 

@@ -113,6 +113,74 @@ pub const flag_delta_rt: u8 = 0b0010_0000;
 pub const flag_rans_mz: u8 = 0b0100_0000;
 pub const flag_rans_intensity: u8 = 0b1000_0000;
 pub const header_len = 40;
+pub const MAX_BLOCK_SPECTRA: usize = 128;
+pub const MAX_BLOCK_PEAKS: usize = 524_288;
+
+pub fn logicalBlockBytes(spectrum_count: usize, total_peaks: usize) !usize {
+    return std.math.add(
+        usize,
+        try std.math.mul(usize, spectrum_count, 20),
+        try std.math.mul(usize, total_peaks, 12),
+    );
+}
+
+pub fn maxBlockPayloadBytes(spectrum_count: usize, total_peaks: usize) !usize {
+    const metadata_bytes = try std.math.add(
+        usize,
+        26,
+        try std.math.mul(usize, spectrum_count, 28),
+    );
+    const max_for_bytes = try std.math.mul(usize, total_peaks, @sizeOf(u64));
+    const max_rans_bytes = try rans.maxEncodedLen(max_for_bytes);
+    const mz_bytes = try std.math.add(usize, 17, max_rans_bytes);
+    const intensity_bytes = try std.math.add(
+        usize,
+        13,
+        try std.math.add(
+            usize,
+            max_rans_bytes,
+            try std.math.mul(usize, total_peaks, 3),
+        ),
+    );
+    return std.math.add(
+        usize,
+        metadata_bytes,
+        try std.math.add(usize, mz_bytes, intensity_bytes),
+    );
+}
+
+pub fn validateBlockCounts(spectrum_count: usize, total_peaks: usize) !void {
+    if (spectrum_count == 0) return error.EmptyBlock;
+    if (spectrum_count > MAX_BLOCK_SPECTRA or total_peaks > MAX_BLOCK_PEAKS) {
+        return error.BlockResourceLimit;
+    }
+}
+
+pub fn validateBlockHeaderResources(header: BlockHeader) !void {
+    try validateBlockCounts(header.spectrum_count, header.total_peaks);
+    if (header.mz_bit_width > 64 or header.intensity_bit_width > 64) {
+        return error.InvalidBitWidth;
+    }
+
+    const logical_bytes = try logicalBlockBytes(header.spectrum_count, header.total_peaks);
+    if (logical_bytes > std.math.maxInt(u32)) return error.BlockResourceLimit;
+
+    const payload_limit = try maxBlockPayloadBytes(header.spectrum_count, header.total_peaks);
+    if (header.payload_bytes > payload_limit) return error.BlockResourceLimit;
+}
+
+pub fn blockNeedsFlush(
+    spectrum_count: usize,
+    total_peaks: usize,
+    next_peaks: usize,
+    block_size: usize,
+) !bool {
+    if (block_size == 0 or block_size > MAX_BLOCK_SPECTRA) return error.InvalidBlockSize;
+    if (next_peaks > MAX_BLOCK_PEAKS) return error.BlockResourceLimit;
+    const candidate_peaks = try std.math.add(usize, total_peaks, next_peaks);
+    return spectrum_count == block_size or
+        (spectrum_count != 0 and candidate_peaks > MAX_BLOCK_PEAKS);
+}
 
 pub fn combineU32(low: u16, high: u16) u32 {
     return @as(u32, low) | (@as(u32, high) << 16);

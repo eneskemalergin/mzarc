@@ -88,7 +88,7 @@ These are measured results from one file, one acquisition shape, and one host. T
 
 ## Format and validation
 
-Version 0.2.5 writes `.mzarc` format 1.0 through a single-threaded file path. The codec keeps compact metadata plus one active block, preserves global scan order, and leaves an existing destination unchanged when encode or decode fails.
+The current development build writes `.mzarc` format 1.0 through a single-threaded file path. The codec keeps compact metadata plus one active block, preserves global scan order, and leaves an existing destination unchanged when encode or decode fails. Each block is limited to 128 spectra and 524,288 peaks, with derived payload limits checked before proportional allocation or read. Complete process RSS is not flat yet because retained order and file-index state still grows with the spectrum count.
 
 The current lossless mode passes the semantic validator on the tracked Dump V1 fixture and reference file; the reference file is also byte exact. Format closure still has to define the public m/z fidelity rule for every supported Dump V1 value. Until format 1.0 is declared use-ready, development archives may need regeneration and no compatibility with earlier development layouts is promised.
 

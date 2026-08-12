@@ -1,3 +1,5 @@
+//! rANS round trips, resource bounds, malformed streams, and allocation cleanup.
+
 const std = @import("std");
 const rans = @import("rans");
 
@@ -63,6 +65,18 @@ test "rans empty round-trip" {
     const decoded = try rans.decodeAlloc(std.testing.allocator, encoded, 0);
     defer std.testing.allocator.free(decoded);
     try std.testing.expectEqual(@as(usize, 0), decoded.len);
+}
+
+test "[property] - [rANS resource bound]: encoded output stays within the decoder limit" {
+    var values: [4096]u8 = undefined;
+    for (&values, 0..) |*value, idx| value.* = @truncate(idx);
+
+    const encoded = try rans.encodeAlloc(std.testing.allocator, &values);
+    defer std.testing.allocator.free(encoded);
+
+    try std.testing.expect(encoded.len <= try rans.maxEncodedLen(values.len));
+    try std.testing.expectEqual(@as(usize, 0), try rans.maxEncodedLen(0));
+    try std.testing.expectError(error.Overflow, rans.maxEncodedLen(std.math.maxInt(usize)));
 }
 
 test "rans rejects trailing data, truncation, bad freqs, invalid state, and analysis mismatch" {

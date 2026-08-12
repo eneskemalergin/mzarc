@@ -529,7 +529,7 @@ test "codec lossy round-trip keeps counts and flags consistent" {
     try std.testing.expectEqual(@as(u64, 5), inspection.header.total_peaks);
 }
 
-test "codec encode rejects block_size of zero" {
+test "[failure] - [codec block size]: rejects zero and values above the fixed limit" {
     var mz = [_]f64{100.0};
     var intensity = [_]f32{1.0};
     const input = [_]binary_reader.RawSpectrum{
@@ -537,6 +537,10 @@ test "codec encode rejects block_size of zero" {
     };
 
     try std.testing.expectError(error.InvalidBlockSize, codec.encodeFileAlloc(std.testing.io, std.testing.allocator, &input, .{ .block_size = 0 }));
+    try std.testing.expectError(
+        error.InvalidBlockSize,
+        codec.encodeFileAlloc(std.testing.io, std.testing.allocator, &input, .{ .block_size = block.MAX_BLOCK_SPECTRA + 1 }),
+    );
 }
 
 test "[integration] - [codec file path]: matches allocating path for format 1.0" {
@@ -664,6 +668,33 @@ test "[integration] - [codec file path]: rejects hostile input and preserves des
     std.mem.writeInt(u32, hostile_header[20..24], 0, .little);
     try tmp.dir.writeFile(std.testing.io, .{ .sub_path = "input.bin", .data = &hostile_header });
     try std.testing.expectError(error.UnexpectedEndOfStream, codec.decodeToDumpFile(std.testing.io, std.testing.allocator, input_path, output_path, .{}));
+    try expectFileContents(output_path, sentinel);
+
+    const block_offset = codec.header_len + corpus.spectra.len * @sizeOf(u32);
+    const oversized_archive = try std.testing.allocator.dupe(u8, encoded);
+    defer std.testing.allocator.free(oversized_archive);
+    std.mem.writeInt(u32, oversized_archive[block_offset + 4 ..][0..4], @intCast(block.MAX_BLOCK_PEAKS + 1), .little);
+    try tmp.dir.writeFile(std.testing.io, .{ .sub_path = "input.bin", .data = oversized_archive });
+    try std.testing.expectError(
+        error.BlockResourceLimit,
+        codec.decodeToDumpFile(std.testing.io, std.testing.allocator, input_path, output_path, .{}),
+    );
+    try expectFileContents(output_path, sentinel);
+
+    var oversized_dump_header: [28]u8 = @splat(0);
+    oversized_dump_header[8] = 1;
+    std.mem.writeInt(u32, oversized_dump_header[20..24], @intCast(block.MAX_BLOCK_PEAKS + 1), .little);
+    {
+        const oversized_dump = try tmp.dir.createFile(std.testing.io, "input.bin", .{});
+        defer oversized_dump.close(std.testing.io);
+        try oversized_dump.writePositionalAll(std.testing.io, &oversized_dump_header, 0);
+        const dump_bytes = 28 + 12 * @as(u64, block.MAX_BLOCK_PEAKS + 1);
+        try oversized_dump.setLength(std.testing.io, dump_bytes);
+    }
+    try std.testing.expectError(
+        error.BlockResourceLimit,
+        codec.encodeDumpFile(std.testing.io, std.testing.allocator, input_path, output_path, .{}),
+    );
     try expectFileContents(output_path, sentinel);
 }
 

@@ -52,6 +52,89 @@ fn resealBlockPayload(encoded: []u8) !void {
     std.mem.writeInt(u32, encoded[36..40], std.hash.crc.Crc32.hash(payload), .little);
 }
 
+test "[unit] - [block resource budget]: enforces counts and admission boundaries" {
+    try block.validateBlockCounts(block.MAX_BLOCK_SPECTRA, block.MAX_BLOCK_PEAKS);
+    try std.testing.expectError(
+        error.BlockResourceLimit,
+        block.validateBlockCounts(block.MAX_BLOCK_SPECTRA + 1, block.MAX_BLOCK_PEAKS),
+    );
+    try std.testing.expectError(
+        error.BlockResourceLimit,
+        block.validateBlockCounts(block.MAX_BLOCK_SPECTRA, block.MAX_BLOCK_PEAKS + 1),
+    );
+
+    try std.testing.expect(!try block.blockNeedsFlush(1, block.MAX_BLOCK_PEAKS - 1, 1, block.MAX_BLOCK_SPECTRA));
+    try std.testing.expect(try block.blockNeedsFlush(1, block.MAX_BLOCK_PEAKS, 1, block.MAX_BLOCK_SPECTRA));
+    try std.testing.expect(try block.blockNeedsFlush(block.MAX_BLOCK_SPECTRA, 0, 0, block.MAX_BLOCK_SPECTRA));
+    try std.testing.expectError(
+        error.BlockResourceLimit,
+        block.blockNeedsFlush(0, 0, block.MAX_BLOCK_PEAKS + 1, block.MAX_BLOCK_SPECTRA),
+    );
+    try std.testing.expectError(
+        error.Overflow,
+        block.blockNeedsFlush(1, std.math.maxInt(usize), 1, block.MAX_BLOCK_SPECTRA),
+    );
+
+    try std.testing.expectEqual(
+        @as(usize, 6_294_016),
+        try block.logicalBlockBytes(block.MAX_BLOCK_SPECTRA, block.MAX_BLOCK_PEAKS),
+    );
+    try std.testing.expectEqual(
+        @as(usize, 18_354_752),
+        try block.maxBlockPayloadBytes(block.MAX_BLOCK_SPECTRA, block.MAX_BLOCK_PEAKS),
+    );
+    try std.testing.expectError(error.Overflow, block.logicalBlockBytes(std.math.maxInt(usize), 0));
+    try std.testing.expectError(error.Overflow, block.logicalBlockBytes(0, std.math.maxInt(usize)));
+    try std.testing.expectError(error.Overflow, block.maxBlockPayloadBytes(std.math.maxInt(usize), 0));
+    try std.testing.expectError(error.Overflow, block.maxBlockPayloadBytes(0, std.math.maxInt(usize)));
+}
+
+test "[integration] - [block resource budget]: preserves an all-zero-peak block" {
+    var empty_mz: [0]f64 = .{};
+    var empty_intensity: [0]f32 = .{};
+    const spectra = [_]binary_reader.RawSpectrum{
+        .{ .scan_id = 1, .rt_seconds = 1.0, .ms_level = 2, .precursor_mz = 500.0, .mz = &empty_mz, .intensity = &empty_intensity },
+        .{ .scan_id = 2, .rt_seconds = 2.0, .ms_level = 2, .precursor_mz = 501.0, .mz = &empty_mz, .intensity = &empty_intensity },
+    };
+
+    const encoded = try block.encodeBlock(std.testing.allocator, &spectra, .{ .mode = .lossless });
+    defer std.testing.allocator.free(encoded);
+    const header = try block.parseHeader(encoded);
+    try std.testing.expectEqual(@as(u32, 0), header.total_peaks);
+
+    const decoded = try block.decodeBlock(std.testing.allocator, encoded);
+    defer binary_reader.freeSpectra(std.testing.allocator, decoded);
+    try std.testing.expectEqual(@as(usize, 2), decoded.len);
+    try std.testing.expectEqual(@as(usize, 0), decoded[0].mz.len);
+    try std.testing.expectEqual(@as(usize, 0), decoded[1].intensity.len);
+}
+
+test "[failure] - [block resource budget]: rejects hostile headers before allocation" {
+    var header: [block.header_len]u8 = @splat(0);
+    std.mem.writeInt(u16, header[0..2], @intCast(block.MAX_BLOCK_SPECTRA + 1), .little);
+    std.mem.writeInt(u32, header[4..8], 1, .little);
+
+    try std.testing.expectError(
+        error.BlockResourceLimit,
+        block.decodeBlockWithScratch(std.testing.failing_allocator, std.testing.failing_allocator, &header),
+    );
+
+    std.mem.writeInt(u16, header[0..2], 1, .little);
+    std.mem.writeInt(u32, header[4..8], @intCast(block.MAX_BLOCK_PEAKS + 1), .little);
+    try std.testing.expectError(
+        error.BlockResourceLimit,
+        block.decodeBlockWithScratch(std.testing.failing_allocator, std.testing.failing_allocator, &header),
+    );
+
+    std.mem.writeInt(u32, header[4..8], 1, .little);
+    const payload_limit = try block.maxBlockPayloadBytes(1, 1);
+    std.mem.writeInt(u32, header[28..32], @intCast(payload_limit + 1), .little);
+    try std.testing.expectError(
+        error.BlockResourceLimit,
+        block.decodeBlockWithScratch(std.testing.failing_allocator, std.testing.failing_allocator, &header),
+    );
+}
+
 /// Check that every decoded m/z value is within `max_ppm` of the original.
 /// The lossless fixed-point path guarantees < 0.001 ppm, so we use 0.001
 /// as the assertion threshold here.

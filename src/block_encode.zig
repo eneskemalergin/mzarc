@@ -217,7 +217,6 @@ fn writeHeader(list: *std.ArrayList(u8), allocator: Allocator, header: common.Bl
 /// `scratch` must be an arena. Temps are not freed individually; reset or deinit the arena.
 pub fn encodeBlockDetailed(allocator: Allocator, scratch: Allocator, spectra: []const binary_reader.RawSpectrum, options: common.EncodeOptions) !common.EncodedBlock {
     if (spectra.len == 0) return error.EmptyBlock;
-    if (spectra.len > std.math.maxInt(u16)) return error.TooManySpectra;
 
     const tmp = scratch;
 
@@ -231,7 +230,7 @@ pub fn encodeBlockDetailed(allocator: Allocator, scratch: Allocator, spectra: []
     }
 
     const total_peaks = try common.totalPeakCount(spectra);
-    if (total_peaks > std.math.maxInt(u32)) return error.TooManyPeaks;
+    try common.validateBlockCounts(spectra.len, total_peaks);
 
     var payload: std.ArrayList(u8) = .empty;
 
@@ -433,14 +432,10 @@ pub fn encodeBlockDetailed(allocator: Allocator, scratch: Allocator, spectra: []
         }
     }
 
-    const per_spectrum = @sizeOf(u32) + @sizeOf(f32) + @sizeOf(f64) + @sizeOf(u32);
-    const per_peak = @sizeOf(f64) + @sizeOf(f32);
-    const decompressed_bytes = try std.math.add(
-        usize,
-        try std.math.mul(usize, spectra.len, per_spectrum),
-        try std.math.mul(usize, total_peaks, per_peak),
-    );
-    if (payload.items.len > std.math.maxInt(u32) or decompressed_bytes > std.math.maxInt(u32)) return error.BlockTooLarge;
+    const decompressed_bytes = try common.logicalBlockBytes(spectra.len, total_peaks);
+    const payload_limit = try common.maxBlockPayloadBytes(spectra.len, total_peaks);
+    if (payload.items.len > payload_limit or payload.items.len > std.math.maxInt(u32) or
+        decompressed_bytes > std.math.maxInt(u32)) return error.BlockResourceLimit;
 
     const intensity_scale_bits = common.encodeIntensityLogScale(intensity_log_scale);
 

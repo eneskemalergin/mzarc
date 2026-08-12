@@ -23,6 +23,12 @@ const rans_lower_bound: u32 = 1 << 23;
 const decode_table_mask: u32 = precision - 1;
 const reciprocal_scale: u64 = 1 << 32;
 
+/// Returns the largest encoded stream accepted for `decoded_len` bytes.
+pub fn maxEncodedLen(decoded_len: usize) !usize {
+    if (decoded_len == 0) return 0;
+    return std.math.add(usize, encoded_header_bytes, try std.math.mul(usize, decoded_len, 2));
+}
+
 pub fn analyze(symbols: []const u8) Analysis {
     return buildAnalysis(countSymbols(symbols), symbols.len);
 }
