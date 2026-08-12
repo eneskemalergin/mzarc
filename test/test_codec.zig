@@ -577,6 +577,59 @@ test "[integration] - [codec file path]: matches allocating path for format 1.0"
     try std.testing.expectEqualSlices(u8, expected_dump, actual_dump);
 }
 
+test "[integration] - [codec file path]: preserves payloads across reader refill boundaries" {
+    const peak_count = 2049;
+    const mz = try std.testing.allocator.alloc(f64, peak_count);
+    defer std.testing.allocator.free(mz);
+    const intensity = try std.testing.allocator.alloc(f32, peak_count);
+    defer std.testing.allocator.free(intensity);
+    for (mz, intensity, 0..) |*mz_value, *intensity_value, idx| {
+        mz_value.* = 100.0 + @as(f64, @floatFromInt(idx)) * 0.125;
+        intensity_value.* = @floatFromInt(idx % 1024);
+    }
+    const spectra = [_]binary_reader.RawSpectrum{.{
+        .scan_id = 1,
+        .rt_seconds = 1.0,
+        .ms_level = 2,
+        .precursor_mz = 500.0,
+        .mz = mz,
+        .intensity = intensity,
+    }};
+    const dump = try binary_reader.writeDumpAlloc(std.testing.allocator, &spectra);
+    defer std.testing.allocator.free(dump);
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    try tmp.dir.writeFile(std.testing.io, .{ .sub_path = "input.bin", .data = dump });
+    const input_path = try tmpPath(std.testing.allocator, &tmp, "input.bin");
+    defer std.testing.allocator.free(input_path);
+    const archive_path = try tmpPath(std.testing.allocator, &tmp, "output.mzarc");
+    defer std.testing.allocator.free(archive_path);
+    const dump_path = try tmpPath(std.testing.allocator, &tmp, "decoded.bin");
+    defer std.testing.allocator.free(dump_path);
+
+    const options: codec.EncodeOptions = .{
+        .block_options = .{ .mode = .lossless },
+        .block_size = 1,
+    };
+    const expected_archive = try codec.encodeFileAlloc(
+        std.testing.io,
+        std.testing.allocator,
+        &spectra,
+        options,
+    );
+    defer std.testing.allocator.free(expected_archive);
+    try codec.encodeDumpFile(std.testing.io, std.testing.allocator, input_path, archive_path, options);
+    const actual_archive = try codec.readFileAlloc(std.testing.io, archive_path, std.testing.allocator);
+    defer std.testing.allocator.free(actual_archive);
+    try std.testing.expectEqualSlices(u8, expected_archive, actual_archive);
+
+    try codec.decodeToDumpFile(std.testing.io, std.testing.allocator, archive_path, dump_path, .{});
+    const actual_dump = try codec.readFileAlloc(std.testing.io, dump_path, std.testing.allocator);
+    defer std.testing.allocator.free(actual_dump);
+    try std.testing.expectEqualSlices(u8, dump, actual_dump);
+}
+
 test "[integration] - [.mzarc reader]: accepts archives without a global order table" {
     var corpus = try makeSyntheticCorpus(std.testing.allocator, 24);
     defer corpus.deinit();

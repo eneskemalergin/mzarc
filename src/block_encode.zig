@@ -144,14 +144,14 @@ fn buildRtDeltas(allocator: Allocator, spectra: []const binary_reader.RawSpectru
     return result;
 }
 
-fn flattenIntensityLossyToU64(
+fn flattenIntensityLossyToU16(
     allocator: Allocator,
     spectra: []const binary_reader.RawSpectrum,
     quant_factor: u16,
     log_max: f32,
-) ![]u64 {
+) ![]u16 {
     const total_peaks = try common.totalPeakCount(spectra);
-    const flat = try allocator.alloc(u64, total_peaks);
+    const flat = try allocator.alloc(u16, total_peaks);
 
     var offset: usize = 0;
     for (spectra) |spectrum| {
@@ -162,6 +162,49 @@ fn flattenIntensityLossyToU64(
     }
 
     return flat;
+}
+
+fn intensityExponent(value: f32) u8 {
+    return @truncate(@as(u32, @bitCast(value)) >> 24);
+}
+
+fn packIntensityExponents(
+    allocator: Allocator,
+    spectra: []const binary_reader.RawSpectrum,
+    total_peaks: usize,
+) !bitpack.PackedU64 {
+    if (total_peaks == 0) return bitpack.packForU64(allocator, &.{});
+
+    var base: u8 = std.math.maxInt(u8);
+    var max_value: u8 = 0;
+    for (spectra) |spectrum| {
+        for (spectrum.intensity) |value| {
+            const exponent = intensityExponent(value);
+            base = @min(base, exponent);
+            max_value = @max(max_value, exponent);
+        }
+    }
+
+    const bit_width = bitpack.requiredBitWidth(@as(u64, max_value) - base);
+    const payload_len = try bitpack.packedByteLen(bit_width, total_peaks);
+    const payload = try allocator.alloc(u8, payload_len);
+    errdefer allocator.free(payload);
+    @memset(payload, 0);
+
+    var bit_offset: usize = 0;
+    for (spectra) |spectrum| {
+        for (spectrum.intensity) |value| {
+            bitpack.packNextForValue(payload, bit_width, &bit_offset, base, intensityExponent(value));
+        }
+    }
+    std.debug.assert(bit_offset == @as(usize, bit_width) * total_peaks);
+
+    return .{
+        .base = base,
+        .bit_width = bit_width,
+        .count = total_peaks,
+        .payload = payload,
+    };
 }
 
 fn appendRawIntensityBytes(payload: *std.ArrayList(u8), a: Allocator, spectra: []const binary_reader.RawSpectrum) !void {
@@ -320,17 +363,7 @@ pub fn encodeBlockDetailed(allocator: Allocator, scratch: Allocator, spectra: []
 
     var intensity_bit_width: u8 = 0;
     if (options.mode == .lossless) {
-        const exp_values = try tmp.alloc(u64, total_peaks);
-        {
-            var i: usize = 0;
-            for (spectra) |spectrum| {
-                for (spectrum.intensity) |value| {
-                    exp_values[i] = (@as(u32, @bitCast(value)) >> 24) & 0xFF;
-                    i += 1;
-                }
-            }
-        }
-        const packed_exp = try bitpack.packForU64(tmp, exp_values);
+        const packed_exp = try packIntensityExponents(tmp, spectra, total_peaks);
         const mantissa_bytes = try std.math.mul(usize, total_peaks, 3);
         const split_plain_bytes = try std.math.add(usize, 1 + 8 + 4 + packed_exp.payload.len, mantissa_bytes);
         const raw_plain_bytes = try std.math.mul(usize, total_peaks, @sizeOf(f32));
@@ -395,14 +428,14 @@ pub fn encodeBlockDetailed(allocator: Allocator, scratch: Allocator, spectra: []
             }
         }
     } else {
-        const quantized_intensity = try flattenIntensityLossyToU64(
+        const quantized_intensity = try flattenIntensityLossyToU16(
             tmp,
             spectra,
             options.intensity_quant,
             intensity_log_scale,
         );
 
-        const packed_intensity = try bitpack.packForU64(tmp, quantized_intensity);
+        const packed_intensity = try bitpack.packForU16(tmp, quantized_intensity);
 
         if (packed_intensity.base > std.math.maxInt(u16)) return error.IntensityOverflow;
 

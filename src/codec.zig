@@ -31,6 +31,8 @@ pub const flag_contains_ms1: u32 = 0b0000_0010;
 pub const flag_contains_ms2: u32 = 0b0000_0100;
 pub const flag_has_global_order: u32 = 0b0000_1000;
 
+const ENCODE_READER_BUFFER_LEN = 16 * 1024;
+
 pub const FileHeader = struct {
     magic_bytes: [4]u8,
     version_major: u16,
@@ -641,6 +643,9 @@ fn encodeLevelToFile(
     const block_capacity: usize = options.block_size;
     const block_spectra = try allocator.alloc(binary_reader.RawSpectrum, block_capacity);
     defer allocator.free(block_spectra);
+    const reader_buffer = try allocator.alloc(u8, ENCODE_READER_BUFFER_LEN);
+    defer allocator.free(reader_buffer);
+    var reader = input.reader(io, reader_buffer);
 
     var block_arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer block_arena.deinit();
@@ -657,7 +662,11 @@ fn encodeLevelToFile(
             block_peaks = 0;
             _ = block_arena.reset(.retain_capacity);
         }
-        block_spectra[used] = try binary_reader.readSpectrumAt(block_arena.allocator(), io, input, entry);
+        block_spectra[used] = try binary_reader.readSpectrumAt(
+            block_arena.allocator(),
+            &reader,
+            entry,
+        );
         used += 1;
         block_peaks = try std.math.add(usize, block_peaks, entry.peak_count);
     }

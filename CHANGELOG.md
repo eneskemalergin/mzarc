@@ -17,6 +17,8 @@ All notable changes to mzarc are documented here. The format follows [Keep a Cha
 - The reference report now records complete artifact, encode, and decode tables, fixed worker counts, validation boundaries, source shape, measurement limits, and queried tool versions for both benchmark inputs.
 - Encode and decode now release temporary setup allocations before command exit. On the 984.91 MiB controlled dump, median RSS falls from 32.20 to 20.66 MiB for encode and from 13.06 to 9.61 MiB for decode without changing archive bytes.
 - Blocks are limited to 524,288 peaks and 128 spectra, with matching decode limits checked before proportional allocation or payload read. Profile lossless median RSS falls from 270.50 to 31.12 MiB on encode and from 161.34 to 16.79 MiB on decode while both operations become faster.
+- Encode packs lossless intensity exponents directly and keeps lossy quantized intensity at its native `u16` width. Across the retained 15HCD, DIA, profile, and PASEF inputs, median encode RSS falls by 1.25 to 4.50 MiB without changing archive bytes; wall ranges from 2.03% faster to 0.23% slower.
+- Encode reads sequential Dump V1 peak arrays through a fixed 16 KiB buffer. Mean wall improves by 3.85% to 6.92% on the retained 15HCD and DIA inputs, while archive bytes stay identical and median RSS rises by 0.023 MiB.
 
 ### Removed
 

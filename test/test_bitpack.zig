@@ -81,6 +81,79 @@ test "FOR bit-packing round-trips adversarial bit widths" {
     }
 }
 
+fn expectScalarPackMatches(values: []const u64) !void {
+    const reference = try bitpack.packForU64(std.testing.allocator, values);
+    defer reference.deinit(std.testing.allocator);
+
+    const payload_len = try bitpack.packedByteLen(reference.bit_width, values.len);
+    const payload = try std.testing.allocator.alloc(u8, payload_len);
+    defer std.testing.allocator.free(payload);
+    @memset(payload, 0);
+
+    var bit_offset: usize = 0;
+    for (values) |value| {
+        bitpack.packNextForValue(payload, reference.bit_width, &bit_offset, reference.base, value);
+    }
+
+    try std.testing.expectEqual(reference.payload.len, payload.len);
+    try std.testing.expectEqualSlices(u8, reference.payload, payload);
+}
+
+fn expectU16PackMatches(values: []const u16) !void {
+    const widened = try std.testing.allocator.alloc(u64, values.len);
+    defer std.testing.allocator.free(widened);
+    for (values, widened) |value, *wide| wide.* = value;
+
+    const reference = try bitpack.packForU64(std.testing.allocator, widened);
+    defer reference.deinit(std.testing.allocator);
+    const candidate = try bitpack.packForU16(std.testing.allocator, values);
+    defer candidate.deinit(std.testing.allocator);
+
+    try std.testing.expectEqual(reference.base, candidate.base);
+    try std.testing.expectEqual(reference.bit_width, candidate.bit_width);
+    try std.testing.expectEqual(reference.count, candidate.count);
+    try std.testing.expectEqualSlices(u8, reference.payload, candidate.payload);
+}
+
+test "[unit] - [FOR packing]: scalar writes match u64 packing" {
+    try expectScalarPackMatches(&.{});
+    try expectScalarPackMatches(&.{ 77, 77, 77, 77 });
+    try expectScalarPackMatches(&.{ 0, std.math.maxInt(u64) });
+    try expectScalarPackMatches(&.{ 0, 1, 7, 255, 65_535, 1_000_000_000 });
+    try expectScalarPackMatches(&.{ 1_000_000_000, 65_535, 255, 7, 1, 0 });
+
+    const f32_values = [_]f32{ 0.0, -0.0, 1.0, -1.0, std.math.inf(f32), -std.math.inf(f32) };
+    var f32_exponents: [f32_values.len]u64 = undefined;
+    for (f32_values, &f32_exponents) |value, *exponent| {
+        exponent.* = @as(u32, @bitCast(value)) >> 24;
+    }
+    try expectScalarPackMatches(&f32_exponents);
+
+    var generated: [257]u64 = undefined;
+    var state: u64 = 0x4d5a_4152_3400_0001;
+    for (&generated) |*value| {
+        state = state *% 6_364_136_223_846_793_005 +% 1_442_695_040_888_963_407;
+        value.* = state & 0x0000_ffff_ffff_ffff;
+    }
+    try expectScalarPackMatches(&generated);
+}
+
+test "[unit] - [FOR packing]: u16 input matches widened u64 packing" {
+    try expectU16PackMatches(&.{});
+    try expectU16PackMatches(&.{ 4096, 4096, 4096 });
+    try expectU16PackMatches(&.{ 0, std.math.maxInt(u16) });
+    try expectU16PackMatches(&.{ 0, 1, 17, 255, 4096, 16_384, 65_535 });
+    try expectU16PackMatches(&.{ 65_535, 16_384, 4096, 255, 17, 1, 0 });
+
+    var generated: [257]u16 = undefined;
+    var state: u32 = 0x3400_0001;
+    for (&generated) |*value| {
+        state = state *% 1_664_525 +% 1_013_904_223;
+        value.* = @truncate(state);
+    }
+    try expectU16PackMatches(&generated);
+}
+
 test "FOR unpack rejects truncated payload" {
     const packed_values = bitpack.PackedU64{
         .base = 10,

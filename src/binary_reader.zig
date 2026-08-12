@@ -198,32 +198,40 @@ pub fn scanFile(allocator: Allocator, io: std.Io, file: std.Io.File) !DumpIndex 
     };
 }
 
-fn readFloatSliceAt(
+fn readExact(reader: *std.Io.File.Reader, bytes: []u8) !void {
+    reader.interface.readSliceAll(bytes) catch |err| switch (err) {
+        error.EndOfStream => return error.UnexpectedEndOfStream,
+        error.ReadFailed => return reader.err orelse error.InputOutput,
+    };
+}
+
+fn readFloatSlice(
     scratch: Allocator,
     comptime T: type,
-    io: std.Io,
-    file: std.Io.File,
+    reader: *std.Io.File.Reader,
     values: []T,
-    offset: u64,
 ) !void {
-    const byte_len = try std.math.mul(usize, values.len, @sizeOf(T));
     if (builtin.cpu.arch.endian() == .little) {
-        try readExactAt(file, io, std.mem.sliceAsBytes(values), offset);
+        try readExact(reader, std.mem.sliceAsBytes(values));
         return;
     }
 
-    const bytes = try scratch.alloc(u8, byte_len);
-    try readExactAt(file, io, bytes, offset);
+    const bytes = try scratch.alloc(u8, try std.math.mul(usize, values.len, @sizeOf(T)));
+    try readExact(reader, bytes);
     readFloatsLe(T, values, bytes);
 }
 
-/// Read one indexed spectrum. `scratch` must be an arena reset after the active block.
-pub fn readSpectrumAt(scratch: Allocator, io: std.Io, file: std.Io.File, entry: DumpEntry) !RawSpectrum {
+/// Returned peak slices belong to `scratch`, which must outlive the active block.
+pub fn readSpectrumAt(
+    scratch: Allocator,
+    reader: *std.Io.File.Reader,
+    entry: DumpEntry,
+) !RawSpectrum {
+    try reader.seekTo(entry.payload_offset);
     const mz = try scratch.alloc(f64, entry.peak_count);
     const intensity = try scratch.alloc(f32, entry.peak_count);
-    try readFloatSliceAt(scratch, f64, io, file, mz, entry.payload_offset);
-    const intensity_offset = try checkedAddU64(entry.payload_offset, try checkedMulU64(entry.peak_count, @sizeOf(f64)));
-    try readFloatSliceAt(scratch, f32, io, file, intensity, intensity_offset);
+    try readFloatSlice(scratch, f64, reader, mz);
+    try readFloatSlice(scratch, f32, reader, intensity);
     return .{
         .scan_id = entry.scan_id,
         .rt_seconds = @bitCast(entry.rt_bits),

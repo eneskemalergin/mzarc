@@ -22,7 +22,46 @@ pub fn requiredBitWidth(value: u64) u8 {
     return @intCast(@bitSizeOf(u64) - @clz(value));
 }
 
-pub fn packForU64(allocator: Allocator, values: []const u64) !PackedU64 {
+pub fn packedByteLen(bit_width: u8, count: usize) !usize {
+    if (bit_width == 0 or count == 0) return 0;
+    const bits = try std.math.mul(usize, bit_width, count);
+    return (try std.math.add(usize, bits, 7)) / 8;
+}
+
+/// Appends one value to a zero-initialized FOR payload whose base and width
+/// were established by an earlier pass.
+pub fn packNextForValue(
+    payload: []u8,
+    bit_width: u8,
+    bit_offset: *usize,
+    base: u64,
+    value: u64,
+) void {
+    std.debug.assert(bit_width <= 64);
+    std.debug.assert(value >= base);
+    const current_value = value - base;
+    std.debug.assert(requiredBitWidth(current_value) <= bit_width);
+    std.debug.assert(bit_offset.* <= std.math.maxInt(usize) - @as(usize, bit_width));
+    const final_bit_offset = bit_offset.* + bit_width;
+    const required_bytes = final_bit_offset / 8 + @intFromBool((final_bit_offset & 7) != 0);
+    std.debug.assert(payload.len >= required_bytes);
+
+    var remaining = bit_width;
+    var current = current_value;
+    while (remaining > 0) {
+        const bit_index = bit_offset.* & 7;
+        const free_bits = 8 - bit_index;
+        const chunk_bits: u8 = @intCast(@min(@as(usize, remaining), free_bits));
+        const mask = (@as(u64, 1) << @as(u6, @intCast(chunk_bits))) - 1;
+        const chunk = current & mask;
+        payload[bit_offset.* / 8] |= @as(u8, @intCast(chunk << @as(u6, @intCast(bit_index))));
+        current >>= @as(u6, @intCast(chunk_bits));
+        bit_offset.* += chunk_bits;
+        remaining -= chunk_bits;
+    }
+}
+
+fn packForUnsigned(comptime T: type, allocator: Allocator, values: []const T) !PackedU64 {
     if (values.len == 0) {
         return .{
             .base = 0,
@@ -39,43 +78,40 @@ pub fn packForU64(allocator: Allocator, values: []const u64) !PackedU64 {
         max_value = @max(max_value, value);
     }
 
-    const bit_width = requiredBitWidth(max_value - base);
-    const payload_len = try payloadByteLen(bit_width, values.len);
-    var payload = try allocator.alloc(u8, payload_len);
+    const base_u64: u64 = base;
+    const bit_width = requiredBitWidth(@as(u64, max_value) - base_u64);
+    const payload_len = try packedByteLen(bit_width, values.len);
+    const payload = try allocator.alloc(u8, payload_len);
     errdefer allocator.free(payload);
     @memset(payload, 0);
 
     if (bit_width != 0) {
         var bit_offset: usize = 0;
         for (values) |value| {
-            var remaining = bit_width;
-            var current = value - base;
-            while (remaining > 0) {
-                const bit_index = bit_offset & 7;
-                const free_bits = 8 - bit_index;
-                const chunk_bits: u8 = @intCast(@min(@as(usize, remaining), free_bits));
-                const mask = (@as(u64, 1) << @as(u6, @intCast(chunk_bits))) - 1;
-                const chunk = current & mask;
-                payload[bit_offset / 8] |= @as(u8, @intCast(chunk << @as(u6, @intCast(bit_index))));
-                current >>= @as(u6, @intCast(chunk_bits));
-                bit_offset += chunk_bits;
-                remaining -= chunk_bits;
-            }
+            packNextForValue(payload, bit_width, &bit_offset, base_u64, value);
         }
     }
 
     return .{
-        .base = base,
+        .base = base_u64,
         .bit_width = bit_width,
         .count = values.len,
         .payload = payload,
     };
 }
 
+pub fn packForU64(allocator: Allocator, values: []const u64) !PackedU64 {
+    return packForUnsigned(u64, allocator, values);
+}
+
+pub fn packForU16(allocator: Allocator, values: []const u16) !PackedU64 {
+    return packForUnsigned(u16, allocator, values);
+}
+
 pub fn unpackForU64(allocator: Allocator, packed_values: PackedU64) ![]u64 {
     if (packed_values.bit_width > 64) return error.InvalidBitWidth;
 
-    const required_payload_len = try payloadByteLen(packed_values.bit_width, packed_values.count);
+    const required_payload_len = try packedByteLen(packed_values.bit_width, packed_values.count);
     if (packed_values.payload.len < required_payload_len) return error.UnexpectedEndOfStream;
 
     const values = try allocator.alloc(u64, packed_values.count);
@@ -152,10 +188,4 @@ fn readWordAccumU128(payload: []const u8, bit_width: u8, bit_offset: usize, base
     const sum = @addWithOverflow(base, offset);
     if (sum[1] != 0) return error.Overflow;
     return sum[0];
-}
-
-fn payloadByteLen(bit_width: u8, count: usize) !usize {
-    if (bit_width == 0 or count == 0) return 0;
-    const bits = try std.math.mul(usize, bit_width, count);
-    return (try std.math.add(usize, bits, 7)) / 8;
 }
