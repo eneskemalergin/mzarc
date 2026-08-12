@@ -4,6 +4,8 @@
 
 All notable changes to mzarc are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This project follows [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
 ## [0.2.5] - 2026-08-09
 
 ### Added
