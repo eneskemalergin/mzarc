@@ -31,4 +31,8 @@ The benchmark report contains two input sections:
 
 Generic compressors must reproduce the exact input bytes. MScompress must reproduce the exact Dump V1 spectrum fields; it may rewrite the mzML document representation.
 
-Each percentage column names its denominator. Compare methods within a section, not across the Dump V1 and original mzML sections. Each section keeps the complete results in separate artifact, encode, and decode tables. If `gnuplot` is available, the report also includes one SVG summary for each input. The figures compare artifact size, throughput, and peak RSS. Plotting does not use Python.
+Each percentage column names its denominator. Compare methods within a section, not across the Dump V1 and original mzML sections. Each section keeps the complete results in separate artifact, encode, and decode tables. The report also records the source shape, measurement method, validation boundaries, limits, and tool versions. If `gnuplot` is available, it adds one comparison figure for each input. Each figure title names the source file and comparison-input size. Artifact percentages are labeled directly. The Dump V1 figure highlights mzarc and labels its throughput and RSS without repeating every table value. Plotting does not use Python.
+
+The runner reads the mzarc release version from `build.zig.zon` and requires it to match the latest released entry in `CHANGELOG.md`. It queries every other tool directly. Report numbers come from the generated dump, artifacts, and zebrac summaries; the Markdown tables are aligned after generation.
+
+Each ignored run directory retains zebrac JSON and one `dump.tsv` file. The direct-mzML TSV is a temporary reporting input and is removed with the operating-system scratch directory. The accepted `benchmark/` directory tracks only `report.md`, `dump.tsv`, and the two SVG summaries.

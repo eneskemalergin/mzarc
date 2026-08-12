@@ -78,6 +78,7 @@ if [[ ! -f "$input" ]]; then
     exit 1
 fi
 input=$(realpath "$input")
+readonly source_name=${input##*/}
 if [[ "$input" == "$repo_root/data/examples/"* && "$sanity" != true ]]; then
     echo 'error: parser examples are sanity inputs, not benchmark inputs' >&2
     echo 'rerun with --sanity to check harness wiring' >&2
@@ -135,6 +136,40 @@ if command -v lscpu >/dev/null; then
     cpu=$(lscpu | awk -F: '/^Model name:/ {sub(/^[[:space:]]+/, "", $2); print $2; exit}')
 fi
 
+mzarc_version=$(awk -F'"' '/^[[:space:]]*\.version = "[0-9]+\.[0-9]+\.[0-9]+"/ { print $2; exit }' "$repo_root/build.zig.zon")
+changelog_version=$(awk -F'[][]' '/^## \[[0-9]+\.[0-9]+\.[0-9]+\]/ { print $2; exit }' "$repo_root/CHANGELOG.md")
+if [[ -z "$mzarc_version" || "$mzarc_version" != "$changelog_version" ]]; then
+    echo "error: build version '$mzarc_version' does not match latest changelog version '$changelog_version'" >&2
+    exit 1
+fi
+zig_version=$("$zig" version)
+python_version=$("$python" --version 2>&1)
+python_version=${python_version#Python }
+pyteomics_version=$("$python" -c 'import importlib.metadata; print(importlib.metadata.version("pyteomics"))')
+zebrac_version=$("$zebrac" --version)
+zebrac_json_version=${zebrac_version#zebrac }
+if [[ -z "$zebrac_json_version" || "$zebrac_json_version" == "$zebrac_version" ]]; then
+    echo "error: unexpected zebrac version output: $zebrac_version" >&2
+    exit 1
+fi
+gzip_version=$("$gzip_bin" --version | sed -n '1p')
+pigz_version=$("$pigz_bin" --version)
+zstd_version=$("$zstd_bin" --version | sed -E 's/^.* v([^,]+),.*$/zstd \1/')
+xz_version=$("$xz_bin" --version | sed -n '1p' | awk '{ print "xz " $NF }')
+mscompress_version=$("$mscompress" --json --version | "$jq_bin" -r .version)
+jq_version=$("$jq_bin" --version)
+gnuplot_version=""
+if [[ -n "$gnuplot_bin" ]]; then
+    gnuplot_version=$("$gnuplot_bin" --version)
+fi
+measurement_word='measurements'
+if ((samples == 1)); then
+    measurement_word='measurement'
+fi
+readonly mzarc_version changelog_version zig_version python_version pyteomics_version
+readonly zebrac_version zebrac_json_version gzip_version pigz_version zstd_version
+readonly xz_version mscompress_version jq_version gnuplot_version measurement_word
+
 scratch=$(mktemp -d "${TMPDIR:-/tmp}/mzarc-benchmark.XXXXXX")
 cleanup() {
     rm -rf -- "$scratch"
@@ -154,13 +189,24 @@ cd "$repo_root"
 echo "creating one Dump V1 input"
 "$python" "$repo_root/tools/mzml_dump.py" "$scratch/source.mzML" \
     -o "$scratch/source.bin"
-"$mzarc" dump-inspect "$scratch/source.bin" >/dev/null
+dump_info=$("$mzarc" dump-inspect "$scratch/source.bin" 2>&1)
+spectra=$(awk -F': ' '$1 == "spectra" { print $2; exit }' <<<"$dump_info")
+total_peaks=$(awk -F': ' '$1 == "total peaks" { print $2; exit }' <<<"$dump_info")
+ms1_count=$(awk -F': ' '$1 == "ms1 count" { print $2; exit }' <<<"$dump_info")
+ms2_count=$(awk -F': ' '$1 == "ms2 count" { print $2; exit }' <<<"$dump_info")
+readonly spectra total_peaks ms1_count ms2_count
+for value in "$spectra" "$total_peaks" "$ms1_count" "$ms2_count"; do
+    if [[ ! "$value" =~ ^[0-9]+$ ]]; then
+        echo 'error: could not read source shape from mzarc dump-inspect' >&2
+        exit 1
+    fi
+done
 
 mzml_bytes=$(stat -c %s "$scratch/source.mzML")
 dump_bytes=$(stat -c %s "$scratch/source.bin")
 readonly mzml_bytes dump_bytes
 readonly rows_dump="$output_dir/dump.tsv"
-readonly rows_mzml="$output_dir/mzml.tsv"
+readonly rows_mzml="$scratch/mzml.tsv"
 : >"$rows_dump"
 : >"$rows_mzml"
 
@@ -179,8 +225,9 @@ measure() {
 
     "$jq_bin" -e \
         --argjson samples "$samples" \
+        --arg zebrac_version "$zebrac_json_version" \
         '.schema_version == 1 and
-         .zebrac_version == "0.6.2" and
+         .zebrac_version == $zebrac_version and
          (.results | length) == 1 and
          .results[0].sample_count == $samples and
          .results[0].failed_sample_count == 0' \
@@ -225,18 +272,105 @@ record_row() {
         ] | @tsv' "$encode_json" >>"$rows"
 }
 
+align_markdown_tables() {
+    local report=$1
+    local formatted="$scratch/formatted-report.md"
+
+    awk '
+        function trim(value) {
+            sub(/^[[:space:]]+/, "", value)
+            sub(/[[:space:]]+$/, "", value)
+            return value
+        }
+        function repeat_char(character, count, result) {
+            result = ""
+            while (count-- > 0) {
+                result = result character
+            }
+            return result
+        }
+        function clear_table(key) {
+            for (key in cells) delete cells[key]
+            for (key in widths) delete widths[key]
+            for (key in align_right) delete align_right[key]
+            row_count = 0
+            column_count = 0
+        }
+        function add_row(line, row, content, parts, count, column, value) {
+            content = line
+            sub(/^[[:space:]]*\|/, "", content)
+            sub(/\|[[:space:]]*$/, "", content)
+            count = split(content, parts, /\|/)
+            if (count > column_count) column_count = count
+            for (column = 1; column <= count; column++) {
+                value = trim(parts[column])
+                cells[row, column] = value
+                if (length(value) > widths[column]) widths[column] = length(value)
+            }
+        }
+        function flush_table(column, row, marker, left_colon, right_colon, minimum, value) {
+            if (row_count == 0) return
+            for (column = 1; column <= column_count; column++) {
+                marker = cells[2, column]
+                left_colon = marker ~ /^:/
+                right_colon = marker ~ /:$/
+                align_right[column] = right_colon
+                minimum = 3 + left_colon + right_colon
+                if (widths[column] < minimum) widths[column] = minimum
+            }
+            for (row = 1; row <= row_count; row++) {
+                printf "|"
+                for (column = 1; column <= column_count; column++) {
+                    value = cells[row, column]
+                    if (row == 2) {
+                        left_colon = value ~ /^:/
+                        right_colon = value ~ /:$/
+                        value = (left_colon ? ":" : "") repeat_char("-", widths[column] - left_colon - right_colon) (right_colon ? ":" : "")
+                        printf " %s |", value
+                    } else if (align_right[column]) {
+                        printf " %*s |", widths[column], value
+                    } else {
+                        printf " %-*s |", widths[column], value
+                    }
+                }
+                printf "\n"
+            }
+            clear_table()
+        }
+        {
+            if ($0 ~ /^[[:space:]]*\|.*\|[[:space:]]*$/) {
+                row_count++
+                add_row($0, row_count)
+                next
+            }
+            flush_table()
+            print
+        }
+        END { flush_table() }
+    ' "$report" >"$formatted"
+    mv "$formatted" "$report"
+}
+
 write_comparison() {
     local title=$1
     local input_label=$2
     local input_bytes=$3
     local rows=$4
     local plot_name=$5
+    local highlight_row=$6
+    local figure_title=$7
     local plot_path="$output_dir/$plot_name"
     local has_plot=false
+    local input_mib
+
+    input_mib=$(awk -v bytes="$input_bytes" 'BEGIN { printf "%.2f", bytes / 1048576 }')
 
     if [[ "$sanity" != true && -n "$gnuplot_bin" ]]; then
         if "$gnuplot_bin" -c "$repo_root/tools/benchmark_plot.gp" \
-            "$rows" "$plot_path" "$title" "% of $input_label"; then
+            "$rows" "$plot_path" "$figure_title ($input_mib MiB input)" \
+            "% of $input_label" \
+            "$highlight_row" \
+            "n = $samples measurements after 1 warmup; throughput basis = input bytes; peak RSS = median; [P] = $threads workers"; then
             has_plot=true
         else
             rm -f -- "$plot_path"
@@ -247,7 +381,7 @@ write_comparison() {
     {
         echo "## $title"
         echo
-        echo "Comparison input: $input_label, $input_bytes bytes."
+        echo "Comparison input: $input_label, $input_mib MiB ($input_bytes bytes)."
         echo
         if [[ "$has_plot" == true ]]; then
             echo "![$title summary]($plot_name)"
@@ -255,7 +389,7 @@ write_comparison() {
         fi
         echo '### Artifact'
         echo
-        echo "| Method | Threads: encode / decode | Validation | Compressed bytes | Artifact / $input_label |"
+        echo "| Method | Threads (encode / decode) | Validation | Artifact bytes | Artifact / $input_label |"
         echo '| --- | --- | --- | ---: | ---: |'
         while IFS=$'\t' read -r method thread_class validation artifact_bytes percent encode_mean encode_std encode_rate encode_rss decode_mean decode_std decode_rate decode_rss; do
             printf '| %s | %s | %s | %s | %.2f%% |\n' \
@@ -453,69 +587,116 @@ run_mscompress "$threads" "fixed-$threads" "MScompress -t$threads [P]"
 
 {
     if [[ "$sanity" == true ]]; then
+        echo '<!-- markdownlint-disable MD024 -->'
+        echo
         echo '# Compression harness sanity check'
+        echo
+        echo 'This parser-example run checks command wiring and round trips. Its size, timing, RSS, and rankings are not benchmark evidence.'
     else
+        echo '<!-- markdownlint-disable MD024 -->'
+        echo
         echo '# Reference compression benchmark'
+        echo
+        echo 'This report compares lossless compression of one mzML-derived Dump V1 input and the original mzML document. Compare methods only within the same input section because the inputs and validation contracts differ.'
+        echo
+        echo '## Key findings'
+        echo
+        awk -F $'\t' -v workers="$threads" '
+            $1 == "mzarc lossless" { mzarc_bytes = $4; mzarc_pct = $5; mzarc_encode = $8; mzarc_encode_rss = $9; mzarc_decode = $12; mzarc_decode_rss = $13 }
+            $1 == "xz -6 -T1" { xz_bytes = $4 }
+            $1 == "zstd -3 --single-thread" { zstd_decode = $12 }
+            $1 ~ /^zstd -3 -T[0-9]+ \[P\]$/ { zstd_parallel_encode = $8; zstd_parallel_decode = $12 }
+            $1 == "gzip -6" { gzip_encode_rss = $9; gzip_decode_rss = $13 }
+            END {
+                if (!mzarc_bytes || !xz_bytes || !zstd_decode || !zstd_parallel_encode || !zstd_parallel_decode || !gzip_encode_rss) exit 2
+                printf "- mzarc produces a %.2f MiB artifact from the Dump V1 input (%.2f%% of input), %.2f%% smaller than the next-smallest single-threaded byte-exact row, xz `-6 -T1`.\n", mzarc_bytes / 1048576, mzarc_pct, 100 * (xz_bytes - mzarc_bytes) / xz_bytes
+                printf "- mzarc is the fastest single-threaded Dump V1 encoder at %.2f MiB/s. The fixed-%d zstd row leads overall encode at %.2f MiB/s. zstd records %.2f MiB/s decode for the single-thread artifact and %.2f MiB/s for the fixed-%d artifact; both decode operations are single-threaded.\n", mzarc_encode, workers, zstd_parallel_encode, zstd_decode, zstd_parallel_decode, workers
+                printf "- mzarc peak RSS is %.2f MiB for encode and %.2f MiB for decode on this file. gzip records the lowest values in the Dump V1 table at %.2f MiB and %.2f MiB.\n", mzarc_encode_rss, mzarc_decode_rss, gzip_encode_rss, gzip_decode_rss
+            }
+        ' "$rows_dump"
+        awk -F $'\t' -v workers="$threads" '
+            $1 == "xz -6 -T1" { xz_pct = $5 }
+            $1 ~ /^zstd -3 -T[0-9]+ \[P\]$/ { zstd_encode = $8; zstd_decode = $12 }
+            $1 ~ /^MScompress -t[0-9]+ \[P\]$/ { mscompress_pct = $5 }
+            END {
+                if (!xz_pct || !zstd_encode || !zstd_decode || !mscompress_pct) exit 2
+                printf "- On original mzML, MScompress `-t%d` writes the smallest artifact at %.2f%% but is validated as Dump V1 exact. xz `-6 -T1` is the smallest document-byte-exact row at %.2f%%. The fixed-%d zstd row records %.2f MiB/s encode; its single-threaded decode records %.2f MiB/s.\n", workers, mscompress_pct, xz_pct, workers, zstd_encode, zstd_decode
+            }
+        ' "$rows_mzml"
     fi
+    echo
+    echo '## Run context'
     echo
     echo "- Source: \`$source_display\`"
+    echo "- Source shape: $spectra spectra; $total_peaks peaks; $ms1_count MS1 and $ms2_count MS2 spectra"
     echo "- Measured: $(date --iso-8601=seconds)"
     echo "- Host: $cpu; $host"
-    echo "- mzarc build: stripped ReleaseFast"
-    echo "- Samples: $samples per operation after one warmup"
-    echo "- Parallel rows: $threads workers, marked \`[P]\`"
-    echo '- Throughput basis: uncompressed bytes for the input section'
-    echo '- Peak RSS: zebrac direct-child RSS'
+    echo '- mzarc build: stripped ReleaseFast, single-threaded'
+    echo "- Sampling: $samples $measurement_word per operation after one warmup"
+    echo "- Parallel rows: $threads workers, marked \`[P]\`; direction-specific behavior remains in the tables"
+    echo '- Throughput: uncompressed input bytes divided by mean wall time'
+    echo '- Peak RSS: median zebrac direct-child RSS'
     echo
-    if [[ "$sanity" == true ]]; then
-        echo 'This parser-example run checks command wiring and round trips. Its size, timing, RSS, and rankings are not benchmark evidence.'
-        echo
-    else
-        echo 'Compare methods only within the same input section. The Dump V1 and original mzML sections have different byte and validation contracts.'
-        echo
-    fi
 } >"$output_dir/report.md"
 if [[ "$sanity" != true ]]; then
     mzarc_bytes=$(awk -F $'\t' '$1 == "mzarc lossless" { print $4; exit }' "$rows_dump")
     dump_of_mzml=$(awk -v dump="$dump_bytes" -v mzml="$mzml_bytes" 'BEGIN { printf "%.2f", 100 * dump / mzml }')
     mzarc_of_mzml=$(awk -v artifact="$mzarc_bytes" -v mzml="$mzml_bytes" 'BEGIN { printf "%.2f", 100 * artifact / mzml }')
     {
-        echo '## Pipeline size context'
+        echo '## Input size context'
         echo
-        echo '| Representation | Bytes | Representation / original mzML |'
-        echo '| --- | ---: | ---: |'
-        printf '| Original mzML | %s | 100.00%% |\n' "$mzml_bytes"
-        printf '| Dump V1 retained fields | %s | %s%% |\n' "$dump_bytes" "$dump_of_mzml"
-        printf '| mzarc lossless | %s | %s%% |\n' "$mzarc_bytes" "$mzarc_of_mzml"
+        echo '| Representation | Bytes | MiB | Representation / original mzML |'
+        echo '| --- | ---: | ---: | ---: |'
+        awk -v bytes="$mzml_bytes" 'BEGIN { printf "| Original mzML | %d | %.2f | 100.00%% |\n", bytes, bytes / 1048576 }'
+        awk -v bytes="$dump_bytes" -v pct="$dump_of_mzml" 'BEGIN { printf "| Dump V1 retained fields | %d | %.2f | %s%% |\n", bytes, bytes / 1048576, pct }'
+        awk -v bytes="$mzarc_bytes" -v pct="$mzarc_of_mzml" 'BEGIN { printf "| mzarc lossless | %d | %.2f | %s%% |\n", bytes, bytes / 1048576, pct }'
         echo
-        echo 'mzarc reads Dump V1 and preserves its retained spectrum fields. It does not reproduce the original mzML document.'
+        echo 'The mzarc percentage against original mzML describes the current mzML-to-Dump-V1-to-mzarc storage path. mzarc reads Dump V1 and does not reproduce the original mzML document.'
         echo
     } >>"$output_dir/report.md"
 fi
-write_comparison 'Dump V1 comparison' 'Dump V1' "$dump_bytes" "$rows_dump" 'dump-summary.svg'
-write_comparison 'Original mzML comparison' 'original mzML' "$mzml_bytes" "$rows_mzml" 'mzml-summary.svg'
-cat >>"$output_dir/report.md" <<'EOF'
-MScompress is spectrum-lossless in this report, not necessarily document-byte-lossless. Its decoded mzML is converted with the same Dump V1 converter and compared byte for byte with the original dump. Generic compressors use direct byte comparison against the original table input.
-
-Run metadata and complete table rows: [tool versions](versions.txt), [Dump V1 TSV](dump.tsv), and [original mzML TSV](mzml.tsv).
-EOF
-
+write_comparison 'Dump V1 round trip' 'Dump V1' "$dump_bytes" "$rows_dump" \
+    'dump-summary.svg' 0 "mzML-derived Dump V1 round trip: $source_name"
+write_comparison 'Original mzML round trip' 'original mzML' "$mzml_bytes" "$rows_mzml" \
+    'mzml-summary.svg' -1 "Original mzML round trip: $source_name"
 {
-    echo "host: $host"
-    echo "cpu: $cpu"
-    echo "mzarc commit: $(git -C "$repo_root" rev-parse HEAD)"
-    echo "mzarc dirty: $(git -C "$repo_root" status --short | wc -l) paths"
-    echo "zebrac: $("$zebrac" --version)"
-    echo "gzip: $("$gzip_bin" --version | head -1)"
-    echo "pigz: $("$pigz_bin" --version)"
-    echo "zstd: $("$zstd_bin" --version)"
-    echo "xz: $("$xz_bin" --version | head -1)"
-    echo "MScompress: $("$mscompress" --json --version | "$jq_bin" -r .version)"
+    echo '## Validation boundaries'
+    echo
+    echo '- mzarc, gzip, pigz, zstd, and xz reproduce their Dump V1 input byte for byte.'
+    echo '- gzip, pigz, zstd, and xz reproduce the original mzML document byte for byte.'
+    echo '- MScompress is spectrum-lossless here, not necessarily document-byte-lossless. Its decoded mzML is converted through the same Dump V1 converter and compared byte for byte with the source dump.'
+    echo
+    echo '## Limits'
+    echo
+    echo '- This report covers one file and one acquisition shape. It does not establish performance or RSS behavior across the broader corpus.'
+    echo '- mzarc currently starts from Dump V1. The original mzML section therefore has no mzarc row.'
+    echo '- Wall time and RSS are measurements from one host, not portable guarantees.'
+    echo
+    echo '## Tool versions'
+    echo
+    echo "- mzarc: \`v$mzarc_version\`"
+    echo "- Build: Zig \`$zig_version\`; stripped ReleaseFast; single-threaded"
+    echo "- Ingest: Python \`$python_version\`; Pyteomics \`$pyteomics_version\`"
+    echo "- Measurement: \`$zebrac_version\`"
+    echo "- Compression peers: \`$gzip_version\`; \`$pigz_version\`; \`$zstd_version\`; \`$xz_version\`; \`MScompress $mscompress_version\`"
     if [[ -n "$gnuplot_bin" ]]; then
-        echo "gnuplot: $("$gnuplot_bin" --version)"
+        echo "- Report generation: \`$jq_version\`; \`$gnuplot_version\`"
     else
-        echo 'gnuplot: not installed; summary figures omitted'
+        echo "- Report generation: \`$jq_version\`; gnuplot not installed, so figures were omitted"
     fi
-} >"$output_dir/versions.txt"
+    echo
+    if [[ "$sanity" == true ]]; then
+        echo '## Machine-readable rows'
+        echo
+        echo 'The full-precision Dump V1 rows are retained in [dump.tsv](dump.tsv). They are sanity output, not a regression baseline.'
+    else
+        echo '## Machine-readable baseline'
+        echo
+        echo 'The full-precision Dump V1 rows are retained in [dump.tsv](dump.tsv) for the planned local mzarc regression check. The reader-facing tables above are rounded.'
+        echo
+        echo 'Column order: method, thread class, validation, artifact bytes, artifact percentage, encode mean ms, encode SD ms, encode MiB/s, encode RSS MiB, decode mean ms, decode SD ms, decode MiB/s, and decode RSS MiB.'
+    fi
+} >>"$output_dir/report.md"
 
+align_markdown_tables "$output_dir/report.md"
 echo "report: $output_dir/report.md"
