@@ -1,35 +1,45 @@
 # Reference compression benchmark
 
+This report compares lossless compression of one mzML-derived Dump V1 input and the original mzML document. Compare methods only within the same input section because the inputs and validation contracts differ.
+
+## Key findings
+
+- mzarc produces a 14.46 MiB artifact from the Dump V1 input (46.99% of input), 8.23% smaller than the next-smallest single-threaded byte-exact row, xz `-6 -T1`.
+- mzarc is the fastest single-threaded Dump V1 encoder at 206.22 MiB/s. The fixed-4 zstd row leads overall encode at 387.52 MiB/s. zstd records 459.46 MiB/s decode for the single-thread artifact and 463.54 MiB/s for the fixed-4 artifact; both decode operations are single-threaded.
+- mzarc peak RSS is 10.58 MiB for encode and 6.45 MiB for decode on this file. gzip records the lowest values in the Dump V1 table at 1.85 MiB and 1.60 MiB.
+- On original mzML, MScompress `-t4` writes the smallest artifact at 28.62% but is validated as Dump V1 exact. xz `-6 -T1` is the smallest document-byte-exact row at 30.96%. The fixed-4 zstd row records 1024.64 MiB/s encode; its single-threaded decode records 844.94 MiB/s.
+
+## Run context
+
 - Source: `data/PXD075509/15HCD_1.mzML`
+- Source shape: 9,001 spectra; 2,668,458 peaks; 917 MS1 and 8,084 MS2 spectra
 - Measured: 2026-08-11T19:35:13-07:00
 - Host: AMD Ryzen 9 3950X 16-Core Processor; Linux 7.0.11-76070011-generic x86_64 GNU/Linux
-- mzarc build: stripped ReleaseFast
-- Samples: 5 per operation after one warmup
-- Parallel rows: 4 workers, marked `[P]`
-- Throughput basis: uncompressed bytes for the input section
-- Peak RSS: zebrac direct-child RSS
+- mzarc build: stripped ReleaseFast, single-threaded
+- Sampling: 5 measurements per operation after one warmup
+- Parallel rows: 4 workers, marked `[P]`; direction-specific behavior remains in the tables
+- Throughput: uncompressed input bytes divided by mean wall time
+- Peak RSS: median zebrac direct-child RSS
 
-Compare methods only within the same input section. The Dump V1 and original mzML sections have different byte and validation contracts.
+## Input size context
 
-## Pipeline size context
+| Representation | Bytes | MiB | Representation / original mzML |
+| --- | ---: | ---: | ---: |
+| Original mzML | 79221306 | 75.55 | 100.00% |
+| Dump V1 retained fields | 32273524 | 30.78 | 40.74% |
+| mzarc lossless | 15164187 | 14.46 | 19.14% |
 
-| Representation | Bytes | Representation / original mzML |
-| --- | ---: | ---: |
-| Original mzML | 79221306 | 100.00% |
-| Dump V1 retained fields | 32273524 | 40.74% |
-| mzarc lossless | 15164187 | 19.14% |
+The mzarc percentage against original mzML describes the current mzML-to-Dump-V1-to-mzarc storage path. mzarc reads Dump V1 and does not reproduce the original mzML document.
 
-mzarc reads Dump V1 and preserves its retained spectrum fields. It does not reproduce the original mzML document.
+## Dump V1 round trip
 
-## Dump V1 comparison
+Comparison input: Dump V1, 30.78 MiB (32273524 bytes).
 
-Comparison input: Dump V1, 32273524 bytes.
-
-![Dump V1 comparison summary](dump-summary.svg)
+![Dump V1 round trip summary](dump-summary.svg)
 
 ### Artifact
 
-| Method | Threads: encode / decode | Validation | Compressed bytes | Artifact / Dump V1 |
+| Method | Threads (encode / decode) | Validation | Artifact bytes | Artifact / Dump V1 |
 | --- | --- | --- | ---: | ---: |
 | mzarc lossless | single / single | byte exact | 15164187 | 46.99% |
 | gzip -6 | single / single | byte exact | 20780851 | 64.39% |
@@ -66,15 +76,15 @@ Comparison input: Dump V1, 32273524 bytes.
 | xz -6 -T1 | 636.728 ± 7.647 | 48.34 | 9.92 |
 | xz -6 -T4 [P] | 502.994 ± 7.466 | 61.19 | 59.59 |
 
-## Original mzML comparison
+## Original mzML round trip
 
-Comparison input: original mzML, 79221306 bytes.
+Comparison input: original mzML, 75.55 MiB (79221306 bytes).
 
-![Original mzML comparison summary](mzml-summary.svg)
+![Original mzML round trip summary](mzml-summary.svg)
 
 ### Artifact
 
-| Method | Threads: encode / decode | Validation | Compressed bytes | Artifact / original mzML |
+| Method | Threads (encode / decode) | Validation | Artifact bytes | Artifact / original mzML |
 | --- | --- | --- | ---: | ---: |
 | gzip -6 | single / single | byte exact | 25465391 | 32.14% |
 | pigz -6 -p1 | single / single | byte exact | 25395942 | 32.06% |
@@ -114,6 +124,28 @@ Comparison input: original mzML, 79221306 bytes.
 | MScompress -t1 | 5737.119 ± 38.062 | 13.17 | 255.59 |
 | MScompress -t4 [P] | 2028.739 ± 22.972 | 37.24 | 214.98 |
 
-MScompress is spectrum-lossless in this report, not necessarily document-byte-lossless. Its decoded mzML is converted with the same Dump V1 converter and compared byte for byte with the original dump. Generic compressors use direct byte comparison against the original table input.
+## Validation boundaries
 
-Run metadata and complete table rows: [tool versions](versions.txt), [Dump V1 TSV](dump.tsv), and [original mzML TSV](mzml.tsv).
+- mzarc, gzip, pigz, zstd, and xz reproduce their Dump V1 input byte for byte.
+- gzip, pigz, zstd, and xz reproduce the original mzML document byte for byte.
+- MScompress is spectrum-lossless here, not necessarily document-byte-lossless. Its decoded mzML is converted through the same Dump V1 converter and compared byte for byte with the source dump.
+
+## Limits
+
+- This report covers one file and one acquisition shape. It does not establish performance or RSS behavior across the broader corpus.
+- mzarc currently starts from Dump V1. The original mzML section therefore has no mzarc row.
+- Wall time and RSS are measurements from one host, not portable guarantees.
+
+## Tool versions
+
+- mzarc: commit `c210680df9a7f187bb9b6f03b511639526b1da33`; 6 dirty paths; stripped ReleaseFast
+- Build and ingest: Zig `0.16.0`; Python `3.12.13`; Pyteomics `5.0.1`
+- Measurement: `zebrac 0.6.2`
+- Compression peers: `gzip 1.10`; `pigz 2.6`; `zstd 1.5.6`; `xz 5.6.4`; `MScompress 1.0.16`
+- Report generation: `jq-1.6`; `gnuplot 5.4 patchlevel 2`
+
+## Machine-readable baseline
+
+The full-precision Dump V1 rows are retained in [dump.tsv](dump.tsv) for the planned local mzarc regression check. The reader-facing tables above are rounded.
+
+Column order: method, thread class, validation, artifact bytes, artifact percentage, encode mean ms, encode SD ms, encode MiB/s, encode RSS MiB, decode mean ms, decode SD ms, decode MiB/s, and decode RSS MiB.
