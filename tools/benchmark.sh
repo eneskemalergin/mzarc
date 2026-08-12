@@ -5,17 +5,156 @@ set -euo pipefail
 usage() {
     cat <<'EOF'
 Usage: tools/benchmark.sh [options] input.mzML
+       tools/benchmark.sh --check
 
 Options:
   --output DIR    New result directory under tmp/bench/runs by default.
   --threads N     Fixed parallel worker count (default: 4).
   --samples N     Exact zebrac sample count per operation, 1 to 10000 (default: 5).
   --sanity        Label parser-example output as a sanity check.
+  --check         Run the focused local benchmark checks.
   -h, --help      Show this help.
 EOF
 }
 
 repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+
+run_checks() {
+    local self="$repo_root/tools/benchmark.sh"
+    local tiny="$repo_root/data/examples/tiny.pwiz.1.1.mzML"
+    local output report_text rows real_cmp
+    benchmark_check_root=$(mktemp -d "${TMPDIR:-/tmp}/mzarc-benchmark-check.XXXXXX")
+    trap 'rm -rf -- "${benchmark_check_root:-}"' EXIT
+
+    unset MZARC_BENCH_CHECKING MZARC_BENCH_ZEBRAC MZARC_BENCH_MSCOMPRESS
+
+    fail() {
+        echo "FAIL benchmark check: $1" >&2
+        exit 1
+    }
+
+    expect_failure() {
+        local label=$1
+        local expected=$2
+        shift 2
+
+        if output=$("$@" 2>&1); then
+            fail "$label accepted an invalid run"
+        fi
+        if [[ "$output" != *"$expected"* ]]; then
+            printf '%s\n' "$output" >&2
+            fail "$label returned the wrong diagnostic"
+        fi
+        echo "PASS benchmark check: $label"
+    }
+
+    [[ -f "$tiny" ]] || fail "missing parser fixture: $tiny"
+    expect_failure 'missing input' 'Usage:' bash "$self"
+    expect_failure 'unknown option' 'unknown option' bash "$self" --unknown
+    expect_failure 'multiple inputs' 'only one mzML input' bash "$self" "$tiny" "$tiny"
+    expect_failure 'invalid thread count' '--threads must be a positive integer' \
+        bash "$self" --threads 0 --sanity "$tiny"
+    expect_failure 'excessive sample count' "10000-sample cap" \
+        bash "$self" --samples 10001 --sanity "$tiny"
+    expect_failure 'parser fixture benchmark' 'parser examples are sanity inputs' \
+        bash "$self" "$tiny"
+
+    mkdir "$benchmark_check_root/existing"
+    printf 'keep\n' >"$benchmark_check_root/existing/sentinel"
+    expect_failure 'existing output directory' 'output already exists' \
+        bash "$self" --sanity --samples 1 \
+        --output "$benchmark_check_root/existing" "$tiny"
+    [[ $(<"$benchmark_check_root/existing/sentinel") == keep ]] || \
+        fail 'existing output directory was modified'
+
+    expect_failure 'missing MScompress' "$benchmark_check_root/missing-mscompress" \
+        env MZARC_BENCH_CHECKING=true \
+        MZARC_BENCH_MSCOMPRESS="$benchmark_check_root/missing-mscompress" \
+        bash "$self" --sanity --samples 1 \
+        --output "$benchmark_check_root/missing-tool" "$tiny"
+    [[ ! -e "$benchmark_check_root/missing-tool" ]] || \
+        fail 'missing tool created output'
+
+    mkdir "$benchmark_check_root/fake"
+    cat >"$benchmark_check_root/fake/zebrac" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ ${1:-} == --version ]]; then
+    echo 'zebrac 0.6.2'
+    exit 0
+fi
+json=""
+while (($#)); do
+    if [[ $1 == --json ]]; then
+        json=$2
+        shift 2
+    else
+        shift
+    fi
+done
+[[ -n "$json" ]]
+printf '{}\n' >"$json"
+EOF
+    chmod +x "$benchmark_check_root/fake/zebrac"
+    expect_failure 'malformed zebrac result' 'invalid zebrac result' \
+        env MZARC_BENCH_CHECKING=true \
+        MZARC_BENCH_ZEBRAC="$benchmark_check_root/fake/zebrac" \
+        bash "$self" --sanity --samples 1 \
+        --output "$benchmark_check_root/malformed" "$tiny"
+    [[ ! -e "$benchmark_check_root/malformed/report.md" ]] || \
+        fail 'malformed zebrac result produced a report'
+
+    real_cmp=$(command -v cmp) || fail 'cmp is unavailable'
+    cat >"$benchmark_check_root/fake/cmp" <<EOF
+#!/usr/bin/env bash
+if [[ \$# -eq 2 && \$1 == */source.bin && \$2 == */dump-gzip/source ]]; then
+    echo 'injected byte mismatch' >&2
+    exit 1
+fi
+exec "$real_cmp" "\$@"
+EOF
+    chmod +x "$benchmark_check_root/fake/cmp"
+    expect_failure 'failed peer validation' 'injected byte mismatch' \
+        env PATH="$benchmark_check_root/fake:$PATH" \
+        bash "$self" --sanity --samples 1 \
+        --output "$benchmark_check_root/validation" "$tiny"
+    [[ ! -e "$benchmark_check_root/validation/report.md" ]] || \
+        fail 'failed validation produced a report'
+
+    if ! output=$(bash "$self" --sanity --samples 1 \
+        --output "$benchmark_check_root/success" "$tiny" 2>&1); then
+        printf '%s\n' "$output" >&2
+        fail 'complete sanity run'
+    fi
+    [[ -f "$benchmark_check_root/success/report.md" ]] || \
+        fail 'sanity run did not produce a report'
+    [[ -f "$benchmark_check_root/success/dump.tsv" ]] || \
+        fail 'sanity run did not retain Dump V1 rows'
+    report_text=$(<"$benchmark_check_root/success/report.md")
+    for expected in '# Compression harness sanity check' 'Artifact / Dump V1' \
+        'Artifact / original mzML' 'Threads (encode / decode)' '[P]' \
+        'byte exact' 'Dump V1 exact'; do
+        [[ "$report_text" == *"$expected"* ]] || \
+            fail "report is missing: $expected"
+    done
+    shopt -s nullglob
+    local json_files=("$benchmark_check_root/success/zebrac/"*.json)
+    shopt -u nullglob
+    ((${#json_files[@]} == 34)) || fail 'sanity run did not retain 34 zebrac results'
+    rows=$(wc -l <"$benchmark_check_root/success/dump.tsv")
+    ((rows == 8)) || fail 'sanity run did not retain eight Dump V1 rows'
+    echo 'PASS benchmark check: complete sanity run'
+}
+
+if [[ ${1:-} == --check ]]; then
+    (($# == 1)) || {
+        usage >&2
+        exit 1
+    }
+    run_checks
+    exit 0
+fi
+
 threads=4
 samples=5
 output_dir=""
@@ -106,8 +245,13 @@ fi
 readonly python="$repo_root/.venv/bin/python"
 readonly zig="$repo_root/zig-0.16.0/zig"
 readonly mzarc="$repo_root/zig-out/bin/mzarc"
-readonly zebrac="$repo_root/tools/zebrac"
-readonly mscompress="$repo_root/tools/bin/mscompress-msz"
+zebrac="$repo_root/tools/zebrac"
+mscompress="$repo_root/tools/bin/mscompress-msz"
+if [[ ${MZARC_BENCH_CHECKING:-} == true ]]; then
+    zebrac="${MZARC_BENCH_ZEBRAC:-$zebrac}"
+    mscompress="${MZARC_BENCH_MSCOMPRESS:-$mscompress}"
+fi
+readonly zebrac mscompress
 
 for path in "$python" "$zig" "$zebrac" "$mscompress"; do
     if [[ ! -x "$path" ]]; then
@@ -257,7 +401,7 @@ measure() {
         --json "$json" \
         -- "$command"
 
-    "$jq_bin" -e \
+    if ! "$jq_bin" -e \
         --argjson samples "$samples" \
         --argjson expected_argv "$expected_argv" \
         --arg command "$command" \
@@ -281,7 +425,10 @@ measure() {
          .results[0].peak_rss.unit == "bytes" and
          .results[0].peak_rss.sample_count == $samples and
          (.results[0].peak_rss.median | type == "number")' \
-        "$json" >/dev/null
+        "$json" >/dev/null; then
+        echo "error: invalid zebrac result: $json" >&2
+        return 1
+    fi
 }
 
 record_row() {

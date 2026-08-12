@@ -20,6 +20,8 @@ Run the local comparison with:
 bash tools/benchmark.sh data/PXD075509/15HCD_1.mzML
 ```
 
+Run `bash tools/benchmark.sh --check` after changing the runner. It uses the tiny parser fixture and temporary fault injection to check argument rejection, output ownership, missing tools, failed validation, malformed zebrac results, and one complete sanity report. It does not retain a benchmark run or enter CI.
+
 The reference report uses five measured samples after one warmup. Parallel rows use four workers and are marked `[P]`. Use `--help` for the output, worker, and sample controls.
 
 Each operation runs as one direct zebrac command. The runner requires the reported command arguments, sampling configuration, result count, failure count, wall-time unit, RSS unit, and summary sample counts to match the request. It does not use shell wrappers or zebrac's multi-command comparison display.
