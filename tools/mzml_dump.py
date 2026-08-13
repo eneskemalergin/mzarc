@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 
+"""Convert mzML spectra to Dump V1 for local codec and benchmark use."""
+
 from __future__ import annotations
 
 import argparse
@@ -121,13 +123,6 @@ def _dump_reader(reader, input_path: Path, output_path: Path) -> None:
 
 def dump_mzml(input_path: Path, output_path: Path) -> None:
     with mzml.read(str(input_path)) as reader:
-        _dump_reader(reader, input_path, output_path)
-
-
-def dump_mzmlb(input_path: Path, output_path: Path) -> None:
-    from pyteomics import mzmlb
-
-    with mzmlb.read(str(input_path)) as reader:
         _dump_reader(reader, input_path, output_path)
 
 

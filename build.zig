@@ -8,6 +8,14 @@ const FROZEN_SHA256 = "9d5a10167356db7afaa4e6c43832a7ea75a53e84dc74e679a881d5d8c
 const FROZEN_BIN = "test/fixtures/frozen.bin";
 
 pub fn build(b: *std.Build) void {
+    switch (b.release_mode) {
+        .safe, .small => std.process.fatal(
+            "mzarc supports only Debug and ReleaseFast; use --release=fast",
+            .{},
+        ),
+        else => {},
+    }
+
     const host = b.graph.host;
     const optimize = b.standardOptimizeOption(.{ .preferred_optimize_mode = .ReleaseFast });
     const release = optimize == .ReleaseFast;
