@@ -2,302 +2,290 @@
 
 # Changelog
 
-All notable changes to mzarc are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This project follows [Semantic Versioning](https://semver.org/).
+All notable changes to mzarc are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project follows [Semantic Versioning](https://semver.org/). Each version starts with a short release summary, followed by user-visible changes grouped by area.
 
-## Unreleased
+## [0.3.0] - 2026-08-13
+
+This codec-focused release comes before native mzML I/O. It makes lossless m/z bit exact, caps file and block work so memory stays bounded, strengthens malformed-input checks, and trims the Zig source package. Format 1.0 remains a development format until it is declared use-ready.
 
 ### Added
 
-- `tools/benchmark.sh` builds a stripped ReleaseFast binary, creates one Dump V1 input, and compares mzarc with gzip, pigz, zstd, xz, and native MScompress. Dump V1 and original mzML results remain separate because their inputs and validation contracts differ.
-- `tools/build_mscompress.sh` builds and tests the pinned native MScompress 1.0.16 CLI. `tools/benchmark_plot.gp` can add size, throughput, and peak RSS summaries without Python plotting dependencies.
+- **Benchmarking:**
+  - Adds a direct comparison against gzip, pigz, zstd, xz, and native MScompress.
+  - Adds a native MScompress builder and optional Gnuplot summaries without a Python plotting stack.
 
 ### Changed
 
-- Benchmark commands run directly under zebrac 0.6.2 with one warmup and an exact sample count. A result is rejected when the command fails or the measurement record does not match the request.
-- The reference report now records complete artifact, encode, and decode tables, fixed worker counts, validation boundaries, source shape, measurement limits, and queried tool versions for both benchmark inputs.
-- Encode and decode now release temporary setup allocations before command exit. On the 984.91 MiB controlled dump, median RSS falls from 32.20 to 20.66 MiB for encode and from 13.06 to 9.61 MiB for decode without changing archive bytes.
-- Blocks are limited to 524,288 peaks and 128 spectra, with matching decode limits checked before proportional allocation or payload read. Profile lossless median RSS falls from 270.50 to 31.12 MiB on encode and from 161.34 to 16.79 MiB on decode while both operations become faster.
-- Encode packs lossless intensity exponents directly and keeps lossy quantized intensity at its native `u16` width. Across the retained 15HCD, DIA, profile, and PASEF inputs, median encode RSS falls by 1.25 to 4.50 MiB without changing archive bytes; wall ranges from 2.03% faster to 0.23% slower.
-- Encode reads sequential Dump V1 peak arrays through a fixed 16 KiB buffer. Mean wall improves by 3.85% to 6.92% on the retained 15HCD and DIA inputs, while archive bytes stay identical and median RSS rises by 0.023 MiB.
+- **Format and fidelity:**
+  - Preserves every supported lossless m/z value with the same f64 bits.
+  - Uses four interleaved rANS states for faster decoding at a small archive cost. Earlier development archives must be regenerated.
+- **Resources:**
+  - Adds explicit file and block limits, rejects excessive work before allocation, and lowers encode and decode RSS.
+- **Validation:**
+  - Recomputes the lossy m/z transform instead of accepting a loose tolerance.
+  - Checks lossy intensity in `log1p` space and accepts the matching custom intensity level.
+- **Packaging:**
+  - Ships only the Zig build, source, tests, smoke check, licenses, README, and changelog.
+- **Benchmark reporting:**
+  - Records commands, tool versions, validation rules, and measured results in `benchmark/report.md`.
+
+### Fixed
+
+- **Lossy intensity:**
+  - Uses `expm1` for reconstruction so the smallest positive f32 values do not collapse to zero.
 
 ### Removed
 
-- The former Python reporting and plotting stack and historical benchmark output. The tracked benchmark now consists of one report, one full-precision Dump V1 table, and two SVG summaries.
+- **Benchmarking:**
+  - Removes the former Python reporting stack and old generated benchmark output.
 
 ## [0.2.5] - 2026-08-09
 
+Format 1.0 gains its current development layout, and file commands move to bounded block processing. Checksums also gain a fast x86-64 path with a portable fallback.
+
 ### Added
 
-- The current `.mzarc` contract is declared format 1.0. Each m/z stream stores its first value directly and compresses the remaining differences.
-- Block checksums use runtime-selected PCLMUL on supported x86-64 processors and portable slicing-by-8 everywhere else.
+- **Format:**
+  - Stores the first m/z value directly and compresses the remaining differences.
+- **Checksums:**
+  - Selects PCLMUL at runtime on supported x86-64 processors and uses portable slicing-by-8 elsewhere.
 
 ### Changed
 
-- File encode and decode keep compact metadata plus one active block instead of all peak data. If either command fails, an existing destination is left unchanged.
-- Encode and decode perform less repeated work, allocate fewer temporary buffers, and calculate checksums faster.
+- **File processing:**
+  - Keeps compact metadata plus one active block instead of retaining all peak data.
+  - Leaves an existing destination unchanged when encode or decode fails.
+- **Performance:**
+  - Removes repeated work and shortens temporary allocation lifetimes in both file commands.
 
 ### Removed
 
-- Unused `-Dforce_scalar` and `build_options` wiring. No SIMD path used the option.
-- Compatibility branches for earlier development archive layouts. Those layouts were never declared use-ready and should be regenerated as format 1.0.
+- **Build:**
+  - Removes the unused `-Dforce_scalar` option.
+- **Compatibility:**
+  - Removes readers for earlier development layouts that were never declared use-ready.
 
----
+## [0.2.0] - 2026-05-04
 
-## [0.2.0] - 2026-05-04 `tagged`
-
-### Fixed
-
-- `src/codec.zig`: `monotonic_ns()` was using `std.os.linux.timespec` and `std.os.linux.clock_gettime`, which are Linux-only. Replaced with `std.Io.Clock.now(.awake, io)`: the correct Zig 0.16.0 cross-platform API. Fixes a panic on macOS CI (`integer does not fit in destination type`).
-- `src/codec.zig`: `@intCast` on `i96` timestamp replaced with `@truncate` to avoid safety-checked-build panic if the value were ever negative.
-- `src/codec.zig`: percentage divisions in all three timing print blocks were raw f64 divides: produced `inf` when `total_ns == 0`. Guarded with zero-check.
-
-### Changed
-
-- `src/codec.zig`: `ns_to_ms` and `ns_pct` extracted as module-level functions instead of being duplicated as anonymous structs in each timing block.
-- `src/codec.zig`: `flushBlock` extracted from `appendFilteredStreamBlocks` to eliminate the duplicated encode-append-count body between the mid-loop flush and the post-loop flush.
-- `.github/workflows/ci.yml`: `mlugg/setup-zig@v1` replaced with `@v2`; v1 mirrors returned 404 for all platforms.
-- `README.md`: restructured for public impact: leads with result numbers, adds "why not mzMLb/xz" context, honest prototype status section.
-- `benchmark/baseline_v0.2.0.json`: new regression baseline. Old `baseline_v0.1.1.json` removed.
+This tagged release fixes the macOS timing path, refreshes CI and public documentation, and establishes the MIT-licensed project baseline.
 
 ### Added
 
-- `LICENSE`: MIT license, copyright 2026 Enes Kemal Ergin.
+- **Project:**
+  - Adds the MIT license.
 
----
+### Changed
+
+- **CI and documentation:**
+  - Updates the Zig setup action and rewrites the README around measured results and prototype status.
+
+### Fixed
+
+- **Portability:**
+  - Uses Zig's cross-platform clock API and safe timestamp conversion on macOS.
+- **Timing output:**
+  - Avoids invalid percentages when an operation completes within the timer resolution.
 
 ## [0.1.13] - 2026-05-04
 
+The comparison suite expands beyond general-purpose codecs with mass-spectrometry formats, fixed-worker rows, and repeatable benchmark baselines.
+
 ### Added
 
-- External baselines (`mzMLb`, `MS-Numpress in mzML`, `MScompress`) via `benchmark_external.py`. All three are timed by zebrac and appear in every plot and table alongside internal codecs.
-- Multi-threaded codec variants: `pigz` and `zstd -T0` benchmarked at both dump and mzML level. `MScompress (1T)` added as a single-thread encode counterpart to the default all-core encode; its decode command remained unchanged.
-- `save_baseline.py`: snapshots `benchmark/report.json` as `benchmark/baseline_v<VERSION>.json` using the version from `build.zig.zon`.
+- **Comparators:**
+  - Adds mzMLb, MS-Numpress, MScompress, pigz, and multi-worker zstd rows.
+- **Baselines:**
+  - Adds versioned benchmark snapshots for later comparisons.
 
 ### Changed
 
-- `benchmark.sh`: `bench()` helper writes a temp shell script before passing to zebrac so shell redirection works correctly. Added sections for multi-threaded variants (pigz, zstd -T0) and external baselines.
-- `collect_report.py`: `external_baselines` derived from manifest `group=external` ops rather than hard-coded `[]`; fixes performance overview and all other plots missing external tools.
-- `write_manifest.py`, `benchmark_metrics.py`, `benchmark_plotting.py`: updated to include pigz, zstd_mt, and external baseline entries.
-- `fidelity_check.py`: fixed `.resolve()` on relative output path.
-- `refresh_fidelity.py`: removed broken glob discovery loop.
-- Dead code removed from `benchmark_stats.py`, `benchmark_report.py`, `collect_report.py`.
-- `.gitignore`: only `benchmark/raw/` ignored; plots, report, and baselines are tracked.
+- **Reporting:**
+  - Includes external tools throughout the benchmark tables and figures.
+  - Simplifies the reporting code and fixes missing external rows.
 
 ## [0.1.12] - 2026-05-04
 
+File encode and decode now reuse temporary block memory. This lowers allocation overhead and exposes optional timing output for both commands.
+
+### Added
+
+- **CLI:**
+  - Adds `--verbose-timing` to encode and decode.
+
 ### Changed
 
-- `block_encode.zig`: `encodeBlockDetailed` now accepts a caller-owned `scratch: Allocator` instead of creating an internal arena. `codec.zig` reuses one `ArenaAllocator` between blocks, eliminating about 100 `mmap` and `munmap` pairs per encode. In the recorded benchmark, encode cache misses fell 69% and peak RSS fell from 101.8 MB to 93.8 MB.
-- `block_encode.zig:writeHeader`: 12 separate `append`/`appendIntLe` calls replaced with a 40-byte stack buffer written via `std.mem.writeInt` and a single `appendSlice`. Eliminates 11 redundant capacity checks per block.
-- `block_decode.zig`: introduced `decodeBlockWithScratch(allocator, scratch, block_bytes)`. `decodeBlock` wraps it with a one-shot arena for standalone callers. `codec.zig` reuses one arena for the file. In the recorded benchmark, decode cache misses fell 79% and peak RSS fell from 87.2 MB to 83.2 MB.
-- `block.zig`: re-exports `decodeBlockWithScratch` in the public API.
-- Added `--verbose-timing` flag to encode and decode subcommands for wall time reporting (`clock_gettime` MONOTONIC).
+- **Memory:**
+  - Reuses caller-owned scratch storage between blocks instead of creating fresh block arenas.
+- **Encoding:**
+  - Writes block headers through one fixed buffer rather than many small appends.
 
 ## [0.1.11] - 2026-05-04
 
-### Fixed
-
-- `block_decode.zig`: silent `@truncate` from u64 to u32 on scan ID and RT delta reconstruction replaced with an explicit `> maxInt(u32)` check before `@intCast`. Corrupt data that encodes an oversized delta now returns `error.Overflow` instead of silently producing a wrong value.
-- `block_encode.zig:buildRtDeltas`: float comparison guard (was raw u32 bit-pattern compare) fixed to compare as floats. Handles the -0.0 to +0.0 edge case correctly. Delta storage uses `if (cur_bits >= prev_bits) cur_bits - prev_bits else 0` to avoid underflow on that case.
-- `block_common.zig:shouldUseRans`: `encoded_len * 100` and `raw_len * required` widened to u64 arithmetic to eliminate latent 32-bit overflow.
-- `block_decode.zig:decodeBlock`: `decompressed_bytes` header field now validated post-decode. Mismatch returns `error.DecompressedBytesMismatch`. Guarded with `!= 0` for compatibility with legacy files.
-
-### Changed
-
-- Lossless intensity raw f32 fallback now attempts a rANS trial before writing plain bytes. The `flag_lossless_intensity_raw | flag_rans_intensity` decoder branch (previously unreachable) is now live for compressible raw f32 streams.
+Block decoding now rejects corrupt arithmetic and decoded-size mismatches instead of silently narrowing values. Compressible raw intensity streams can also use rANS.
 
 ### Added
 
-- 5 new unit tests: scan ID delta base overflow returns `error.Overflow`; RT -0.0 edge case round trip; single-spectrum block-level m/z path; `decompressed_bytes` mismatch returns `error.DecompressedBytesMismatch`; zero-spectrum codec round trip. Total: 68 tests.
+- **Compression:**
+  - Tries rANS before storing lossless raw f32 intensity bytes unchanged.
 
----
+### Fixed
+
+- **Decoder safety:**
+  - Rejects scan, retention-time, packing, and decoded-size overflows.
+- **Retention time:**
+  - Handles the negative-zero to positive-zero edge case without unsigned underflow.
 
 ## [0.1.10] - 2026-05-03
 
+The block format and numeric error rules gain their first detailed documentation and checks. The release also tightens the then-current lossless m/z validator.
+
 ### Added
 
-- `-Dforce_scalar` build option in `build.zig` (wired for v0.3.x SIMD, currently no-op).
-- 7 unit tests compare the implemented encoding modes with their calculated error bounds:
-  - lossless m/z: error at most 0.5 / scale_factor
-  - lossy m/z: error at most 0.5 / scale_factor
-  - lossy intensity: error at most exp(log_max / quant_levels) - 1
-  - f32 bit-cast path produces exactly zero error
-  - Fixed-point path flag verified for non-f32 values
-  - Intensity extremes stay within bound
-  - Smallest non-zero intensity error bounded
-- Format specification: complete block header layout documentation including all flag bits, payload layouts, and rANS frequency table format.
+- **Format:**
+  - Documents block headers, flags, payload layouts, and the rANS frequency table.
+- **Validation:**
+  - Adds numeric checks for m/z and intensity modes, including extreme values.
+- **Build:**
+  - Adds the temporary `-Dforce_scalar` development option.
 
 ### Changed
 
-- Lossless m/z validation tolerance tightened from 1e-5 Da to 1e-9 Da (twice the theoretical maximum error, previously 20,000 times too loose).
-
----
+- **Validation:**
+  - Tightens the former lossless m/z tolerance from `1e-5` Da to `1e-9` Da.
 
 ## [0.1.9] - 2026-05-03
 
+The original block module splits into smaller encode, decode, and shared components. Flags, modes, and file behavior stay the same.
+
 ### Changed
 
-- `block.zig` (1370 LOC) refactored into 4 files:
-  - `block_common.zig` (261 LOC): types, constants, shared helpers
-  - `block_encode.zig` (410 LOC): encoder logic
-  - `block_decode.zig` (548 LOC): decoder logic
-  - `block.zig` (29 LOC): thin wrapper re-exporting public API
-- No new flags, no new modes. Pure structural refactor: makes v0.3.x cross-spectrum delta and SIMD integration safer.
-
-### Performance
-
-- No regressions in speed, memory, compression, or correctness.
-
----
+- **Code organization:**
+  - Separates block encoding, decoding, shared types, and the public block surface.
 
 ## [0.1.8] - 2026-05-03
 
+Block operations gain clear temporary-memory ownership. Block-local arenas and file-read scratch substantially reduce peak memory without changing output.
+
 ### Changed
 
-- Allocator standardization: every temporary allocation in `encodeBlockDetailed` and `decodeBlock` moved from the caller's arena to a block-local arena (`ArenaAllocator` backed by `page_allocator`). This covered 12 encode and 8 decode allocations. Temporary values use the block arena; returned values use the caller's arena.
-- `binary_reader.readBinaryDump` now wraps file I/O in a local arena instead of bare `page_allocator`.
-
-### Performance
-
-- Encode peak RSS reduced from 208 MB to 89 MB (57%).
-- Decode peak RSS reduced from 111 MB to 81 MB (27%).
-- No speed, compression, or correctness regressions.
-
----
+- **Memory:**
+  - Moves temporary block allocations into block-local arenas.
+  - Gives Dump V1 file reads one local arena for their temporary I/O state.
 
 ## [0.1.7] - 2026-05-03
 
+rANS and FOR decoding do less repeated work, several corrupt-input paths close, and command output becomes portable. The format and modes stay the same.
+
 ### Changed
 
-- Decode regression investigated and documented: +35% decode time is inherent to rANS entropy coding (~54ms per-block overhead processing ~7.1 MiB). Without rANS, decode (144.8ms) is faster than v0.1.1 baseline (149.8ms). Regression check threshold updated from 10% to 40%.
-- FOR unpack split into two branchless paths: `decodeFlatMzBlockLevel` and `decodeFlatMzPerSpectrum`, removing per-spectrum branching from decode.
-- rANS decode inner loop: removed unnecessary `@as(u64, ...)` + `@intCast` from state update (product fits in u32). Hoisted `encoded.len` bounds check out of the renormalization loop.
-- Block-level m/z FOR overhead bytes removed from encode path (dead init).
-- `writeStdout` portability: replaced Linux-only `std.os.linux.write` with `std.Io.File.stdout().writeStreamingAll()`.
-- `printStdout` no longer silently drops messages >4096 bytes; falls back to heap allocation.
-
-### Added
-
-- 7 unit tests for edge cases: lossy+rANS, non-monotonic RT/scan_id fallback, mismatched m/z/intensity lengths, zero quant, empty block, zero block_size. 63 total tests.
-- Empty-guards on 4 internal helper functions (`flattenMzAsF32Bits`, `flattenMzDeltas`, `buildScanIdDeltas`, `buildRtDeltas`).
+- **Decode performance:**
+  - Splits the FOR decode paths and removes repeated checks from the rANS loop.
+- **Output:**
+  - Uses portable streaming output and handles messages larger than the fixed buffer.
 
 ### Fixed
 
-- Double-free in rANS decode error path removed (redundant `errdefer`).
-- Overflow-vulnerable wrapping `+%=` replaced with checked `@addWithOverflow` in scan_id and RT delta recovery.
-- Unsigned subtraction in per-spectrum m/z payload now bounds-checked.
-- Stale comment changed from "bits 6 and 7 remain free" to "All 8 flag bits are allocated".
-
-### Removed
-
-- Unused `delta` module import from `build.zig` block module.
-
----
+- **Safety:**
+  - Removes a double free and rejects arithmetic overflow in metadata and m/z reconstruction.
 
 ## [0.1.6] - 2026-05-03
 
+Fixtures move under `test/`, block error paths become stricter, and Dump V1 writing starts using caller-owned allocation.
+
+### Changed
+
+- **Fixtures:**
+  - Moves fixtures and adversarial data under `test/`.
+- **Ownership:**
+  - Makes Dump V1 writing use the caller's allocator.
+
 ### Fixed
 
-- Double-free in rANS decode error path (`block.zig`): redundant `errdefer` removed; outer `defer` already handles cleanup.
-- Overflow-vulnerable wrapping addition in scan_id and RT delta recovery replaced with checked `@addWithOverflow`, returning `error.Overflow` on corrupt data.
-- Unsigned subtraction in per-spectrum m/z payload length calculation now bounds-checked before use.
-- Portability: `writeStdout` no longer uses Linux-only `std.os.linux.write`; replaced with `std.Io.File.stdout().writeStreamingAll()`.
-- `printStdout` no longer silently drops messages larger than 4096 bytes; falls back to `std.fmt.allocPrint` on the page allocator when the stack buffer overflows.
-- Stale comment corrected: "bits 6 and 7 remain free" updated to "All 8 flag bits are allocated".
+- **Decoder safety:**
+  - Rejects overflow and removes duplicate cleanup in corrupt-data paths.
+- **Portability:**
+  - Replaces Linux-only standard output calls with Zig I/O.
+
+## [0.1.5] - 2026-03-27
+
+This tagged performance release removes repeated rANS candidate work and combines the per-spectrum m/z analysis pass.
 
 ### Changed
 
-- `fixtures/` directory consolidated under `test/fixtures/`; all test data now lives under `test/`.
-- Adversarial `split_exp_degenerate.bin` replaced with full f32 dynamic range extremes (mixing 1e-38 and 1e+37 intensities) per `plan.md` spec. The zero-range exponent path is covered by unit tests.
-- `binary_reader.writeBinaryDump` now accepts caller-provided allocator instead of hard-coding `std.heap.smp_allocator`.
-
-### Added
-
-- 7 new unit tests: lossy intensity with rANS active, non-monotonic RT and scan_id fallback to raw encoding, mismatched m/z/intensity array rejection, zero intensity quant rejection, empty block rejection, zero block_size rejection. Total: 63 tests.
-- Empty-guards on 4 internal helper functions in `block.zig` (`flattenMzAsF32Bits`, `flattenMzDeltas`, `buildScanIdDeltas`, `buildRtDeltas`).
-- `CHANGELOG.md` covering all versions from bootstrap to unreleased.
-
-### Removed
-
-- Unused `delta` module import from `build.zig` block module (delta logic is inlined in `block.zig`).
-
----
-
-## [0.1.5] - 2026-03-27 `tagged`
-
-### Changed
-
-- Decode path optimized: removed redundant rANS candidate re-examination per block, cutting wasted work.
-- Per-spectrum m/z bit-width dry-run comparison folded into a single analysis pass.
-
----
+- **Performance:**
+  - Reuses rANS decisions during decode and analyzes m/z widths in one pass.
 
 ## [0.1.4] - 2026-03-26
 
+Encode and decode perform less repeated work without changing the archive format.
+
 ### Changed
 
-- Decode performance improvements.
-- Removed waste re-examination of rANS encoding candidates during encode.
-
----
+- **Performance:**
+  - Avoids rechecking rejected rANS candidates and streamlines decode work.
 
 ## [0.1.3] - 2026-03-25
 
+Order-0 rANS now compresses packed m/z and lossy intensity streams when it clears a caller-selected minimum gain.
+
 ### Added
 
-- rANS/FSE entropy coding engine (`src/rans.zig`): order-0 static rANS with 12-bit precision, deterministic frequency normalization.
-- rANS applied to m/z FOR payload stream, gated by `--mz-rans-min-gain` (default 5%).
-- rANS applied to intensity FOR payload stream (lossy mode), gated by `--intensity-rans-min-gain` (default 12%).
-- Per-block byte breakdown in `mzarc inspect --json` output.
-
----
+- **Compression:**
+  - Adds deterministic 12-bit rANS for m/z and intensity payloads.
+  - Adds separate minimum-gain controls for the two streams.
+- **Inspection:**
+  - Adds per-block byte accounting to JSON inspection output.
 
 ## [0.1.2] - 2026-03-24
 
+Split-top-byte coding compresses the high intensity byte separately while retaining the lower three bytes exactly.
+
 ### Added
 
-- Split-exponent intensity encoding: separates the f32 exponent byte (bits 23-30) from the 3-byte mantissa. Exponent stream is FOR-packed; mantissa is stored raw. Reduces lossless intensity payload by 12.5% on the frozen fixture.
-- `flag_split_exponent` and `flag_lossless_intensity_raw` block header flags.
-
----
+- **Compression:**
+  - Adds split-top-byte and raw-intensity block layouts with explicit flags.
 
 ## [0.1.1] - 2026-03-23
 
+The first repeatable local correctness gate and release build path arrive alongside automated benchmark comparison.
+
 ### Added
 
-- Local CI (`zig build ci`): encode, decode, validate round-trip.
-- SHA-256 integrity fixture check in build system.
-- `tools/check_regression.py` for automated baseline comparison.
+- **Verification:**
+  - Adds local encode, decode, and validation checks plus frozen-fixture integrity.
+- **Benchmarking:**
+  - Adds automated comparison with a saved baseline.
 
 ### Changed
 
-- Python tooling refactored into modular benchmark, plotting, and metrics scripts.
-- Dead code removed from encoder paths.
-- Release build mode (`-Drelease=true`) fixed in `build.zig`.
+- **Build:**
+  - Fixes the ReleaseFast selection used by the release command.
 
----
+## [0.1.0] - 2026-03-22
 
-## [0.1.0] - 2026-03-22 `tagged`
-
-### Added
-
-- mzarc codec: delta encoding + FOR (Frame of Reference) bit-packing for m/z and intensity streams.
-- Block-structured container format (magic, version, flags, per-block headers).
-- Lossless and lossy encoding modes. Lossy mode uses log-scale intensity quantization with configurable precision (`--intensity-quant`).
-- `mzarc encode`, `mzarc decode`, `mzarc inspect`, `mzarc dump-inspect` subcommands.
-- Flat binary dump format for raw spectrum interchange.
-- Binary dump reader/writer with endian-aware fast path.
-- `tools/benchmark_v1.py`: multi-format benchmarking against gzip, zstd, bzip2, lz4, xz, mzMLb, MS-Numpress, MScompress.
-
----
-
-## [0.0.1] - 2026-03-21 (bootstrap)
+The first tagged codec release introduces Dump V1, the `.mzarc` container, lossless and lossy modes, and the core CLI.
 
 ### Added
 
-- Initial prototype: mzML ingestion to flat binary dump via `tools/parse_mzml.py`.
-- Basic block encoder/decoder skeleton in Zig.
-- `build.zig` project scaffold.
+- **Codec:**
+  - Adds delta transforms, FOR packing, block headers, and versioned file metadata.
+- **Modes:**
+  - Adds lossless coding and configurable log-scale intensity quantization.
+- **CLI:**
+  - Adds `encode`, `decode`, `inspect`, and `dump-inspect`.
+- **Interchange:**
+  - Adds the flat Dump V1 spectrum representation and reader.
+- **Benchmarking:**
+  - Adds the first multi-format comparison tool.
+
+## [0.0.1] - 2026-03-21
+
+The initial prototype bootstraps mzarc as a Zig codec experiment with Python mzML ingestion and a basic block encoder and decoder.
+
+### Added
+
+- **Project:**
+  - Adds the Zig build, initial codec skeleton, and mzML-to-dump converter.
 
 [0.2.0]: https://github.com/eneskemalergin/mzarc/releases/tag/v0.2.0
 [0.1.5]: https://github.com/eneskemalergin/mzarc/releases/tag/v0.1.5

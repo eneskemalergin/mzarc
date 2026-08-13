@@ -1,7 +1,7 @@
 <!-- markdownlint-disable MD033 MD041 -->
 
 <p align="center">
-  <img src="assets/mzarc-readme-header.svg" alt="mzarc" width="760" />
+  <img src="https://raw.githubusercontent.com/eneskemalergin/mzarc/main/assets/mzarc-readme-header.svg" alt="mzarc" width="760" />
 </p>
 
 <p align="center">
@@ -12,14 +12,14 @@
 <p align="center">
   <a href="#quick-start"><img src="https://img.shields.io/badge/zig-0.16.0-F7A41D?style=flat-square&amp;logo=zig&amp;logoColor=white" alt="Zig 0.16.0" /></a>
   <a href="#format-and-validation"><img src="https://img.shields.io/badge/status-research%20prototype-C17D10?style=flat-square" alt="Research prototype" /></a>
-  <a href="CHANGELOG.md#025---2026-08-09"><img src="https://img.shields.io/badge/version-0.2.5-8B5CF6?style=flat-square" alt="Version 0.2.5" /></a>
+  <a href="CHANGELOG.md#030---2026-08-13"><img src="https://img.shields.io/badge/version-0.3.0-8B5CF6?style=flat-square" alt="Version 0.3.0" /></a>
   <a href="https://github.com/eneskemalergin/mzarc/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/eneskemalergin/mzarc/ci.yml?branch=main&amp;style=flat-square&amp;logo=github&amp;label=CI" alt="CI" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-4B9D6E?style=flat-square" alt="MIT License" /></a>
 </p>
 
 <p align="center">
   <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/changelog-CHANGELOG-E05D44?style=flat-square" alt="Changelog" /></a>
-  <a href="benchmark/report.md"><img src="https://img.shields.io/badge/benchmark-REPORT-0066CC?style=flat-square" alt="Benchmark report" /></a>
+  <a href="https://github.com/eneskemalergin/mzarc/blob/main/benchmark/report.md"><img src="https://img.shields.io/badge/benchmark-REPORT-0066CC?style=flat-square" alt="Benchmark report" /></a>
   <a href="https://github.com/eneskemalergin/mzarc/issues"><img src="https://img.shields.io/badge/issues-GitHub-8B5CF6?style=flat-square" alt="GitHub issues" /></a>
 </p>
 
@@ -41,16 +41,16 @@ The CLI also provides a controlled lossy intensity mode. The `.mzarc` 1.0 format
 
 ## Quick start
 
-mzarc uses Zig 0.16.0. The current mzML converter requires Python 3.12 or 3.13 and is managed with [uv](https://docs.astral.sh/uv/). Place Zig at `./zig-0.16.0/zig`; the local compiler directory is not tracked.
+mzarc uses Zig 0.16.0. Place Zig at `./zig-0.16.0/zig`; the local compiler directory is not tracked. Building the codec and CLI does not require Python.
 
 ```bash
-uv sync
 ./zig-0.16.0/zig build --release=fast
 ```
 
-Convert an mzML file, encode its retained spectra, and inspect the archive:
+The full repository also contains the temporary mzML converter. It requires Python 3.12 or 3.13 and is managed with [uv](https://docs.astral.sh/uv/). Convert an mzML file, encode its retained spectra, and inspect the archive:
 
 ```bash
+uv sync
 uv run python tools/mzml_dump.py input.mzML -o input.bin
 ./zig-out/bin/mzarc encode input.bin -o input.mzarc
 ./zig-out/bin/mzarc inspect input.mzarc
@@ -67,7 +67,7 @@ The release build installs a stripped ReleaseFast binary for the host architectu
 
 ## Benchmark
 
-The [reference report](benchmark/report.md) measures `data/PXD075509/15HCD_1.mzML`: 9,001 spectra and 2,668,458 peaks. Each operation has five measured samples after one warmup. Rows marked `[P]` use four workers; mzarc remains single-threaded.
+The [reference report](https://github.com/eneskemalergin/mzarc/blob/main/benchmark/report.md) measures `data/PXD075509/15HCD_1.mzML`: 9,001 spectra and 2,668,458 peaks. Each operation has five measured samples after one warmup. Rows marked `[P]` use four workers; mzarc remains single-threaded.
 
 | Representation          | Size      | Relative to original mzML |
 | ----------------------- | --------: | ------------------------: |
@@ -80,7 +80,7 @@ Against the shared Dump V1 input, mzarc writes a 14.46 MiB artifact, 46.99% of t
 The 19.14% figure describes the current mzML-to-Dump-V1-to-mzarc storage path. It does not mean mzarc can reconstruct the original XML document.
 
 <p align="center">
-  <img src="benchmark/dump-summary.svg" width="900" alt="Artifact size, throughput, and peak RSS for the Dump V1 comparison" />
+  <img src="https://raw.githubusercontent.com/eneskemalergin/mzarc/main/benchmark/dump-summary.svg" width="900" alt="Artifact size, throughput, and peak RSS for the Dump V1 comparison" />
   <br /><em>Dump V1 comparison. Lower is better for size and RSS; higher is better for throughput.</em>
 </p>
 
@@ -88,9 +88,11 @@ These are measured results from one file, one acquisition shape, and one host. T
 
 ## Format and validation
 
-The current development build writes `.mzarc` format 1.0 through a single-threaded file path. The codec keeps compact metadata plus one active block, preserves global scan order, and leaves an existing destination unchanged when encode or decode fails. Each block is limited to 128 spectra and 524,288 peaks, with derived payload limits checked before proportional allocation or read. Complete process RSS is not flat yet because retained order and file-index state still grows with the spectrum count.
+Format 1.0 defines Dump V1, its numeric transforms, every stored field, and the reader rejection rules. The codec is single-threaded, preserves global scan order, and leaves an existing destination unchanged when encode or decode fails. It accepts at most 500,000 spectra and 500,000 blocks. Each block is limited to 128 spectra and 524,288 peaks, with derived payload limits checked before proportional allocation or read. These limits keep the measured 64-bit process below the 64 MiB release ceiling; final supported-host confirmation is still pending.
 
-The current lossless mode passes the semantic validator on the tracked Dump V1 fixture and reference file; the reference file is also byte exact. Format closure still has to define the public m/z fidelity rule for every supported Dump V1 value. Until format 1.0 is declared use-ready, development archives may need regeneration and no compatibility with earlier development layouts is promised.
+Lossless mode returns every accepted Dump V1 field with the same bits, including each supported f64 m/z value. Lossy m/z uses a nominal half-step of 0.000001 Da at the default scale, plus normal f64 operation rounding. The validator recomputes that transform and requires the decoded f64 bits to match. Intensity error is checked in `log1p` space; its format-wide limit depends on `--intensity-quant` and is about 0.5431% on `1 + intensity` at the default 16,384 levels. A custom validation level must match the value used for encoding.
+
+Format 1.0 is not use-ready yet. Development archives may need regeneration, and compatibility with earlier development layouts is not promised.
 
 CRC-32/ISO-HDLC uses runtime-selected PCLMUL on supported x86-64 processors and a portable fallback on other targets. CI verifies Debug and ReleaseFast behavior on Ubuntu and macOS. Windows and aarch64 are not supported claims.
 
@@ -105,7 +107,7 @@ Run the focused and combined local gates with the pinned compiler:
 
 The combined release gate runs ReleaseFast tests, verifies the frozen fixture, and exercises adversarial, lossless, and lossy CLI round trips against the stripped binary. It does not require Python or local mzML data.
 
-The local comparison requires the peer tools described in [tools/README.md](tools/README.md) and an ignored local copy of the reference mzML file:
+The local comparison requires the peer tools described in the [repository tool notes](https://github.com/eneskemalergin/mzarc/blob/main/tools/README.md) and an ignored local copy of the reference mzML file:
 
 ```bash
 bash tools/benchmark.sh data/PXD075509/15HCD_1.mzML
@@ -121,11 +123,13 @@ benchmark/   Reference report, baseline row, and summary figures
 data/        Local real-data inputs, ignored by Git
 ```
 
+The Zig source package contains the binary build, its tests, licenses, and release notes. Python conversion, benchmarks, peer binaries, data, and local development files remain repository-only.
+
 ## Roadmap
 
 Current directions include:
 
-- Close the format, fidelity, and bounded-memory contracts before declaring `.mzarc` use-ready.
+- Finish supported-host memory and release checks before declaring `.mzarc` use-ready.
 - Replace the Python conversion boundary with native, bounded mzML input and validated indexed mzML output.
 - Broaden correctness, performance, and memory checks across acquisition shapes, file sizes, and supported hosts.
 - Keep improving archive size, throughput, and RSS where measurements show a material cost.
