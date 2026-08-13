@@ -79,8 +79,9 @@ test "[property] - [rANS resource bound]: encoded output stays within the decode
     try std.testing.expectError(error.Overflow, rans.maxEncodedLen(std.math.maxInt(usize)));
 }
 
-test "rans rejects trailing data, truncation, bad freqs, invalid state, and analysis mismatch" {
-    const values = [_]u8{ 1, 2, 3, 4, 5, 6, 7, 8 };
+test "[failure] - [rANS stream]: rejects malformed bytes and analysis mismatch" {
+    var values: [1024]u8 = undefined;
+    for (&values, 0..) |*value, idx| value.* = if (idx % 17 == 0) @truncate(idx) else 9;
     const encoded = try rans.encodeAlloc(std.testing.allocator, values[0..]);
     defer std.testing.allocator.free(encoded);
 
@@ -90,9 +91,9 @@ test "rans rejects trailing data, truncation, bad freqs, invalid state, and anal
     with_trailing[encoded.len] = 0;
     try std.testing.expectError(error.TrailingData, rans.decodeAlloc(std.testing.allocator, with_trailing, values.len));
 
-    // Header-only truncation (freqs + state) exercises mid-decode renorm starvation.
-    try std.testing.expect(encoded.len > 516);
-    try std.testing.expectError(error.UnexpectedEndOfStream, rans.decodeAlloc(std.testing.allocator, encoded[0..516], values.len));
+    // Header-only truncation (freqs + four states) exercises mid-decode renorm starvation.
+    try std.testing.expect(encoded.len > 528);
+    try std.testing.expectError(error.UnexpectedEndOfStream, rans.decodeAlloc(std.testing.allocator, encoded[0..528], values.len));
     try std.testing.expectError(error.UnexpectedEndOfStream, rans.decodeAlloc(std.testing.allocator, encoded[0..8], values.len));
 
     var bad_freqs = try std.testing.allocator.dupe(u8, encoded);
@@ -102,11 +103,33 @@ test "rans rejects trailing data, truncation, bad freqs, invalid state, and anal
 
     var bad_state = try std.testing.allocator.dupe(u8, encoded);
     defer std.testing.allocator.free(bad_state);
-    std.mem.writeInt(u32, bad_state[512..516], 0, .little);
-    try std.testing.expectError(error.InvalidState, rans.decodeAlloc(std.testing.allocator, bad_state, values.len));
+    for (0..4) |state_index| {
+        const state_offset = 512 + state_index * @sizeOf(u32);
+        const original_state = bad_state[state_offset..][0..@sizeOf(u32)].*;
+        std.mem.writeInt(u32, bad_state[state_offset..][0..@sizeOf(u32)], 0, .little);
+        try std.testing.expectError(error.InvalidState, rans.decodeAlloc(std.testing.allocator, bad_state, values.len));
+        bad_state[state_offset..][0..@sizeOf(u32)].* = original_state;
+    }
 
     const analysis = rans.analyze(values[0..]);
     try std.testing.expectError(error.InvalidAnalysis, rans.encodeAnalyzedAlloc(std.testing.allocator, values[0..4], analysis));
+}
+
+test "[failure] - [rANS final states]: rejects unused state data" {
+    const encoded = try rans.encodeAlloc(std.testing.allocator, &[_]u8{7});
+    defer std.testing.allocator.free(encoded);
+    const corrupted = try std.testing.allocator.dupe(u8, encoded);
+    defer std.testing.allocator.free(corrupted);
+
+    const second_state_offset = 256 * @sizeOf(u16) + @sizeOf(u32);
+    std.mem.writeInt(
+        u32,
+        corrupted[second_state_offset..][0..@sizeOf(u32)],
+        (@as(u32, 1) << 23) + 1,
+        .little,
+    );
+    var decoded: [1]u8 = undefined;
+    try std.testing.expectError(error.InvalidState, rans.decodeInto(corrupted, &decoded));
 }
 
 test "rans decodeInto matches decodeAlloc" {

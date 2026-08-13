@@ -1,11 +1,11 @@
-//! Order-0 rANS for byte streams (12-bit frequency precision); encode/decode bit-exact.
-//! Wire: 256 x u16 LE freqs, u32 LE state, then renorm bytes (decode reads low-address-first).
+//! Four-state order-0 rANS for byte streams (12-bit frequency precision).
+//! Wire: 256 x u16 LE freqs, 4 x u32 LE states, then interleaved renorm bytes.
 //! Fail closed on truncation, trailing bytes, bad freqs, and invalid state.
 //! Caller owns `*Alloc` buffers; `decodeInto` writes into caller `out`.
 
 const std = @import("std");
 
-pub const Allocator = std.mem.Allocator;
+const Allocator = std.mem.Allocator;
 
 pub const Analysis = struct {
     counts: [256]u32,
@@ -17,8 +17,9 @@ const precision_bits: u5 = 12;
 const precision: usize = 1 << precision_bits;
 const table_entry_count = 256;
 const freq_table_bytes = table_entry_count * @sizeOf(u16);
-const state_bytes = @sizeOf(u32);
-const encoded_header_bytes = freq_table_bytes + state_bytes;
+const state_count = 4;
+const states_bytes = state_count * @sizeOf(u32);
+const encoded_header_bytes = freq_table_bytes + states_bytes;
 const rans_lower_bound: u32 = 1 << 23;
 const decode_table_mask: u32 = precision - 1;
 const reciprocal_scale: u64 = 1 << 32;
@@ -60,13 +61,17 @@ pub fn decodeInto(encoded: []const u8, out: []u8) !void {
     const starts = buildStarts(freqs);
     const decode_table = buildDecodeTable(freqs, starts);
 
-    var state = readIntLe(u32, encoded[offset .. offset + state_bytes]);
-    offset += state_bytes;
-    if (state < rans_lower_bound) return error.InvalidState;
+    var states: [state_count]u32 = undefined;
+    for (&states) |*state| {
+        state.* = readIntLe(u32, encoded[offset .. offset + @sizeOf(u32)]);
+        offset += @sizeOf(u32);
+        if (state.* < rans_lower_bound) return error.InvalidState;
+    }
 
     const encoded_end = encoded.len;
-    for (out) |*symbol_out| {
-        const slot = state & decode_table_mask;
+    for (out, 0..) |*symbol_out, symbol_index| {
+        const state = &states[symbol_index & (state_count - 1)];
+        const slot = state.* & decode_table_mask;
         const entry = decode_table[slot];
         symbol_out.* = @truncate(entry >> 24);
         const start: u32 = entry & 0x0fff;
@@ -74,16 +79,19 @@ pub fn decodeInto(encoded: []const u8, out: []u8) !void {
         const freq: u32 = if (packed_freq == 0) @as(u32, precision) else packed_freq;
 
         // Product fits in u32: freq <= 4096, state >> 12 <= ~1M.
-        state = (freq * (state >> precision_bits)) + (slot - start);
+        state.* = (freq * (state.* >> precision_bits)) + (slot - start);
 
-        while (state < rans_lower_bound) {
+        while (state.* < rans_lower_bound) {
             if (offset >= encoded_end) return error.UnexpectedEndOfStream;
-            state = (state << 8) | encoded[offset];
+            state.* = (state.* << 8) | encoded[offset];
             offset += 1;
         }
     }
 
     if (offset != encoded.len) return error.TrailingData;
+    for (states) |state| {
+        if (state != rans_lower_bound) return error.InvalidState;
+    }
 }
 
 pub fn decodeAlloc(allocator: Allocator, encoded: []const u8, expected_len: usize) ![]u8 {
@@ -130,7 +138,7 @@ fn buildAnalysis(counts: [table_entry_count]u32, len: usize) Analysis {
     return .{
         .counts = counts,
         .len = len,
-        .estimated_total_bytes = freq_table_bytes + state_bytes + estimated_payload_bytes,
+        .estimated_total_bytes = freq_table_bytes + states_bytes + estimated_payload_bytes,
     };
 }
 
@@ -250,23 +258,24 @@ fn encodeFromCountsAlloc(allocator: Allocator, symbols: []const u8, counts: [tab
     errdefer encoded.deinit(allocator);
     _ = encoded.addManyAsSliceAssumeCapacity(encoded_header_bytes);
 
-    var state: u32 = rans_lower_bound;
+    var states = [_]u32{rans_lower_bound} ** state_count;
     var index = symbols.len;
     while (index > 0) {
         index -= 1;
+        const state = &states[index & (state_count - 1)];
         const symbol = symbols[index];
         const freq = freqs[symbol];
         if (freq == 0) return error.InvalidFrequencyTable;
 
         const x_max: u32 = @intCast((((@as(u64, rans_lower_bound) >> precision_bits) << 8) * freq));
-        while (state >= x_max) {
-            try encoded.append(allocator, @truncate(state & 0xff));
-            state >>= 8;
+        while (state.* >= x_max) {
+            try encoded.append(allocator, @truncate(state.* & 0xff));
+            state.* >>= 8;
         }
 
-        const quotient = exactQuotient(state, freq, reciprocals[symbol]);
-        const remainder = @as(u64, state) - quotient * freq;
-        state = @intCast((quotient << precision_bits) + remainder + starts[symbol]);
+        const quotient = exactQuotient(state.*, freq, reciprocals[symbol]);
+        const remainder = @as(u64, state.*) - quotient * freq;
+        state.* = @intCast((quotient << precision_bits) + remainder + starts[symbol]);
     }
 
     std.mem.reverse(u8, encoded.items[encoded_header_bytes..]);
@@ -275,7 +284,10 @@ fn encodeFromCountsAlloc(allocator: Allocator, symbols: []const u8, counts: [tab
         std.mem.writeInt(u16, encoded.items[offset..][0..@sizeOf(u16)], freq, .little);
         offset += @sizeOf(u16);
     }
-    std.mem.writeInt(u32, encoded.items[offset..][0..state_bytes], state, .little);
+    for (states) |state| {
+        std.mem.writeInt(u32, encoded.items[offset..][0..@sizeOf(u32)], state, .little);
+        offset += @sizeOf(u32);
+    }
 
     return encoded.toOwnedSlice(allocator);
 }
