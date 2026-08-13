@@ -16,28 +16,34 @@ fn expectFileContents(path: []const u8, expected: []const u8) !void {
     try std.testing.expectEqualSlices(u8, expected, actual);
 }
 
-/// Assert every decoded m/z is within 0.001 ppm of the original.
-fn checkMzPpm(expected_mz: []const f64, actual_mz: []const f64) !void {
+fn expectMzBits(expected_mz: []const f64, actual_mz: []const f64) !void {
     try std.testing.expectEqual(expected_mz.len, actual_mz.len);
-    for (expected_mz, actual_mz) |exp, act| {
-        const ppm_error = if (exp == 0.0) @abs(act) else @abs(act - exp) / @abs(exp) * 1e6;
-        if (ppm_error > 0.001) {
-            std.debug.print("m/z PPM error {d:.6} > 0.001 ppm at expected={d}, actual={d}\n", .{ ppm_error, exp, act });
-            return error.TestExpectedEqual;
-        }
+    for (expected_mz, actual_mz) |expected, actual| {
+        try std.testing.expectEqual(@as(u64, @bitCast(expected)), @as(u64, @bitCast(actual)));
     }
 }
 
-/// Lossless round-trip check: all fields exact, m/z within 0.001 ppm.
 fn expectLosslessRoundTrip(expected: []const binary_reader.RawSpectrum, actual: []const binary_reader.RawSpectrum) !void {
     try std.testing.expectEqual(expected.len, actual.len);
     for (expected, actual) |exp, act| {
         try std.testing.expectEqual(exp.scan_id, act.scan_id);
-        try std.testing.expectEqual(exp.rt_seconds, act.rt_seconds);
+        try std.testing.expectEqual(
+            @as(u32, @bitCast(exp.rt_seconds)),
+            @as(u32, @bitCast(act.rt_seconds)),
+        );
         try std.testing.expectEqual(exp.ms_level, act.ms_level);
-        try std.testing.expectEqual(exp.precursor_mz, act.precursor_mz);
-        try checkMzPpm(exp.mz, act.mz);
-        try std.testing.expectEqualSlices(f32, exp.intensity, act.intensity);
+        try std.testing.expectEqual(
+            @as(u64, @bitCast(exp.precursor_mz)),
+            @as(u64, @bitCast(act.precursor_mz)),
+        );
+        try expectMzBits(exp.mz, act.mz);
+        try std.testing.expectEqual(exp.intensity.len, act.intensity.len);
+        for (exp.intensity, act.intensity) |expected_intensity, actual_intensity| {
+            try std.testing.expectEqual(
+                @as(u32, @bitCast(expected_intensity)),
+                @as(u32, @bitCast(actual_intensity)),
+            );
+        }
     }
 }
 
@@ -252,7 +258,7 @@ test "codec lossless round-trip preserves order and spectra across many interlea
     try expectLosslessRoundTrip(&input, decoded);
 }
 
-test "codec decode rejects invalid global order tables" {
+test "[failure] - [global order table]: inspector and decoder reject duplicates" {
     var mz_ms2 = [_]f64{400.00000125};
     var intensity_ms2 = [_]f32{10.0};
     var mz_ms1 = [_]f64{100.00000125};
@@ -273,10 +279,14 @@ test "codec decode rejects invalid global order tables" {
     std.mem.writeInt(u32, tampered[order_offset..][0..@sizeOf(u32)], 0, .little);
     std.mem.writeInt(u32, tampered[order_offset + @sizeOf(u32) ..][0..@sizeOf(u32)], 0, .little);
 
+    try std.testing.expectError(
+        error.InvalidOrderTable,
+        codec.inspectAlloc(std.testing.allocator, tampered),
+    );
     try std.testing.expectError(error.InvalidOrderTable, codec.decodeFileAlloc(std.testing.io, std.testing.allocator, tampered, .{}));
 }
 
-test "codec decode rejects spectrum_count mismatch with block contents" {
+test "[failure] - [.mzarc totals]: rejects spectrum counts that disagree with blocks" {
     var mz_a = [_]f64{100.00000125};
     var intensity_a = [_]f32{1.0};
     var mz_b = [_]f64{200.00000125};
@@ -301,7 +311,7 @@ test "codec decode rejects spectrum_count mismatch with block contents" {
     std.mem.writeInt(u32, inflated_order[8..12], 2, .little);
     try inflated.appendSlice(std.testing.allocator, &inflated_order);
     try inflated.appendSlice(std.testing.allocator, blocks);
-    try std.testing.expectError(error.SpectrumCountMismatch, codec.decodeFileAlloc(std.testing.io, std.testing.allocator, inflated.items, .{}));
+    try std.testing.expectError(error.FileCountMismatch, codec.decodeFileAlloc(std.testing.io, std.testing.allocator, inflated.items, .{}));
 
     var deflated: std.ArrayList(u8) = .empty;
     defer deflated.deinit(std.testing.allocator);
@@ -311,7 +321,7 @@ test "codec decode rejects spectrum_count mismatch with block contents" {
     std.mem.writeInt(u32, deflated_order[0..4], 0, .little);
     try deflated.appendSlice(std.testing.allocator, &deflated_order);
     try deflated.appendSlice(std.testing.allocator, blocks);
-    try std.testing.expectError(error.SpectrumCountMismatch, codec.decodeFileAlloc(std.testing.io, std.testing.allocator, deflated.items, .{}));
+    try std.testing.expectError(error.FileCountMismatch, codec.decodeFileAlloc(std.testing.io, std.testing.allocator, deflated.items, .{}));
 }
 
 test "[failure] - [.mzarc reader]: rejects invalid metadata and trailing data" {
@@ -350,6 +360,193 @@ test "[failure] - [.mzarc reader]: rejects invalid metadata and trailing data" {
     const block_offset = codec.header_len + @sizeOf(u32) * input.len;
     bad_ms_level[block_offset + 2] = 3;
     try std.testing.expectError(error.UnsupportedMsLevel, codec.inspectAlloc(std.testing.allocator, bad_ms_level));
+}
+
+test "[failure] - [.mzarc header fields]: rejects reserved and inconsistent values" {
+    var mz = [_]f64{100.0};
+    var intensity = [_]f32{1.0};
+    const input = [_]binary_reader.RawSpectrum{
+        .{ .scan_id = 1, .rt_seconds = 1.0, .ms_level = 2, .precursor_mz = 500.0, .mz = &mz, .intensity = &intensity },
+        .{ .scan_id = 2, .rt_seconds = 2.0, .ms_level = 2, .precursor_mz = 501.0, .mz = &mz, .intensity = &intensity },
+    };
+    const encoded = try codec.encodeFileAlloc(std.testing.io, std.testing.allocator, &input, .{
+        .block_size = 2,
+    });
+    defer std.testing.allocator.free(encoded);
+
+    const unknown_flags = try std.testing.allocator.dupe(u8, encoded);
+    defer std.testing.allocator.free(unknown_flags);
+    const flags = std.mem.readInt(u32, unknown_flags[8..12], .little);
+    std.mem.writeInt(u32, unknown_flags[8..12], flags | (@as(u32, 1) << 31), .little);
+    try std.testing.expectError(
+        error.UnsupportedFileFlags,
+        codec.inspectAlloc(std.testing.allocator, unknown_flags),
+    );
+
+    const nonzero_reserved = try std.testing.allocator.dupe(u8, encoded);
+    defer std.testing.allocator.free(nonzero_reserved);
+    std.mem.writeInt(u16, nonzero_reserved[14..16], 1, .little);
+    try std.testing.expectError(
+        error.NonzeroReserved,
+        codec.inspectAlloc(std.testing.allocator, nonzero_reserved),
+    );
+
+    const wrong_contents = try std.testing.allocator.dupe(u8, encoded);
+    defer std.testing.allocator.free(wrong_contents);
+    std.mem.writeInt(u32, wrong_contents[8..12], flags & ~codec.flag_contains_ms2, .little);
+    try std.testing.expectError(
+        error.FileFlagsMismatch,
+        codec.inspectAlloc(std.testing.allocator, wrong_contents),
+    );
+
+    const wrong_mode = try std.testing.allocator.dupe(u8, encoded);
+    defer std.testing.allocator.free(wrong_mode);
+    std.mem.writeInt(u32, wrong_mode[8..12], flags & ~codec.flag_lossless, .little);
+    try std.testing.expectError(
+        error.FileFlagsMismatch,
+        codec.inspectAlloc(std.testing.allocator, wrong_mode),
+    );
+
+    const too_small_block_size = try std.testing.allocator.dupe(u8, encoded);
+    defer std.testing.allocator.free(too_small_block_size);
+    std.mem.writeInt(u16, too_small_block_size[12..14], 1, .little);
+    try std.testing.expectError(
+        error.InvalidBlockSize,
+        codec.inspectAlloc(std.testing.allocator, too_small_block_size),
+    );
+}
+
+test "[failure] - [.mzarc inspector]: verifies block checksums" {
+    var mz = [_]f64{100.0};
+    var intensity = [_]f32{1.0};
+    const input = [_]binary_reader.RawSpectrum{.{
+        .scan_id = 1,
+        .rt_seconds = 1.0,
+        .ms_level = 1,
+        .precursor_mz = 0.0,
+        .mz = &mz,
+        .intensity = &intensity,
+    }};
+    const encoded = try codec.encodeFileAlloc(std.testing.io, std.testing.allocator, &input, .{});
+    defer std.testing.allocator.free(encoded);
+    const corrupted = try std.testing.allocator.dupe(u8, encoded);
+    defer std.testing.allocator.free(corrupted);
+    corrupted[corrupted.len - 1] ^= 1;
+
+    try std.testing.expectError(
+        error.ChecksumMismatch,
+        codec.inspectAlloc(std.testing.allocator, corrupted),
+    );
+}
+
+test "[failure] - [.mzarc inspector]: rejects malformed encoded values" {
+    var mz = [_]f64{100.0};
+    var intensity = [_]f32{1.0};
+    const input = [_]binary_reader.RawSpectrum{
+        .{ .scan_id = 1, .rt_seconds = 1.0, .ms_level = 1, .precursor_mz = 0.0, .mz = &mz, .intensity = &intensity },
+        .{ .scan_id = 3, .rt_seconds = 2.0, .ms_level = 1, .precursor_mz = 0.0, .mz = &mz, .intensity = &intensity },
+    };
+    const encoded = try codec.encodeFileAlloc(std.testing.io, std.testing.allocator, &input, .{
+        .block_size = 2,
+    });
+    defer std.testing.allocator.free(encoded);
+    const corrupted = try std.testing.allocator.dupe(u8, encoded);
+    defer std.testing.allocator.free(corrupted);
+
+    const block_offset = codec.header_len + input.len * @sizeOf(u32);
+    const scan_payload_offset = block_offset + block.header_len + 1 + @sizeOf(u64) + @sizeOf(u32);
+    try std.testing.expectEqual(@as(u8, 1), corrupted[block_offset + block.header_len]);
+    corrupted[scan_payload_offset] |= 0b1000_0000;
+    const payload = corrupted[block_offset + block.header_len ..];
+    std.mem.writeInt(
+        u32,
+        corrupted[block_offset + 36 ..][0..@sizeOf(u32)],
+        std.hash.crc.Crc32.hash(payload),
+        .little,
+    );
+
+    try std.testing.expectError(
+        error.NonzeroPadding,
+        codec.inspectAlloc(std.testing.allocator, corrupted),
+    );
+}
+
+test "[failure] - [.mzarc reader]: rejects file counts before allocation" {
+    var mz = [_]f64{100.0};
+    var intensity = [_]f32{1.0};
+    const input = [_]binary_reader.RawSpectrum{.{
+        .scan_id = 1,
+        .rt_seconds = 1.0,
+        .ms_level = 2,
+        .precursor_mz = 500.0,
+        .mz = &mz,
+        .intensity = &intensity,
+    }};
+    const encoded = try codec.encodeFileAlloc(std.testing.io, std.testing.allocator, &input, .{});
+    defer std.testing.allocator.free(encoded);
+
+    const too_many_spectra = try std.testing.allocator.dupe(u8, encoded);
+    defer std.testing.allocator.free(too_many_spectra);
+    std.mem.writeInt(u32, too_many_spectra[16..20], codec.MAX_FILE_SPECTRA + 1, .little);
+    try std.testing.expectError(
+        error.FileResourceLimit,
+        codec.inspectAlloc(std.testing.failing_allocator, too_many_spectra),
+    );
+
+    const too_many_blocks = try std.testing.allocator.dupe(u8, encoded);
+    defer std.testing.allocator.free(too_many_blocks);
+    std.mem.writeInt(u32, too_many_blocks[20..24], codec.MAX_FILE_BLOCKS + 1, .little);
+    try std.testing.expectError(
+        error.FileResourceLimit,
+        codec.inspectAlloc(std.testing.failing_allocator, too_many_blocks),
+    );
+
+    const more_blocks_than_spectra = try std.testing.allocator.dupe(u8, encoded);
+    defer std.testing.allocator.free(more_blocks_than_spectra);
+    std.mem.writeInt(u32, more_blocks_than_spectra[20..24], 2, .little);
+    try std.testing.expectError(
+        error.BlockCountMismatch,
+        codec.inspectAlloc(std.testing.failing_allocator, more_blocks_than_spectra),
+    );
+
+    const no_blocks = try std.testing.allocator.dupe(u8, encoded);
+    defer std.testing.allocator.free(no_blocks);
+    std.mem.writeInt(u32, no_blocks[20..24], 0, .little);
+    try std.testing.expectError(
+        error.BlockCountMismatch,
+        codec.inspectAlloc(std.testing.failing_allocator, no_blocks),
+    );
+
+    const impossible_peaks = try std.testing.allocator.dupe(u8, encoded);
+    defer std.testing.allocator.free(impossible_peaks);
+    std.mem.writeInt(u64, impossible_peaks[24..32], block.MAX_BLOCK_PEAKS + 1, .little);
+    try std.testing.expectError(
+        error.FileResourceLimit,
+        codec.inspectAlloc(std.testing.failing_allocator, impossible_peaks),
+    );
+}
+
+test "[failure] - [.mzarc reader]: rejects declared totals that disagree with blocks" {
+    var mz = [_]f64{100.0};
+    var intensity = [_]f32{1.0};
+    const input = [_]binary_reader.RawSpectrum{.{
+        .scan_id = 1,
+        .rt_seconds = 1.0,
+        .ms_level = 2,
+        .precursor_mz = 500.0,
+        .mz = &mz,
+        .intensity = &intensity,
+    }};
+    const encoded = try codec.encodeFileAlloc(std.testing.io, std.testing.allocator, &input, .{});
+    defer std.testing.allocator.free(encoded);
+
+    const wrong_peaks = try std.testing.allocator.dupe(u8, encoded);
+    defer std.testing.allocator.free(wrong_peaks);
+    std.mem.writeInt(u64, wrong_peaks[24..32], 2, .little);
+    try std.testing.expectError(
+        error.FileCountMismatch,
+        codec.inspectAlloc(std.testing.allocator, wrong_peaks),
+    );
 }
 
 test "[integration] - [.mzarc writer]: writes format 1.0 in both modes" {
@@ -403,7 +600,7 @@ test "codec inspect rejects truncated order tables and truncated blocks" {
     );
 }
 
-test "codec lossless synthetic corpus round-trips with sub-ppm m/z across many spectra" {
+test "[property] - [lossless codec]: preserves exact m/z across many spectra" {
     var corpus = try makeSyntheticCorpus(std.testing.allocator, 24);
     defer corpus.deinit();
 
@@ -417,7 +614,7 @@ test "codec lossless synthetic corpus round-trips with sub-ppm m/z across many s
     try expectLosslessRoundTrip(corpus.spectra, decoded);
 }
 
-test "codec lossless pseudo-random corpus round-trips with sub-ppm m/z and accounting matches bytes" {
+test "[property] - [lossless codec]: preserves exact m/z and byte accounting" {
     var corpus = try makePseudoRandomCorpus(std.testing.allocator, 0x5eed_c0de, 257, 33);
     defer corpus.deinit();
 
@@ -577,6 +774,36 @@ test "[integration] - [codec file path]: matches allocating path for format 1.0"
     try std.testing.expectEqualSlices(u8, expected_dump, actual_dump);
 }
 
+test "[integration] - [.mzarc writer]: emits deterministic bytes" {
+    var corpus = try makeSyntheticCorpus(std.testing.allocator, 24);
+    defer corpus.deinit();
+    const dump = try binary_reader.writeDumpAlloc(std.testing.allocator, corpus.spectra);
+    defer std.testing.allocator.free(dump);
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    try tmp.dir.writeFile(std.testing.io, .{ .sub_path = "input.bin", .data = dump });
+    const input_path = try tmpPath(std.testing.allocator, &tmp, "input.bin");
+    defer std.testing.allocator.free(input_path);
+    const first_path = try tmpPath(std.testing.allocator, &tmp, "first.mzarc");
+    defer std.testing.allocator.free(first_path);
+    const second_path = try tmpPath(std.testing.allocator, &tmp, "second.mzarc");
+    defer std.testing.allocator.free(second_path);
+
+    const options: codec.EncodeOptions = .{
+        .block_options = .{ .mode = .lossless },
+        .block_size = 3,
+    };
+    try codec.encodeDumpFile(std.testing.io, std.testing.allocator, input_path, first_path, options);
+    try codec.encodeDumpFile(std.testing.io, std.testing.allocator, input_path, second_path, options);
+    const first = try codec.readFileAlloc(std.testing.io, first_path, std.testing.allocator);
+    defer std.testing.allocator.free(first);
+    const second = try codec.readFileAlloc(std.testing.io, second_path, std.testing.allocator);
+    defer std.testing.allocator.free(second);
+
+    try std.testing.expectEqualSlices(u8, first, second);
+}
+
 test "[integration] - [codec file path]: preserves payloads across reader refill boundaries" {
     const peak_count = 2049;
     const mz = try std.testing.allocator.alloc(f64, peak_count);
@@ -628,6 +855,50 @@ test "[integration] - [codec file path]: preserves payloads across reader refill
     const actual_dump = try codec.readFileAlloc(std.testing.io, dump_path, std.testing.allocator);
     defer std.testing.allocator.free(actual_dump);
     try std.testing.expectEqualSlices(u8, dump, actual_dump);
+}
+
+test "[integration] - [lossless Dump V1]: preserves every accepted record byte" {
+    var mz_a = [_]f64{ 100.0, 101.0 };
+    var intensity_a = [_]f32{
+        @bitCast(@as(u32, 0x8000_0000)),
+        @bitCast(@as(u32, 0x7fc0_1234)),
+    };
+    var mz_b = [_]f64{200.0000000001};
+    var intensity_b = [_]f32{@bitCast(@as(u32, 0xff80_0000))};
+    const spectra = [_]binary_reader.RawSpectrum{
+        .{
+            .scan_id = 1,
+            .rt_seconds = -0.0,
+            .ms_level = 2,
+            .precursor_mz = @bitCast(@as(u64, 0x7ff8_0000_0000_1234)),
+            .mz = &mz_a,
+            .intensity = &intensity_a,
+        },
+        .{
+            .scan_id = std.math.maxInt(u32),
+            .rt_seconds = 0.0,
+            .ms_level = 2,
+            .precursor_mz = @bitCast(@as(u64, 0x8000_0000_0000_0000)),
+            .mz = &mz_b,
+            .intensity = &intensity_b,
+        },
+    };
+    const dump = try binary_reader.writeDumpAlloc(std.testing.allocator, &spectra);
+    defer std.testing.allocator.free(dump);
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    try tmp.dir.writeFile(std.testing.io, .{ .sub_path = "input.bin", .data = dump });
+    const input_path = try tmpPath(std.testing.allocator, &tmp, "input.bin");
+    defer std.testing.allocator.free(input_path);
+    const archive_path = try tmpPath(std.testing.allocator, &tmp, "output.mzarc");
+    defer std.testing.allocator.free(archive_path);
+    const output_path = try tmpPath(std.testing.allocator, &tmp, "output.bin");
+    defer std.testing.allocator.free(output_path);
+
+    try codec.encodeDumpFile(std.testing.io, std.testing.allocator, input_path, archive_path, .{});
+    try codec.decodeToDumpFile(std.testing.io, std.testing.allocator, archive_path, output_path, .{});
+    try expectFileContents(output_path, dump);
 }
 
 test "[integration] - [.mzarc reader]: accepts archives without a global order table" {
@@ -689,6 +960,25 @@ test "[integration] - [codec file path]: rejects hostile input and preserves des
     try std.testing.expectError(error.UnexpectedEndOfStream, codec.encodeDumpFile(std.testing.io, std.testing.allocator, input_path, output_path, .{}));
     try expectFileContents(output_path, sentinel);
 
+    var invalid_mz = [_]f64{-0.0};
+    var invalid_intensity = [_]f32{1.0};
+    const invalid_spectra = [_]binary_reader.RawSpectrum{.{
+        .scan_id = 1,
+        .rt_seconds = 1.0,
+        .ms_level = 1,
+        .precursor_mz = 0.0,
+        .mz = &invalid_mz,
+        .intensity = &invalid_intensity,
+    }};
+    const invalid_dump = try binary_reader.writeDumpAlloc(std.testing.allocator, &invalid_spectra);
+    defer std.testing.allocator.free(invalid_dump);
+    try tmp.dir.writeFile(std.testing.io, .{ .sub_path = "input.bin", .data = invalid_dump });
+    try std.testing.expectError(
+        error.InvalidMz,
+        codec.encodeDumpFile(std.testing.io, std.testing.allocator, input_path, output_path, .{}),
+    );
+    try expectFileContents(output_path, sentinel);
+
     const corrupt = try std.testing.allocator.dupe(u8, encoded);
     defer std.testing.allocator.free(corrupt);
     corrupt[corrupt.len - 1] ^= 1;
@@ -720,7 +1010,7 @@ test "[integration] - [codec file path]: rejects hostile input and preserves des
     std.mem.writeInt(u32, hostile_header[16..20], std.math.maxInt(u32), .little);
     std.mem.writeInt(u32, hostile_header[20..24], 0, .little);
     try tmp.dir.writeFile(std.testing.io, .{ .sub_path = "input.bin", .data = &hostile_header });
-    try std.testing.expectError(error.UnexpectedEndOfStream, codec.decodeToDumpFile(std.testing.io, std.testing.allocator, input_path, output_path, .{}));
+    try std.testing.expectError(error.FileResourceLimit, codec.decodeToDumpFile(std.testing.io, std.testing.allocator, input_path, output_path, .{}));
     try expectFileContents(output_path, sentinel);
 
     const block_offset = codec.header_len + corpus.spectra.len * @sizeOf(u32);
@@ -751,9 +1041,7 @@ test "[integration] - [codec file path]: rejects hostile input and preserves des
     try expectFileContents(output_path, sentinel);
 }
 
-test "empirical error bounds: lossless m/z error ≤ 0.5 / scale_factor" {
-    // Build a corpus that covers the full m/z range [50, 6000] with
-    // non-f32-exact values to force the fixed-point path.
+test "[property] - [lossless m/z]: preserves non-f32 values bit for bit" {
     var mz_buf: [1024]f64 = undefined;
     var int_buf: [1024]f32 = undefined;
     for (0..1024) |i| {
@@ -771,17 +1059,7 @@ test "empirical error bounds: lossless m/z error ≤ 0.5 / scale_factor" {
     const decoded = try block.decodeBlock(std.testing.allocator, encoded);
     defer binary_reader.freeSpectra(std.testing.allocator, decoded);
 
-    const max_allowed_error = 0.5 / @as(f64, @floatFromInt(1_000_000_000));
-    var max_actual_error: f64 = 0.0;
-    for (mz_buf[0..], decoded[0].mz) |orig, got| {
-        const err = @abs(got - orig);
-        if (err > max_actual_error) max_actual_error = err;
-    }
-
-    if (max_actual_error > max_allowed_error) {
-        std.debug.print("lossless m/z max error {e:.2} > allowed {e:.2}\n", .{ max_actual_error, max_allowed_error });
-        return error.TestExpectedLessThan;
-    }
+    try expectMzBits(&mz_buf, decoded[0].mz);
 }
 
 test "empirical error bounds: lossy m/z error ≤ 0.5 / scale_factor" {
@@ -886,8 +1164,7 @@ test "f32 bit-cast path produces exactly zero m/z error" {
     }
 }
 
-test "lossless m/z fixed-point path is used for non-f32 values" {
-    // Monotonically increasing values with sub-f32 precision.
+test "[integration] - [lossless m/z]: uses exact f64 layout for non-f32 values" {
     var mz_buf: [50]f64 = undefined;
     var int_buf: [50]f32 = undefined;
     for (0..50) |i| {
@@ -904,18 +1181,12 @@ test "lossless m/z fixed-point path is used for non-f32 values" {
 
     const header = try block.parseHeader(encoded);
     try std.testing.expect((header.flags & block.flag_lossless_mz_f32) == 0);
+    try std.testing.expect((header.flags & block.flag_lossless_mz_f64) != 0);
 
     const decoded = try block.decodeBlock(std.testing.allocator, encoded);
     defer binary_reader.freeSpectra(std.testing.allocator, decoded);
 
-    const max_allowed = 0.5 / @as(f64, @floatFromInt(1_000_000_000));
-    var max_actual: f64 = 0.0;
-    for (mz_buf[0..], decoded[0].mz) |orig, got| {
-        const err = @abs(got - orig);
-        if (err > max_actual) max_actual = err;
-    }
-
-    try std.testing.expect(max_actual <= max_allowed);
+    try expectMzBits(&mz_buf, decoded[0].mz);
 }
 
 test "lossy intensity extremes stay within error bound" {
@@ -980,9 +1251,7 @@ test "lossy smallest non-zero intensity has bounded relative error" {
     try std.testing.expect(rel_err <= max_allowed * 1.01);
 }
 
-test "encodeFileAlloc with zero spectra produces a valid decodable empty file" {
-    // The zero-spectrum path was untested. It must not return error.TooManySpectra
-    // or any other spurious error, and the round-trip must return an empty slice.
+test "[edge] - [.mzarc writer]: emits a valid empty archive" {
     const empty: []const binary_reader.RawSpectrum = &.{};
 
     const encoded = try codec.encodeFileAlloc(std.testing.io, std.testing.allocator, empty, .{ .block_options = .{ .mode = .lossless }, .block_size = 16 });

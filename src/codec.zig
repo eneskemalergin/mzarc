@@ -6,7 +6,7 @@ const std = @import("std");
 const binary_reader = @import("binary_reader");
 const block = @import("block");
 
-pub const Allocator = std.mem.Allocator;
+const Allocator = std.mem.Allocator;
 
 fn monotonicNs(io: std.Io) u64 {
     return @truncate(@as(u96, @bitCast(std.Io.Clock.now(.awake, io).nanoseconds)));
@@ -30,6 +30,11 @@ pub const flag_lossless: u32 = 0b0000_0001;
 pub const flag_contains_ms1: u32 = 0b0000_0010;
 pub const flag_contains_ms2: u32 = 0b0000_0100;
 pub const flag_has_global_order: u32 = 0b0000_1000;
+const valid_file_flags = flag_lossless | flag_contains_ms1 | flag_contains_ms2 |
+    flag_has_global_order;
+
+pub const MAX_FILE_SPECTRA: usize = 500_000;
+pub const MAX_FILE_BLOCKS: usize = 500_000;
 
 const ENCODE_READER_BUFFER_LEN = 16 * 1024;
 
@@ -182,8 +187,44 @@ fn parseHeader(bytes: []const u8) !FileHeader {
     if (parsed.version_major != version_major or parsed.version_minor != version_minor) {
         return error.UnsupportedVersion;
     }
+    try validateFileHeaderResources(parsed);
 
     return parsed;
+}
+
+fn validateFileHeaderResources(header: FileHeader) !void {
+    if ((header.flags & ~valid_file_flags) != 0) return error.UnsupportedFileFlags;
+    if (header.reserved0 != 0) return error.NonzeroReserved;
+    if (header.block_size == 0 or header.block_size > block.MAX_BLOCK_SPECTRA) {
+        return error.InvalidBlockSize;
+    }
+    if (header.spectrum_count > MAX_FILE_SPECTRA or header.block_count > MAX_FILE_BLOCKS) {
+        return error.FileResourceLimit;
+    }
+    if (header.block_count > header.spectrum_count) return error.BlockCountMismatch;
+    if ((header.spectrum_count == 0) != (header.block_count == 0)) {
+        return error.BlockCountMismatch;
+    }
+
+    const max_total_peaks = try std.math.mul(u64, header.block_count, block.MAX_BLOCK_PEAKS);
+    if (header.total_peaks > max_total_peaks) return error.FileResourceLimit;
+}
+
+fn validateBlockForFile(header: FileHeader, block_header: block.BlockHeader) !void {
+    if (block_header.spectrum_count > header.block_size) return error.InvalidBlockSize;
+    const block_is_lossless = (block_header.flags &
+        (block.flag_lossless_mz_f32 | block.flag_lossless_mz_f64)) != 0;
+    if (block_is_lossless != ((header.flags & flag_lossless) != 0)) {
+        return error.FileFlagsMismatch;
+    }
+}
+
+fn validateContentFlags(header: FileHeader, ms1_spectra: u64, ms2_spectra: u64) !void {
+    if (((header.flags & flag_contains_ms1) != 0) != (ms1_spectra != 0) or
+        ((header.flags & flag_contains_ms2) != 0) != (ms2_spectra != 0))
+    {
+        return error.FileFlagsMismatch;
+    }
 }
 
 fn writeHeaderInto(bytes: []u8, header: FileHeader) void {
@@ -313,7 +354,7 @@ pub fn encodeFileAlloc(io: std.Io, allocator: Allocator, spectra: []const binary
     if (options.block_size == 0 or options.block_size > block.MAX_BLOCK_SPECTRA) {
         return error.InvalidBlockSize;
     }
-    if (spectra.len > std.math.maxInt(u32)) return error.TooManySpectra;
+    if (spectra.len > MAX_FILE_SPECTRA) return error.FileResourceLimit;
 
     const t0 = monotonicNs(io);
 
@@ -391,23 +432,42 @@ pub fn encodeFileAlloc(io: std.Io, allocator: Allocator, spectra: []const binary
 
 pub fn inspectAlloc(allocator: Allocator, bytes: []const u8) !Inspection {
     const header = try parseHeader(bytes);
+    const initial_offset = try blocksOffset(header, bytes);
+    if ((header.flags & flag_has_global_order) != 0) {
+        const order = try readValidatedGlobalOrderAlloc(allocator, header, bytes);
+        allocator.free(order);
+    }
+    const minimum_block_bytes = try std.math.mul(usize, header.block_count, block.header_len);
+    if (bytes.len - initial_offset < minimum_block_bytes) return error.UnexpectedEndOfStream;
+
     const blocks = try allocator.alloc(BlockInfo, header.block_count);
     errdefer allocator.free(blocks);
 
-    const initial_offset = try blocksOffset(header, bytes);
     var offset = initial_offset;
     var ms1_block_count: usize = 0;
     var ms2_block_count: usize = 0;
     var ms1_spectra: usize = 0;
     var ms2_spectra: usize = 0;
+    var total_peaks: u64 = 0;
     var byte_breakdown = try emptyFileByteBreakdown(initial_offset - header_len);
+    var validation_arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer validation_arena.deinit();
 
     for (blocks) |*block_info| {
         if (bytes.len - offset < block.header_len) return error.UnexpectedEndOfStream;
         const block_header = try block.parseHeader(bytes[offset .. offset + block.header_len]);
+        try block.validateBlockHeaderResources(block_header);
+        try validateBlockForFile(header, block_header);
         const total_bytes = try std.math.add(usize, block.header_len, block_header.payload_bytes);
         if (bytes.len - offset < total_bytes) return error.UnexpectedEndOfStream;
-        const block_breakdown = try block.inspectBlockByteBreakdown(bytes[offset .. offset + total_bytes]);
+        const block_bytes = bytes[offset .. offset + total_bytes];
+        _ = try block.decodeBlockWithScratch(
+            validation_arena.allocator(),
+            validation_arena.allocator(),
+            block_bytes,
+        );
+        _ = validation_arena.reset(.retain_capacity);
+        const block_breakdown = try block.inspectBlockByteBreakdown(block_bytes);
 
         block_info.* = .{
             .offset = offset,
@@ -428,11 +488,23 @@ pub fn inspectAlloc(allocator: Allocator, bytes: []const u8) !Inspection {
             },
             else => return error.UnsupportedMsLevel,
         }
+        total_peaks = try std.math.add(u64, total_peaks, block_header.total_peaks);
+        if (ms1_spectra + ms2_spectra > header.spectrum_count or
+            total_peaks > header.total_peaks)
+        {
+            return error.FileCountMismatch;
+        }
 
         offset = try std.math.add(usize, offset, total_bytes);
     }
 
     if (offset != bytes.len) return error.TrailingFileData;
+    if (ms1_spectra + ms2_spectra != header.spectrum_count or
+        total_peaks != header.total_peaks)
+    {
+        return error.FileCountMismatch;
+    }
+    try validateContentFlags(header, ms1_spectra, ms2_spectra);
 
     return .{
         .header = header,
@@ -551,10 +623,6 @@ pub fn decodeFileAlloc(io: std.Io, allocator: Allocator, bytes: []const u8, opti
 
 pub fn readFileAlloc(io: std.Io, path: []const u8, allocator: Allocator) ![]u8 {
     return std.Io.Dir.cwd().readFileAlloc(io, path, allocator, .limited(std.math.maxInt(usize)));
-}
-
-pub fn writeFile(io: std.Io, path: []const u8, bytes: []const u8) !void {
-    try std.Io.Dir.cwd().writeFile(io, .{ .sub_path = path, .data = bytes });
 }
 
 const ArchiveBlock = struct {
@@ -687,14 +755,14 @@ pub fn encodeDumpFile(io: std.Io, allocator: Allocator, input_path: []const u8, 
     const input = try cwd.openFile(io, input_path, .{});
     defer input.close(io);
 
-    const index = try binary_reader.scanFile(allocator, io, input);
+    const index = try binary_reader.scanFile(allocator, io, input, MAX_FILE_SPECTRA);
     defer index.deinit(allocator);
     const expected_blocks = try std.math.add(
         usize,
         try levelBlockCount(index.entries, 1, options.block_size),
         try levelBlockCount(index.entries, 2, options.block_size),
     );
-    if (expected_blocks > std.math.maxInt(u32)) return error.TooManyBlocks;
+    if (expected_blocks > MAX_FILE_BLOCKS) return error.FileResourceLimit;
 
     const order_len = try globalOrderTableLen(@intCast(index.entries.len));
     const prefix_len = try std.math.add(usize, header_len, order_len);
@@ -833,13 +901,22 @@ fn scanArchiveFile(allocator: Allocator, io: std.Io, input: std.Io.File) !Archiv
         0;
     var offset = try addU64(header_len, order_len);
     if (offset > file_size) return error.UnexpectedEndOfStream;
+    const minimum_block_bytes = try std.math.mul(u64, header.block_count, block.header_len);
+    if (file_size - offset < minimum_block_bytes) return error.UnexpectedEndOfStream;
 
     var blocks: std.ArrayList(ArchiveBlock) = .empty;
     errdefer blocks.deinit(allocator);
+    try blocks.ensureTotalCapacityPrecise(allocator, header.block_count);
     var peak_counts: std.ArrayList(u32) = .empty;
     defer peak_counts.deinit(allocator);
+    try peak_counts.ensureTotalCapacityPrecise(allocator, header.spectrum_count);
     var scan_arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer scan_arena.deinit();
+
+    var scanned_spectra: u64 = 0;
+    var scanned_peaks: u64 = 0;
+    var ms1_spectra: u64 = 0;
+    var ms2_spectra: u64 = 0;
 
     for (0..header.block_count) |_| {
         if (offset > file_size or file_size - offset < block.header_len) return error.UnexpectedEndOfStream;
@@ -847,16 +924,24 @@ fn scanArchiveFile(allocator: Allocator, io: std.Io, input: std.Io.File) !Archiv
         try readExactAt(input, io, &block_header_bytes, offset);
         const block_header = try block.parseHeader(&block_header_bytes);
         try block.validateBlockHeaderResources(block_header);
+        try validateBlockForFile(header, block_header);
         const total_bytes = try addU64(block.header_len, block_header.payload_bytes);
         if (total_bytes > file_size - offset) return error.UnexpectedEndOfStream;
         if (total_bytes > std.math.maxInt(usize)) return error.Overflow;
 
         const bytes = try scan_arena.allocator().alloc(u8, @intCast(total_bytes));
         try readExactAt(input, io, bytes, offset);
+        try block.verifyBlockChecksum(bytes);
         _ = try block.inspectBlockByteBreakdown(bytes);
         switch (block_header.ms_level) {
-            1, 2 => {},
+            1 => ms1_spectra = try std.math.add(u64, ms1_spectra, block_header.spectrum_count),
+            2 => ms2_spectra = try std.math.add(u64, ms2_spectra, block_header.spectrum_count),
             else => return error.UnsupportedMsLevel,
+        }
+        scanned_spectra = try std.math.add(u64, scanned_spectra, block_header.spectrum_count);
+        scanned_peaks = try std.math.add(u64, scanned_peaks, block_header.total_peaks);
+        if (scanned_spectra > header.spectrum_count or scanned_peaks > header.total_peaks) {
+            return error.FileCountMismatch;
         }
         try appendBlockPeakCounts(allocator, &peak_counts, bytes, block_header);
         try blocks.append(allocator, .{ .offset = offset, .total_bytes = total_bytes });
@@ -864,10 +949,11 @@ fn scanArchiveFile(allocator: Allocator, io: std.Io, input: std.Io.File) !Archiv
         _ = scan_arena.reset(.retain_capacity);
     }
     if (offset != file_size) return error.TrailingFileData;
-
-    if ((header.flags & flag_has_global_order) == 0 and peak_counts.items.len != header.spectrum_count) {
-        return error.SpectrumCountMismatch;
+    if (scanned_spectra != header.spectrum_count or scanned_peaks != header.total_peaks) {
+        return error.FileCountMismatch;
     }
+    try validateContentFlags(header, ms1_spectra, ms2_spectra);
+
     const order = try readArchiveOrder(allocator, io, input, header, order_len);
     errdefer allocator.free(order);
     if (peak_counts.items.len != order.len) return error.SpectrumCountMismatch;
@@ -912,7 +998,11 @@ pub fn decodeToDumpFile(io: std.Io, allocator: Allocator, input_path: []const u8
         if (entry.total_bytes > std.math.maxInt(usize)) return error.Overflow;
         const block_bytes = try block_arena.allocator().alloc(u8, @intCast(entry.total_bytes));
         try readExactAt(input, io, block_bytes, entry.offset);
-        const decoded = try block.decodeBlockWithScratch(block_arena.allocator(), block_arena.allocator(), block_bytes);
+        const decoded = try block.decodeBlockWithScratch(
+            block_arena.allocator(),
+            block_arena.allocator(),
+            block_bytes,
+        );
         for (decoded) |spectrum| {
             if (file_index >= index.order.len) return error.SpectrumCountMismatch;
             try binary_reader.writeSpectrumAt(block_arena.allocator(), io, atomic.file, spectrum, index.record_offsets[index.order[file_index]]);

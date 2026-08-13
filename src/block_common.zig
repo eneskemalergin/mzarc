@@ -1,5 +1,4 @@
 //! Shared block types, flag bits, and helpers for encode/decode.
-//! Bit 1 is reserved in format 1.0 and must be zero.
 
 const std = @import("std");
 const binary_reader = @import("binary_reader");
@@ -15,7 +14,6 @@ pub const Mode = enum {
 pub const EncodeOptions = struct {
     mode: Mode = .lossless,
     mz_scale_factor: u32 = 500_000,
-    lossless_mz_scale_factor: u32 = 1_000_000_000,
     intensity_quant: u16 = 16384,
     mz_rans_min_gain_percent: u8 = 5,
     intensity_rans_min_gain_percent: u8 = 12,
@@ -105,7 +103,7 @@ pub const BlockByteBreakdown = struct {
 };
 
 pub const flag_lossless_intensity_raw: u8 = 0b0000_0001;
-pub const flag_reserved_1: u8 = 0b0000_0010;
+pub const flag_lossless_mz_f64: u8 = 0b0000_0010;
 pub const flag_split_exponent: u8 = 0b0000_0100;
 pub const flag_lossless_mz_f32: u8 = 0b0000_1000;
 pub const flag_delta_scan_id: u8 = 0b0001_0000;
@@ -119,7 +117,7 @@ pub const MAX_BLOCK_PEAKS: usize = 524_288;
 pub fn logicalBlockBytes(spectrum_count: usize, total_peaks: usize) !usize {
     return std.math.add(
         usize,
-        try std.math.mul(usize, spectrum_count, 20),
+        try std.math.mul(usize, spectrum_count, 28),
         try std.math.mul(usize, total_peaks, 12),
     );
 }
@@ -132,7 +130,21 @@ pub fn maxBlockPayloadBytes(spectrum_count: usize, total_peaks: usize) !usize {
     );
     const max_for_bytes = try std.math.mul(usize, total_peaks, @sizeOf(u64));
     const max_rans_bytes = try rans.maxEncodedLen(max_for_bytes);
-    const mz_bytes = try std.math.add(usize, 17, max_rans_bytes);
+    const group_metadata_bytes = try std.math.add(
+        usize,
+        @sizeOf(u32),
+        try std.math.mul(usize, spectrum_count, @sizeOf(u64) + @sizeOf(u8)),
+    );
+    const first_mz_bytes = try std.math.mul(usize, spectrum_count, @sizeOf(u64));
+    const mz_bytes = try std.math.add(
+        usize,
+        try std.math.add(
+            usize,
+            try std.math.add(usize, 17, group_metadata_bytes),
+            first_mz_bytes,
+        ),
+        max_rans_bytes,
+    );
     const intensity_bytes = try std.math.add(
         usize,
         13,
@@ -158,15 +170,73 @@ pub fn validateBlockCounts(spectrum_count: usize, total_peaks: usize) !void {
 
 pub fn validateBlockHeaderResources(header: BlockHeader) !void {
     try validateBlockCounts(header.spectrum_count, header.total_peaks);
+    if (header.ms_level != 1 and header.ms_level != 2) return error.UnsupportedMsLevel;
     if (header.mz_bit_width > 64 or header.intensity_bit_width > 64) {
         return error.InvalidBitWidth;
     }
 
     const logical_bytes = try logicalBlockBytes(header.spectrum_count, header.total_peaks);
     if (logical_bytes > std.math.maxInt(u32)) return error.BlockResourceLimit;
+    if (header.decompressed_bytes != @as(u32, @intCast(logical_bytes))) {
+        return error.DecompressedBytesMismatch;
+    }
 
     const payload_limit = try maxBlockPayloadBytes(header.spectrum_count, header.total_peaks);
     if (header.payload_bytes > payload_limit) return error.BlockResourceLimit;
+
+    const mz_exact_flags = header.flags & (flag_lossless_mz_f32 | flag_lossless_mz_f64);
+    if (mz_exact_flags == (flag_lossless_mz_f32 | flag_lossless_mz_f64)) {
+        return error.InvalidBlockFlags;
+    }
+    const raw_intensity = (header.flags & flag_lossless_intensity_raw) != 0;
+    const split_intensity = (header.flags & flag_split_exponent) != 0;
+    if (raw_intensity and split_intensity) return error.InvalidBlockFlags;
+
+    const lossless = mz_exact_flags != 0;
+    if (lossless != (raw_intensity or split_intensity)) return error.InvalidBlockFlags;
+    if (lossless != (header.mz_scale_factor == 0)) return error.InvalidBlockHeader;
+
+    const intensity_log_scale_bits = combineU32(
+        header.intensity_log_scale_lo,
+        header.intensity_log_scale_hi,
+    );
+    if (lossless) {
+        if (header.intensity_quant != 0 or intensity_log_scale_bits != 0) {
+            return error.InvalidBlockHeader;
+        }
+        if (raw_intensity and header.intensity_bit_width != 0) {
+            return error.InvalidBlockHeader;
+        }
+        if (split_intensity and (header.intensity_bit_width > 8 or header.total_peaks == 0)) {
+            return error.InvalidBitWidth;
+        }
+        if ((header.flags & flag_lossless_mz_f32) != 0 and header.mz_bit_width > 32) {
+            return error.InvalidBitWidth;
+        }
+        if ((header.flags & flag_lossless_mz_f64) != 0 and header.mz_bit_width != 0) {
+            return error.InvalidBlockHeader;
+        }
+    } else {
+        const intensity_log_scale: f32 = @bitCast(intensity_log_scale_bits);
+        if (header.mz_scale_factor == 0 or header.intensity_quant == 0) {
+            return error.InvalidBlockHeader;
+        }
+        if (!std.math.isFinite(intensity_log_scale) or intensity_log_scale < 0.0 or
+            (intensity_log_scale == 0.0 and intensity_log_scale_bits != 0))
+        {
+            return error.InvalidBlockHeader;
+        }
+        if (header.intensity_bit_width > 16) return error.InvalidBitWidth;
+    }
+
+    if (header.total_peaks == 0 and (header.flags & flag_rans_intensity) != 0) {
+        return error.InvalidBlockFlags;
+    }
+    if (!raw_intensity and header.intensity_bit_width == 0 and
+        (header.flags & flag_rans_intensity) != 0)
+    {
+        return error.InvalidBlockFlags;
+    }
 }
 
 pub fn blockNeedsFlush(

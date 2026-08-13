@@ -9,22 +9,54 @@ const bitpack = @import("bitpack");
 const common = @import("block_common");
 const crc32 = @import("crc32");
 
-pub const Allocator = std.mem.Allocator;
+const Allocator = std.mem.Allocator;
 
 const MzFirstPeakSplit = struct {
     firsts: []u64,
     deltas: []u64,
 };
 
-fn mzDomainValue(value: f64, uses_f32: bool, scale_factor: u32) !u64 {
-    if (uses_f32) {
-        const as_f32: f32 = @floatCast(value);
-        return @as(u32, @bitCast(as_f32));
+const MzPackedDeltas = struct {
+    base: u64,
+    bit_width: u8,
+    payload: []const u8,
+    group_bases: []const u64,
+    group_widths: []const u8,
+};
+
+const MzDomain = enum {
+    lossy_fixed,
+    lossless_f32,
+    lossless_f64,
+};
+
+fn validateLosslessMz(value: f64) !void {
+    if (!std.math.isFinite(value) or value < 0.0) return error.InvalidMz;
+    if (value == 0.0 and @as(u64, @bitCast(value)) != 0) return error.InvalidMz;
+}
+
+fn mzDomainValue(value: f64, domain: MzDomain, scale_factor: u32) !u64 {
+    switch (domain) {
+        .lossless_f32 => {
+            try validateLosslessMz(value);
+            const as_f32: f32 = @floatCast(value);
+            return @as(u32, @bitCast(as_f32));
+        },
+        .lossless_f64 => {
+            try validateLosslessMz(value);
+            return @bitCast(value);
+        },
+        .lossy_fixed => {},
     }
     return try quantize.quantizeMzValue(value, scale_factor);
 }
 
-fn flattenMzFirstPeakSplit(allocator: Allocator, spectra: []const binary_reader.RawSpectrum, uses_f32: bool, scale_factor: u32) !MzFirstPeakSplit {
+fn flattenMzFirstPeakSplit(
+    allocator: Allocator,
+    spectra: []const binary_reader.RawSpectrum,
+    domain: MzDomain,
+    scale_factor: u32,
+) !MzFirstPeakSplit {
     if (spectra.len == 0) return error.EmptyBlock;
 
     var first_count: usize = 0;
@@ -42,11 +74,11 @@ fn flattenMzFirstPeakSplit(allocator: Allocator, spectra: []const binary_reader.
     var di: usize = 0;
     for (spectra) |spectrum| {
         if (spectrum.mz.len == 0) continue;
-        var previous = try mzDomainValue(spectrum.mz[0], uses_f32, scale_factor);
+        var previous = try mzDomainValue(spectrum.mz[0], domain, scale_factor);
         firsts[fi] = previous;
         fi += 1;
         for (spectrum.mz[1..]) |value| {
-            const cur = try mzDomainValue(value, uses_f32, scale_factor);
+            const cur = try mzDomainValue(value, domain, scale_factor);
             if (cur < previous) return error.NonMonotonicInput;
             deltas[di] = cur - previous;
             previous = cur;
@@ -55,6 +87,78 @@ fn flattenMzFirstPeakSplit(allocator: Allocator, spectra: []const binary_reader.
     }
     if (fi != first_count or di != delta_count) return error.InternalCountMismatch;
     return .{ .firsts = firsts, .deltas = deltas };
+}
+
+fn packMzPerSpectrum(
+    allocator: Allocator,
+    spectra: []const binary_reader.RawSpectrum,
+    deltas: []const u64,
+) !MzPackedDeltas {
+    var group_count: usize = 0;
+    for (spectra) |spectrum| {
+        if (spectrum.mz.len >= 2) group_count += 1;
+    }
+    const bases = try allocator.alloc(u64, group_count);
+    const widths = try allocator.alloc(u8, group_count);
+
+    var delta_cursor: usize = 0;
+    var group_cursor: usize = 0;
+    var payload_len: usize = 0;
+    for (spectra) |spectrum| {
+        const count = spectrum.mz.len -| 1;
+        if (count == 0) continue;
+        const values = deltas[delta_cursor .. delta_cursor + count];
+        var min_value = values[0];
+        var max_value = values[0];
+        for (values[1..]) |value| {
+            min_value = @min(min_value, value);
+            max_value = @max(max_value, value);
+        }
+        bases[group_cursor] = min_value;
+        widths[group_cursor] = bitpack.requiredBitWidth(max_value - min_value);
+        payload_len = try std.math.add(
+            usize,
+            payload_len,
+            try bitpack.packedByteLen(widths[group_cursor], count),
+        );
+        delta_cursor += count;
+        group_cursor += 1;
+    }
+    std.debug.assert(delta_cursor == deltas.len);
+    std.debug.assert(group_cursor == group_count);
+
+    const payload = try allocator.alloc(u8, payload_len);
+    @memset(payload, 0);
+    delta_cursor = 0;
+    group_cursor = 0;
+    var payload_cursor: usize = 0;
+    for (spectra) |spectrum| {
+        const count = spectrum.mz.len -| 1;
+        if (count == 0) continue;
+        const group_len = try bitpack.packedByteLen(widths[group_cursor], count);
+        var bit_offset: usize = 0;
+        for (deltas[delta_cursor .. delta_cursor + count]) |value| {
+            bitpack.packNextForValue(
+                payload[payload_cursor .. payload_cursor + group_len],
+                widths[group_cursor],
+                &bit_offset,
+                bases[group_cursor],
+                value,
+            );
+        }
+        delta_cursor += count;
+        payload_cursor += group_len;
+        group_cursor += 1;
+    }
+    std.debug.assert(delta_cursor == deltas.len);
+    std.debug.assert(payload_cursor == payload.len);
+    return .{
+        .base = 0,
+        .bit_width = 0,
+        .payload = payload,
+        .group_bases = bases,
+        .group_widths = widths,
+    };
 }
 
 fn appendMzFirstPeakSplitSection(
@@ -67,48 +171,89 @@ fn appendMzFirstPeakSplitSection(
     mz_scale_for_header: *u32,
     stats: *common.BlockEncodeStats,
 ) !void {
-    const uses_f32 = options.mode == .lossless and common.allMzExactlyF32(spectra);
-    if (uses_f32) {
-        flags.* |= common.flag_lossless_mz_f32;
-        mz_scale_for_header.* = 0;
-    } else {
-        mz_scale_for_header.* = if (options.mode == .lossless)
-            options.lossless_mz_scale_factor
-        else
-            options.mz_scale_factor;
+    const domain: MzDomain = if (options.mode == .lossy)
+        .lossy_fixed
+    else if (common.allMzExactlyF32(spectra))
+        .lossless_f32
+    else
+        .lossless_f64;
+    switch (domain) {
+        .lossless_f32 => flags.* |= common.flag_lossless_mz_f32,
+        .lossless_f64 => flags.* |= common.flag_lossless_mz_f64,
+        .lossy_fixed => {},
     }
+    mz_scale_for_header.* = if (domain == .lossy_fixed) options.mz_scale_factor else 0;
 
-    const split = try flattenMzFirstPeakSplit(tmp, spectra, uses_f32, mz_scale_for_header.*);
-    const first_size: u8 = if (uses_f32) 4 else 8;
+    const split = try flattenMzFirstPeakSplit(tmp, spectra, domain, mz_scale_for_header.*);
+    const first_size: u8 = if (domain == .lossless_f32) 4 else 8;
     const first_bytes = try std.math.mul(usize, split.firsts.len, first_size);
 
-    const packed_deltas = try bitpack.packForU64(tmp, split.deltas);
+    const packed_deltas: MzPackedDeltas = if (domain == .lossless_f64)
+        try packMzPerSpectrum(tmp, spectra, split.deltas)
+    else blk: {
+        const packed_values = try bitpack.packForU64(tmp, split.deltas);
+        break :blk .{
+            .base = packed_values.base,
+            .bit_width = packed_values.bit_width,
+            .payload = packed_values.payload,
+            .group_bases = &.{},
+            .group_widths = &.{},
+        };
+    };
+    const group_metadata_bytes = if (domain == .lossless_f64)
+        try std.math.add(
+            usize,
+            @sizeOf(u32),
+            try std.math.mul(
+                usize,
+                packed_deltas.group_bases.len,
+                @sizeOf(u64) + @sizeOf(u8),
+            ),
+        )
+    else
+        0;
     const delta_candidate = try common.maybeEncodeRansAlloc(tmp, packed_deltas.payload, options.mz_rans_min_gain_percent);
     const delta_stored = delta_candidate.storedBytes();
-    const body_len = try std.math.add(usize, try std.math.add(usize, 5, first_bytes), delta_stored);
+    const body_metadata = try std.math.add(
+        usize,
+        try std.math.add(usize, 5, first_bytes),
+        group_metadata_bytes,
+    );
+    const body_len = try std.math.add(usize, body_metadata, delta_stored);
     if (body_len > std.math.maxInt(u32)) return error.BlockTooLarge;
 
     mz_bit_width.* = packed_deltas.bit_width;
-    stats.mz_raw_bytes = try std.math.add(usize, first_bytes, packed_deltas.payload.len);
+    stats.mz_raw_bytes = try std.math.add(
+        usize,
+        first_bytes,
+        try std.math.add(usize, group_metadata_bytes, packed_deltas.payload.len),
+    );
     stats.mz_stored_bytes = body_len;
     stats.mz_rans_used = delta_candidate.used();
     stats.mz_estimated_rans_bytes = if (delta_candidate.estimated_total_bytes == 0)
         body_len
     else
-        try std.math.add(usize, try std.math.add(usize, 5, first_bytes), delta_candidate.estimated_total_bytes);
+        try std.math.add(usize, body_metadata, delta_candidate.estimated_total_bytes);
 
     try common.appendIntLe(payload, tmp, u64, packed_deltas.base);
     try common.appendIntLe(payload, tmp, u32, @intCast(body_len));
     if (split.firsts.len > std.math.maxInt(u32)) return error.TooManySpectra;
     try common.appendIntLe(payload, tmp, u32, @intCast(split.firsts.len));
     try payload.append(tmp, first_size);
-    if (uses_f32) {
+    if (domain == .lossless_f32) {
         for (split.firsts) |first| {
             if (first > std.math.maxInt(u32)) return error.Overflow;
             try common.appendIntLe(payload, tmp, u32, @intCast(first));
         }
     } else {
         for (split.firsts) |first| try common.appendIntLe(payload, tmp, u64, first);
+    }
+    if (domain == .lossless_f64) {
+        try common.appendIntLe(payload, tmp, u32, @intCast(packed_deltas.group_bases.len));
+        for (packed_deltas.group_bases, packed_deltas.group_widths) |base, width| {
+            try payload.append(tmp, width);
+            try common.appendIntLe(payload, tmp, u64, base);
+        }
     }
     if (delta_candidate.encoded) |rans_payload| {
         flags.* |= common.flag_rans_mz;
@@ -134,12 +279,10 @@ fn buildRtDeltas(allocator: Allocator, spectra: []const binary_reader.RawSpectru
     const result = try allocator.alloc(u64, spectra.len);
     result[0] = @as(u32, @bitCast(spectra[0].rt_seconds));
     for (spectra[1..], 1..) |spectrum, idx| {
-        if (spectrum.rt_seconds < spectra[idx - 1].rt_seconds) return error.NonMonotonicRt;
         const cur_bits: u32 = @bitCast(spectrum.rt_seconds);
         const prev_bits: u32 = @bitCast(spectra[idx - 1].rt_seconds);
-        // cur_bits < prev_bits only when prev = -0.0 (0x80000000) and cur = +0.0 (0x00000000).
-        // The floats are equal (RT is non-decreasing), so the delta is 0.
-        result[idx] = if (cur_bits >= prev_bits) cur_bits - prev_bits else 0;
+        if (cur_bits < prev_bits) return error.NonMonotonicRt;
+        result[idx] = cur_bits - prev_bits;
     }
     return result;
 }
@@ -260,10 +403,17 @@ fn writeHeader(list: *std.ArrayList(u8), allocator: Allocator, header: common.Bl
 /// `scratch` must be an arena. Temps are not freed individually; reset or deinit the arena.
 pub fn encodeBlockDetailed(allocator: Allocator, scratch: Allocator, spectra: []const binary_reader.RawSpectrum, options: common.EncodeOptions) !common.EncodedBlock {
     if (spectra.len == 0) return error.EmptyBlock;
+    if (options.mode == .lossy and options.mz_scale_factor == 0) {
+        return error.InvalidScaleFactor;
+    }
+    if (options.mode == .lossy and options.intensity_quant == 0) {
+        return error.InvalidQuantFactor;
+    }
 
     const tmp = scratch;
 
     const ms_level = spectra[0].ms_level;
+    if (ms_level != 1 and ms_level != 2) return error.UnsupportedMsLevel;
     var rt_min = spectra[0].rt_seconds;
     var rt_max = spectra[0].rt_seconds;
     for (spectra) |spectrum| {
@@ -478,7 +628,7 @@ pub fn encodeBlockDetailed(allocator: Allocator, scratch: Allocator, spectra: []
         .flags = flags,
         .total_peaks = @intCast(total_peaks),
         .mz_scale_factor = mz_scale_for_header,
-        .intensity_quant = options.intensity_quant,
+        .intensity_quant = if (options.mode == .lossy) options.intensity_quant else 0,
         .intensity_log_scale_lo = intensity_scale_bits.low,
         .mz_bit_width = mz_bit_width,
         .intensity_bit_width = intensity_bit_width,

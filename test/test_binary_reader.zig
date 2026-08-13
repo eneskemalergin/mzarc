@@ -1,3 +1,5 @@
+//! Exercises Dump V1 round trips, malformed input, and bounded indexing.
+
 const std = @import("std");
 const binary_reader = @import("binary_reader");
 
@@ -113,5 +115,64 @@ test "binary dump writer rejects mismatched peak arrays" {
     try std.testing.expectError(
         error.MismatchedPeakArrays,
         binary_reader.writeDumpAlloc(std.testing.allocator, &spectra),
+    );
+}
+
+test "[failure] - [dump V1 index]: stops at the caller spectrum limit" {
+    var empty_mz: [0]f64 = .{};
+    var empty_intensity: [0]f32 = .{};
+    const spectra = [_]binary_reader.RawSpectrum{
+        .{ .scan_id = 1, .rt_seconds = 1.0, .ms_level = 1, .precursor_mz = 0.0, .mz = &empty_mz, .intensity = &empty_intensity },
+        .{ .scan_id = 2, .rt_seconds = 2.0, .ms_level = 1, .precursor_mz = 0.0, .mz = &empty_mz, .intensity = &empty_intensity },
+        .{ .scan_id = 3, .rt_seconds = 3.0, .ms_level = 1, .precursor_mz = 0.0, .mz = &empty_mz, .intensity = &empty_intensity },
+    };
+    const dump = try binary_reader.writeDumpAlloc(std.testing.allocator, &spectra);
+    defer std.testing.allocator.free(dump);
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const input = try tmp.dir.createFile(std.testing.io, "input.bin", .{ .read = true });
+    defer input.close(std.testing.io);
+    try input.writePositionalAll(std.testing.io, dump, 0);
+
+    try std.testing.expectError(
+        error.FileResourceLimit,
+        binary_reader.scanFile(std.testing.allocator, std.testing.io, input, 2),
+    );
+}
+
+test "[failure] - [Dump V1 reserved bytes]: rejects nonzero record padding" {
+    var mz = [_]f64{100.0};
+    var intensity = [_]f32{1.0};
+    const spectra = [_]binary_reader.RawSpectrum{.{
+        .scan_id = 1,
+        .rt_seconds = 1.0,
+        .ms_level = 1,
+        .precursor_mz = 0.0,
+        .mz = &mz,
+        .intensity = &intensity,
+    }};
+    const dump = try binary_reader.writeDumpAlloc(std.testing.allocator, &spectra);
+    defer std.testing.allocator.free(dump);
+
+    const bad_first_padding = try std.testing.allocator.dupe(u8, dump);
+    defer std.testing.allocator.free(bad_first_padding);
+    bad_first_padding[9] = 1;
+    try std.testing.expectError(
+        error.NonzeroReserved,
+        binary_reader.parseDump(bad_first_padding, std.testing.allocator),
+    );
+
+    const bad_second_padding = try std.testing.allocator.dupe(u8, dump);
+    defer std.testing.allocator.free(bad_second_padding);
+    bad_second_padding[24] = 1;
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const input = try tmp.dir.createFile(std.testing.io, "input.bin", .{ .read = true });
+    defer input.close(std.testing.io);
+    try input.writePositionalAll(std.testing.io, bad_second_padding, 0);
+    try std.testing.expectError(
+        error.NonzeroReserved,
+        binary_reader.scanFile(std.testing.allocator, std.testing.io, input, 1),
     );
 }

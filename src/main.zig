@@ -13,13 +13,9 @@ fn writeStdout(io: std.Io, bytes: []const u8) void {
 
 fn printStdout(io: std.Io, comptime fmt: []const u8, args: anytype) void {
     var buf: [4096]u8 = undefined;
-    const s = std.fmt.bufPrint(&buf, fmt, args) catch {
-        const fallback = std.fmt.allocPrint(std.heap.page_allocator, fmt, args) catch return;
-        defer std.heap.page_allocator.free(fallback);
-        writeStdout(io, fallback);
-        return;
-    };
-    writeStdout(io, s);
+    var writer = std.Io.File.stdout().writerStreaming(io, &buf);
+    writer.interface.print(fmt, args) catch return;
+    writer.interface.flush() catch return;
 }
 
 fn printUsage() void {
@@ -281,7 +277,6 @@ fn commandInspect(io: std.Io, allocator: std.mem.Allocator, args: []const [:0]co
     }
 }
 
-const lossless_mz_tolerance_da: f64 = 1e-9;
 const lossy_mz_max_error_da: f64 = 0.002;
 const lossy_intensity_p95_threshold: f64 = 0.001; // 0.1%
 
@@ -318,7 +313,7 @@ fn checkLosslessSpectra(
         if (peak_count_fail_idx == null) {
             if (mz_fail == null) {
                 for (o.mz, d.mz, 0..) |om, dm, pi| {
-                    if (@abs(om - dm) > lossless_mz_tolerance_da) {
+                    if (@as(u64, @bitCast(om)) != @as(u64, @bitCast(dm))) {
                         mz_fail = .{ .si = si, .pi = pi, .exp = om, .got = dm };
                         break;
                     }
@@ -609,7 +604,6 @@ fn collectRansSections(
     const mz_payload_len = readIntLe(u32, payload[offset .. offset + 4]);
     offset += 4;
 
-    if ((header.flags & block.flag_reserved_1) != 0) return error.InvalidMzPayload;
     try requireBytes(payload, offset, mz_payload_len);
     if ((header.flags & block.flag_rans_mz) != 0) {
         try requireBytes(payload, offset, 5);
@@ -617,10 +611,45 @@ fn collectRansSections(
         const first_size = payload[offset + 4];
         if (first_size != 4 and first_size != 8) return error.InvalidFirstSize;
         const first_bytes = try std.math.mul(usize, first_count, first_size);
-        const header_and_firsts = try std.math.add(usize, 5, first_bytes);
-        if (mz_payload_len < header_and_firsts) return error.UnexpectedEndOfStream;
-        const encoded = payload[offset + header_and_firsts .. offset + mz_payload_len];
-        const raw_len = try block.packedByteLen(header.mz_bit_width, delta_count);
+        var encoded_offset = try std.math.add(usize, 5, first_bytes);
+        if (mz_payload_len < encoded_offset) return error.UnexpectedEndOfStream;
+        var raw_len = try block.packedByteLen(header.mz_bit_width, delta_count);
+        if ((header.flags & block.flag_lossless_mz_f64) != 0) {
+            if (mz_payload_len - encoded_offset < @sizeOf(u32)) {
+                return error.UnexpectedEndOfStream;
+            }
+            const group_count = readIntLe(
+                u32,
+                payload[offset + encoded_offset ..][0..@sizeOf(u32)],
+            );
+            encoded_offset += @sizeOf(u32);
+            const metadata_len = try std.math.mul(
+                usize,
+                group_count,
+                @sizeOf(u8) + @sizeOf(u64),
+            );
+            if (mz_payload_len - encoded_offset < metadata_len) {
+                return error.UnexpectedEndOfStream;
+            }
+            raw_len = 0;
+            var group_cursor: usize = 0;
+            for (peak_counts) |peak_count| {
+                if (peak_count < 2) continue;
+                if (group_cursor >= group_count) return error.InvalidMzPayload;
+                const metadata_offset = offset + encoded_offset +
+                    group_cursor * (@sizeOf(u8) + @sizeOf(u64));
+                const width = payload[metadata_offset];
+                raw_len = try std.math.add(
+                    usize,
+                    raw_len,
+                    try block.packedByteLen(width, peak_count - 1),
+                );
+                group_cursor += 1;
+            }
+            if (group_cursor != group_count) return error.InvalidMzPayload;
+            encoded_offset += metadata_len;
+        }
+        const encoded = payload[offset + encoded_offset .. offset + mz_payload_len];
         const raw = try rans.decodeAlloc(allocator, encoded, raw_len);
         mz_sections.append(allocator, .{ .encoded = encoded, .raw = raw }) catch |err| {
             allocator.free(raw);
@@ -739,7 +768,11 @@ fn printRunArray(allocator: std.mem.Allocator, values: []const u64) ![]u8 {
     return list.toOwnedSlice(allocator);
 }
 
-fn commandBenchmarkRansCore(io: std.Io, allocator: std.mem.Allocator, args: []const [:0]const u8) !void {
+fn commandBenchmarkRansCore(
+    io: std.Io,
+    allocator: std.mem.Allocator,
+    args: []const [:0]const u8,
+) !void {
     if (args.len < 3) return error.InvalidArguments;
     const repeats = try parseOptionalInt(u32, args[2..], "--repeats") orelse 5;
 
@@ -758,6 +791,7 @@ fn commandBenchmarkRansCore(io: std.Io, allocator: std.mem.Allocator, args: []co
     if (path == null) return error.InvalidArguments;
 
     const bytes = try codec.readFileAlloc(io, path.?, allocator);
+    defer allocator.free(bytes);
     const inspection = try codec.inspectAlloc(allocator, bytes);
     defer codec.freeInspection(allocator, inspection);
 
@@ -784,17 +818,15 @@ fn commandBenchmarkRansCore(io: std.Io, allocator: std.mem.Allocator, args: []co
         );
     }
 
-    const bench_allocator = std.heap.page_allocator;
-
-    const mz_benchmark = try benchmarkRansSections(io, bench_allocator, mz_sections.items, repeats);
+    const mz_benchmark = try benchmarkRansSections(io, allocator, mz_sections.items, repeats);
     defer {
-        bench_allocator.free(mz_benchmark.encode_runs_ns);
-        bench_allocator.free(mz_benchmark.decode_runs_ns);
+        allocator.free(mz_benchmark.encode_runs_ns);
+        allocator.free(mz_benchmark.decode_runs_ns);
     }
-    const exponent_benchmark = try benchmarkRansSections(io, bench_allocator, exponent_sections.items, repeats);
+    const exponent_benchmark = try benchmarkRansSections(io, allocator, exponent_sections.items, repeats);
     defer {
-        bench_allocator.free(exponent_benchmark.encode_runs_ns);
-        bench_allocator.free(exponent_benchmark.decode_runs_ns);
+        allocator.free(exponent_benchmark.encode_runs_ns);
+        allocator.free(exponent_benchmark.decode_runs_ns);
     }
 
     const mz_encode_runs = try printRunArray(allocator, mz_benchmark.encode_runs_ns);
@@ -855,8 +887,7 @@ fn commandBenchmarkRansCore(io: std.Io, allocator: std.mem.Allocator, args: []co
 
 pub fn main(init: std.process.Init) !void {
     const io = init.io;
-    const allocator = init.arena.allocator();
-    const args = try init.minimal.args.toSlice(allocator);
+    const args = try init.minimal.args.toSlice(init.arena.allocator());
 
     if (args.len < 2) {
         printUsage();
@@ -868,7 +899,7 @@ pub fn main(init: std.process.Init) !void {
             printUsage();
             return error.InvalidArguments;
         }
-        try commandDumpInspect(io, allocator, args[2]);
+        try commandDumpInspect(io, init.gpa, args[2]);
         return;
     }
 
@@ -883,22 +914,22 @@ pub fn main(init: std.process.Init) !void {
     }
 
     if (std.mem.eql(u8, args[1], "inspect")) {
-        try commandInspect(io, allocator, args);
+        try commandInspect(io, init.gpa, args);
         return;
     }
 
     if (std.mem.eql(u8, args[1], "benchmark-rans-core")) {
-        try commandBenchmarkRansCore(io, allocator, args);
+        try commandBenchmarkRansCore(io, init.gpa, args);
         return;
     }
 
     if (std.mem.eql(u8, args[1], "validate")) {
-        try commandValidate(io, allocator, args);
+        try commandValidate(io, init.gpa, args);
         return;
     }
 
     if (std.mem.eql(u8, args[1], "validate-adversarial")) {
-        try commandValidateAdversarial(io, allocator, args);
+        try commandValidateAdversarial(io, init.gpa, args);
         return;
     }
 

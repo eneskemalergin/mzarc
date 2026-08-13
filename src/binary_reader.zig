@@ -4,7 +4,7 @@
 const std = @import("std");
 const builtin = @import("builtin");
 
-pub const Allocator = std.mem.Allocator;
+const Allocator = std.mem.Allocator;
 
 pub const RawSpectrum = struct {
     scan_id: u32,
@@ -18,6 +18,14 @@ pub const RawSpectrum = struct {
 const record_header_len = 28;
 const pad_after_ms_level = [_]u8{ 0, 0, 0 };
 const pad_after_peak_count = [_]u8{ 0, 0, 0, 0 };
+
+fn validateRecordPadding(header: []const u8) !void {
+    if (!std.mem.eql(u8, header[9..12], &pad_after_ms_level) or
+        !std.mem.eql(u8, header[24..28], &pad_after_peak_count))
+    {
+        return error.NonzeroReserved;
+    }
+}
 
 pub const DumpEntry = struct {
     payload_offset: u64,
@@ -90,6 +98,8 @@ pub fn parseDump(bytes: []const u8, allocator: Allocator) ![]RawSpectrum {
     while (offset < bytes.len) {
         if (bytes.len - offset < record_header_len) return error.UnexpectedEndOfStream;
 
+        try validateRecordPadding(bytes[offset .. offset + record_header_len]);
+
         const scan_id = readIntLe(u32, bytes[offset..][0..4]);
         const rt_seconds_bits = readIntLe(u32, bytes[offset + 4 ..][0..4]);
         const ms_level = bytes[offset + 8];
@@ -149,7 +159,12 @@ fn readExactAt(file: std.Io.File, io: std.Io, bytes: []u8, offset: u64) !void {
 }
 
 /// Scan Dump V1 structure without retaining peak arrays. Caller owns `entries`.
-pub fn scanFile(allocator: Allocator, io: std.Io, file: std.Io.File) !DumpIndex {
+pub fn scanFile(
+    allocator: Allocator,
+    io: std.Io,
+    file: std.Io.File,
+    max_spectra: usize,
+) !DumpIndex {
     const file_size = (try file.stat(io)).size;
     var entries: std.ArrayList(DumpEntry) = .empty;
     errdefer entries.deinit(allocator);
@@ -160,17 +175,18 @@ pub fn scanFile(allocator: Allocator, io: std.Io, file: std.Io.File) !DumpIndex 
     var has_unsupported_ms_level = false;
     var offset: u64 = 0;
     while (offset < file_size) {
+        if (entries.items.len == max_spectra) return error.FileResourceLimit;
         if (file_size - offset < record_header_len) return error.UnexpectedEndOfStream;
 
         var header: [record_header_len]u8 = undefined;
         try readExactAt(file, io, &header, offset);
+        try validateRecordPadding(&header);
         const peak_count = readIntLe(u32, header[20..24]);
         const payload_bytes = try checkedMulU64(peak_count, @sizeOf(f64) + @sizeOf(f32));
         const payload_offset = try checkedAddU64(offset, record_header_len);
         const next_offset = try checkedAddU64(payload_offset, payload_bytes);
         if (next_offset > file_size) return error.UnexpectedEndOfStream;
 
-        if (entries.items.len == std.math.maxInt(u32)) return error.TooManySpectra;
         const ms_level = header[8];
         switch (ms_level) {
             1 => ms1_count += 1,
@@ -312,12 +328,6 @@ pub fn writeSpectrumAt(scratch: Allocator, io: std.Io, file: std.Io.File, spectr
     const mz_bytes = try floatBytesLe(scratch, f64, spectrum.mz);
     const intensity_bytes = try floatBytesLe(scratch, f32, spectrum.intensity);
     try writeVectorsAll(file, io, &.{ &header, mz_bytes, intensity_bytes }, offset);
-}
-
-pub fn writeBinaryDump(io: std.Io, path: []const u8, spectra: []const RawSpectrum, allocator: Allocator) !void {
-    const bytes = try writeDumpAlloc(allocator, spectra);
-    defer allocator.free(bytes);
-    try std.Io.Dir.cwd().writeFile(io, .{ .sub_path = path, .data = bytes });
 }
 
 fn appendIntLe(list: *std.ArrayList(u8), allocator: Allocator, comptime T: type, value: T) !void {

@@ -1,3 +1,5 @@
+//! FOR packing, malformed payloads, and scalar differential checks.
+
 const std = @import("std");
 const bitpack = @import("bitpack");
 
@@ -185,6 +187,20 @@ test "FOR unpack rejects bit_width above 64" {
     };
 
     try std.testing.expectError(error.InvalidBitWidth, bitpack.unpackForU64(std.testing.allocator, packed_values));
+}
+
+test "[failure] - [FOR padding]: rejects nonzero unused bits" {
+    const packed_values = bitpack.PackedU64{
+        .base = 0,
+        .bit_width = 1,
+        .count = 1,
+        .payload = &[_]u8{0b1000_0001},
+    };
+
+    try std.testing.expectError(
+        error.NonzeroPadding,
+        bitpack.unpackForU64(std.testing.allocator, packed_values),
+    );
 }
 
 fn unpackBitByBitRef(allocator: std.mem.Allocator, packed_values: bitpack.PackedU64) ![]u64 {

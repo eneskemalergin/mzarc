@@ -4,7 +4,7 @@
 
 const std = @import("std");
 
-pub const Allocator = std.mem.Allocator;
+const Allocator = std.mem.Allocator;
 
 pub const PackedU64 = struct {
     base: u64,
@@ -26,6 +26,20 @@ pub fn packedByteLen(bit_width: u8, count: usize) !usize {
     if (bit_width == 0 or count == 0) return 0;
     const bits = try std.math.mul(usize, bit_width, count);
     return (try std.math.add(usize, bits, 7)) / 8;
+}
+
+pub fn validatePayload(payload: []const u8, bit_width: u8, count: usize) !void {
+    if (bit_width > 64) return error.InvalidBitWidth;
+    const expected_len = try packedByteLen(bit_width, count);
+    if (payload.len < expected_len) return error.UnexpectedEndOfStream;
+    if (payload.len != expected_len) return error.TrailingData;
+    if (expected_len == 0) return;
+
+    const used_bits = try std.math.mul(usize, bit_width, count);
+    const final_bits = used_bits & 7;
+    if (final_bits == 0) return;
+    const used_mask = (@as(u8, 1) << @as(u3, @intCast(final_bits))) - 1;
+    if ((payload[expected_len - 1] & ~used_mask) != 0) return error.NonzeroPadding;
 }
 
 /// Appends one value to a zero-initialized FOR payload whose base and width
@@ -109,10 +123,7 @@ pub fn packForU16(allocator: Allocator, values: []const u16) !PackedU64 {
 }
 
 pub fn unpackForU64(allocator: Allocator, packed_values: PackedU64) ![]u64 {
-    if (packed_values.bit_width > 64) return error.InvalidBitWidth;
-
-    const required_payload_len = try packedByteLen(packed_values.bit_width, packed_values.count);
-    if (packed_values.payload.len < required_payload_len) return error.UnexpectedEndOfStream;
+    try validatePayload(packed_values.payload, packed_values.bit_width, packed_values.count);
 
     const values = try allocator.alloc(u64, packed_values.count);
     errdefer allocator.free(values);
