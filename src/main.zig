@@ -5,7 +5,11 @@ const std = @import("std");
 const binary_reader = @import("binary_reader");
 const block = @import("block");
 const codec = @import("codec");
+const quantize = @import("quantize");
 const rans = @import("rans");
+
+const DEFAULT_ENCODE_OPTIONS: block.EncodeOptions = .{};
+const LOSSY_MZ_HALF_STEP_DA: f64 = 0.5 / @as(f64, @floatFromInt(DEFAULT_ENCODE_OPTIONS.mz_scale_factor));
 
 fn writeStdout(io: std.Io, bytes: []const u8) void {
     std.Io.File.stdout().writeStreamingAll(io, bytes) catch return;
@@ -26,7 +30,7 @@ fn printUsage() void {
             "  mzarc decode <input.mzarc> -o <output.bin> [--verbose-timing]\n" ++
             "  mzarc inspect <input.mzarc> [--json] [--blocks]\n" ++
             "  mzarc benchmark-rans-core <input.mzarc> [--repeats <n>]\n" ++
-            "  mzarc validate <original.bin> <decoded.bin> --mode=lossless|lossy\n" ++
+            "  mzarc validate <original.bin> <decoded.bin> --mode=lossless|lossy [--intensity-quant <levels>]\n" ++
             "  mzarc validate-adversarial <dir>\n",
         .{},
     );
@@ -116,9 +120,9 @@ fn commandEncode(io: std.Io, allocator: std.mem.Allocator, args: []const [:0]con
     try codec.encodeDumpFile(io, allocator, input_path, output_path, .{
         .block_options = .{
             .mode = if (hasFlag(args[3..], "--lossy")) .lossy else .lossless,
-            .intensity_quant = intensity_quant orelse 16384,
-            .mz_rans_min_gain_percent = mz_rans_min_gain orelse 5,
-            .intensity_rans_min_gain_percent = intensity_rans_min_gain orelse 12,
+            .intensity_quant = intensity_quant orelse DEFAULT_ENCODE_OPTIONS.intensity_quant,
+            .mz_rans_min_gain_percent = mz_rans_min_gain orelse DEFAULT_ENCODE_OPTIONS.mz_rans_min_gain_percent,
+            .intensity_rans_min_gain_percent = intensity_rans_min_gain orelse DEFAULT_ENCODE_OPTIONS.intensity_rans_min_gain_percent,
             .verbose_blocks = hasFlag(args[3..], "--verbose-blocks"),
         },
         .verbose_timing = hasFlag(args[3..], "--verbose-timing"),
@@ -277,9 +281,6 @@ fn commandInspect(io: std.Io, allocator: std.mem.Allocator, args: []const [:0]co
     }
 }
 
-const lossy_mz_max_error_da: f64 = 0.002;
-const lossy_intensity_p95_threshold: f64 = 0.001; // 0.1%
-
 fn checkLosslessSpectra(
     io: std.Io,
     orig: []const binary_reader.RawSpectrum,
@@ -376,11 +377,11 @@ fn checkLosslessSpectra(
 
 fn checkLossySpectra(
     io: std.Io,
-    allocator: std.mem.Allocator,
     orig: []const binary_reader.RawSpectrum,
     dec: []const binary_reader.RawSpectrum,
+    intensity_quant: u16,
     verbose: bool,
-) !bool {
+) bool {
     var all_pass = true;
 
     if (orig.len != dec.len) {
@@ -403,27 +404,44 @@ fn checkLossySpectra(
     }
     if (!meta_fail and verbose) printStdout(io, "PASS metadata_exact\n", .{});
 
-    var total_peaks: usize = 0;
-    for (orig) |s| total_peaks = try std.math.add(usize, total_peaks, s.mz.len);
-
-    const mz_errors = try allocator.alloc(f64, total_peaks);
-    defer allocator.free(mz_errors);
-    const int_errors = try allocator.alloc(f64, total_peaks);
-    defer allocator.free(int_errors);
-
     var peak_count_mismatch = false;
-    var err_idx: usize = 0;
+    var numeric_domain_mismatch = false;
+    var mz_quantization_mismatch = false;
+    var mz_max: f64 = 0.0;
+    var intensity_log_max: f64 = 0.0;
     for (orig, dec) |o, d| {
         if (o.mz.len != d.mz.len or o.intensity.len != d.intensity.len or o.mz.len != o.intensity.len) {
             peak_count_mismatch = true;
             break;
         }
         for (o.mz, d.mz, o.intensity, d.intensity) |om, dm, oi, di| {
-            mz_errors[err_idx] = @abs(om - dm);
-            int_errors[err_idx] = if (oi != 0.0)
-                @abs(@as(f64, di) - @as(f64, oi)) / @abs(@as(f64, oi))
-            else if (di == 0.0) 0.0 else 1.0;
-            err_idx += 1;
+            if (!std.math.isFinite(dm) or dm < 0.0) {
+                numeric_domain_mismatch = true;
+                continue;
+            }
+            const quantized_mz = quantize.quantizeMzValue(om, DEFAULT_ENCODE_OPTIONS.mz_scale_factor) catch {
+                numeric_domain_mismatch = true;
+                continue;
+            };
+            const expected_mz = quantize.dequantizeMzValue(quantized_mz, DEFAULT_ENCODE_OPTIONS.mz_scale_factor) catch unreachable;
+            if (@as(u64, @bitCast(dm)) != @as(u64, @bitCast(expected_mz))) mz_quantization_mismatch = true;
+            mz_max = @max(mz_max, @abs(om - dm));
+
+            if (!std.math.isFinite(oi) or !std.math.isFinite(di)) {
+                numeric_domain_mismatch = true;
+                continue;
+            }
+            if (oi <= 0.0) {
+                if (@as(u32, @bitCast(di)) != 0) numeric_domain_mismatch = true;
+                continue;
+            }
+            if (di <= 0.0) {
+                numeric_domain_mismatch = true;
+                continue;
+            }
+            const original_log = std.math.log1p(@as(f64, oi));
+            const decoded_log = std.math.log1p(@as(f64, di));
+            intensity_log_max = @max(intensity_log_max, @abs(original_log - decoded_log));
         }
     }
 
@@ -432,32 +450,29 @@ fn checkLossySpectra(
         return false;
     }
 
-    const n = err_idx;
-    const mz_slice = mz_errors[0..n];
-    const int_slice = int_errors[0..n];
+    if (numeric_domain_mismatch) {
+        if (verbose) printStdout(io, "FAIL numeric_domain\n", .{});
+        return false;
+    } else if (verbose) printStdout(io, "PASS numeric_domain\n", .{});
 
-    var mz_max: f64 = 0.0;
-    for (mz_slice) |e| if (e > mz_max) {
-        mz_max = e;
-    };
-    const mz_pass = mz_max <= lossy_mz_max_error_da;
-    if (verbose) {
-        if (mz_pass)
-            printStdout(io, "PASS mz_max_error {d:.6} Da < {d:.3} Da\n", .{ mz_max, lossy_mz_max_error_da })
-        else
-            printStdout(io, "FAIL mz_max_error {d:.6} Da > {d:.3} Da\n", .{ mz_max, lossy_mz_max_error_da });
+    if (mz_quantization_mismatch) {
+        if (verbose) printStdout(io, "FAIL mz_quantized_values\n", .{});
+        all_pass = false;
+    } else if (verbose) {
+        printStdout(io, "PASS mz_quantized_values exact\n", .{});
     }
-    if (!mz_pass) all_pass = false;
+    if (verbose) printStdout(io, "PASS mz_max_observed_error {d:.12} Da (nominal half-step {d:.9} Da plus f64 rounding)\n", .{ mz_max, LOSSY_MZ_HALF_STEP_DA });
 
-    std.mem.sort(f64, int_slice, {}, std.sort.asc(f64));
-    const p95: f64 = if (n > 0) int_slice[n * 95 / 100] else 0.0;
-    const p95_pct = p95 * 100.0;
-    const int_pass = p95 <= lossy_intensity_p95_threshold;
+    const max_log = std.math.log1p(@as(f64, std.math.floatMax(f32)));
+    const stored_max: f32 = @floatCast(max_log);
+    const quant: f64 = @floatFromInt(intensity_quant);
+    const intensity_log_limit = @max(@as(f64, stored_max) / quant, @abs(max_log - @as(f64, stored_max))) + 1.0 / 8_388_608.0;
+    const int_pass = intensity_log_max <= intensity_log_limit;
     if (verbose) {
         if (int_pass)
-            printStdout(io, "PASS intensity_p95_error {d:.3}% < {d:.1}%\n", .{ p95_pct, lossy_intensity_p95_threshold * 100.0 })
+            printStdout(io, "PASS intensity_log1p_max_error {d:.9} <= {d:.9} (format-wide, Q={})\n", .{ intensity_log_max, intensity_log_limit, intensity_quant })
         else
-            printStdout(io, "FAIL intensity_p95_error {d:.3}% > {d:.1}%\n", .{ p95_pct, lossy_intensity_p95_threshold * 100.0 });
+            printStdout(io, "FAIL intensity_log1p_max_error {d:.9} > {d:.9} (format-wide, Q={})\n", .{ intensity_log_max, intensity_log_limit, intensity_quant });
     }
     if (!int_pass) all_pass = false;
 
@@ -465,7 +480,7 @@ fn checkLossySpectra(
 }
 
 fn commandValidate(io: std.Io, allocator: std.mem.Allocator, args: []const [:0]const u8) !void {
-    if (args.len != 5) return error.InvalidArguments;
+    if (args.len != 5 and args.len != 7) return error.InvalidArguments;
     const orig_path = args[2];
     const dec_path = args[3];
     const mode_arg = args[4];
@@ -473,6 +488,13 @@ fn commandValidate(io: std.Io, allocator: std.mem.Allocator, args: []const [:0]c
     const lossless_mode = std.mem.eql(u8, mode_arg, "--mode=lossless");
     const lossy_mode = std.mem.eql(u8, mode_arg, "--mode=lossy");
     if (!lossless_mode and !lossy_mode) return error.InvalidArguments;
+
+    var intensity_quant = DEFAULT_ENCODE_OPTIONS.intensity_quant;
+    if (args.len == 7) {
+        if (!lossy_mode or !std.mem.eql(u8, args[5], "--intensity-quant")) return error.InvalidArguments;
+        intensity_quant = try std.fmt.parseInt(u16, args[6], 10);
+        if (intensity_quant == 0) return error.InvalidQuantFactor;
+    }
 
     const orig = try binary_reader.readBinaryDump(io, orig_path, allocator);
     defer binary_reader.freeSpectra(allocator, orig);
@@ -482,7 +504,7 @@ fn commandValidate(io: std.Io, allocator: std.mem.Allocator, args: []const [:0]c
     const all_pass = if (lossless_mode)
         checkLosslessSpectra(io, orig, dec, true)
     else
-        try checkLossySpectra(io, allocator, orig, dec, true);
+        checkLossySpectra(io, orig, dec, intensity_quant, true);
 
     if (!all_pass) return error.ValidationFailed;
 }
@@ -890,6 +912,11 @@ pub fn main(init: std.process.Init) !void {
     const args = try init.minimal.args.toSlice(init.arena.allocator());
 
     if (args.len < 2) {
+        printUsage();
+        return;
+    }
+
+    if (args.len == 2 and (std.mem.eql(u8, args[1], "-h") or std.mem.eql(u8, args[1], "--help"))) {
         printUsage();
         return;
     }

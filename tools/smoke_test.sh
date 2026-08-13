@@ -73,6 +73,38 @@ run_quiet() {
     return 1
 }
 
+run_lossy_validation() {
+    local output
+
+    if ! output=$(
+        "$mzarc" validate "$fixture" "$scratch/lossy.bin" --mode=lossy 2>&1
+    ); then
+        printf '%s\n' "$output" >&2
+        echo "FAIL lossy validation" >&2
+        return 1
+    fi
+    if [[ $output != *"mz_quantized_values exact"* || $output != *"nominal half-step 0.000001000 Da plus f64 rounding"* || $output != *"intensity_log1p_max_error"* ]]; then
+        printf '%s\n' "$output" >&2
+        echo "FAIL lossy validation contract" >&2
+        return 1
+    fi
+    echo "PASS lossy validation"
+
+    cp "$scratch/lossy.bin" "$scratch/lossy-invalid.bin"
+    printf '\0\0\0\0\0\0\0\0' | dd \
+        of="$scratch/lossy-invalid.bin" bs=1 seek=28 count=8 conv=notrunc 2>/dev/null
+    if output=$("$mzarc" validate "$fixture" "$scratch/lossy-invalid.bin" --mode=lossy 2>&1); then
+        echo "FAIL lossy validation mismatch" >&2
+        return 1
+    fi
+    if [[ $output != *"FAIL mz_quantized_values"* ]]; then
+        printf '%s\n' "$output" >&2
+        echo "FAIL lossy validation mismatch result" >&2
+        return 1
+    fi
+    echo "PASS lossy validation mismatch"
+}
+
 round_trip() {
     local mode=$1
     shift
@@ -81,9 +113,16 @@ round_trip() {
 
     run_quiet "$mode encode" "$mzarc" encode "$fixture" -o "$archive" "$@"
     run_quiet "$mode decode" "$mzarc" decode "$archive" -o "$decoded"
-    run_quiet "$mode validation" "$mzarc" validate "$fixture" "$decoded" "--mode=$mode"
+    if [[ $mode == lossy ]]; then
+        run_lossy_validation
+        run_quiet 'lossy explicit quant validation' \
+            "$mzarc" validate "$fixture" "$decoded" --mode=lossy --intensity-quant 16384
+    else
+        run_quiet "$mode validation" "$mzarc" validate "$fixture" "$decoded" "--mode=$mode"
+    fi
 }
 
+run_quiet 'help' "$mzarc" --help
 run_quiet 'adversarial lossless round trips' "$mzarc" validate-adversarial "$adversarial"
 round_trip lossless
 round_trip lossy --lossy

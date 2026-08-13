@@ -3,7 +3,7 @@
 const std = @import("std");
 const quantize = @import("quantize");
 
-test "[property] - [m/z quantization]: stays within half a step" {
+test "[property] - [m/z quantization]: representative values stay within the nominal half-step" {
     const scale_factor: u32 = 500_000;
     const tolerance = 0.5 / @as(f64, @floatFromInt(scale_factor));
     const values = [_]f64{ 100.1234567, 456.7890123, 999.9999991 };
@@ -50,6 +50,17 @@ test "[property] - [intensity quantization]: uses the block range without satura
         try std.testing.expectApproxEqRel(value, decoded, 0.01);
         last_encoded = encoded;
     }
+}
+
+test "[edge] - [intensity quantization]: preserves the smallest positive f32 at the block maximum" {
+    const value = std.math.floatTrueMin(f32);
+    const quant_levels: u16 = 16384;
+    const log_max = quantize.intensityLogMax(&.{value});
+    const encoded = try quantize.quantizeIntensityValueScaled(value, quant_levels, log_max);
+    const decoded = try quantize.dequantizeIntensityValueScaled(encoded, quant_levels, log_max);
+
+    try std.testing.expectEqual(quant_levels, encoded);
+    try std.testing.expectEqual(@as(u32, @bitCast(value)), @as(u32, @bitCast(decoded)));
 }
 
 test "[failure] - [intensity quantization]: rejects invalid parameters" {

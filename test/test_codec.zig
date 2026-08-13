@@ -1187,7 +1187,7 @@ test "[property] - [lossless m/z]: preserves non-f32 values bit for bit" {
     try expectMzBits(&mz_buf, decoded[0].mz);
 }
 
-test "empirical error bounds: lossy m/z error ≤ 0.5 / scale_factor" {
+test "empirical error bounds: representative lossy m/z values stay within the nominal half-step" {
     var mz_buf: [1024]f64 = undefined;
     var int_buf: [1024]f32 = undefined;
     for (0..1024) |i| {
@@ -1352,8 +1352,7 @@ test "lossy intensity extremes stay within error bound" {
     try std.testing.expect(max_actual <= max_allowed * 1.01);
 }
 
-test "lossy smallest non-zero intensity has bounded relative error" {
-    // Single peak with intensity = smallest non-zero value above zero-cutoff.
+test "lossy unit intensity has bounded relative error" {
     var mz_buf = [_]f64{500.0};
     var int_buf = [_]f32{1.0};
 

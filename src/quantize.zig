@@ -1,5 +1,5 @@
 //! Fixed-point m/z and block-scaled log-intensity quantization.
-//! m/z: |v'-v| <= 0.5/scale. Intensity uses uniform log1p levels over [0, log_max].
+//! m/z uses a nominal half-step error plus f64 operation rounding. Intensity uses uniform log1p levels over [0, log_max].
 
 const std = @import("std");
 
@@ -55,7 +55,7 @@ pub fn dequantizeIntensityValueScaled(value: u16, quant_levels: u16, log_max: f3
     if (value == 0 or log_max == 0.0) return 0.0;
 
     const ratio = @as(f64, @floatFromInt(value)) / @as(f64, @floatFromInt(quant_levels));
-    const decoded = std.math.exp(ratio * @as(f64, log_max)) - 1.0;
+    const decoded = std.math.expm1(ratio * @as(f64, log_max));
     if (decoded >= std.math.floatMax(f32)) return std.math.floatMax(f32);
     return @as(f32, @floatCast(decoded));
 }
