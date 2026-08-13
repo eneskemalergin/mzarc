@@ -3,6 +3,46 @@
 const std = @import("std");
 const binary_reader = @import("binary_reader");
 
+const KNOWN_DUMP_V1 = [_]u8{
+    0x01, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x80, 0x3f,
+    0x01, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00,
+    0x01, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x59, 0x40,
+    0x00, 0x00, 0x20, 0x41,
+};
+
+test "[integration] - [dump V1 bytes]: matches a hand-written record" {
+    var mz = [_]f64{100.0};
+    var intensity = [_]f32{10.0};
+    const spectra = [_]binary_reader.RawSpectrum{.{
+        .scan_id = 1,
+        .rt_seconds = 1.0,
+        .ms_level = 1,
+        .precursor_mz = 0.0,
+        .mz = &mz,
+        .intensity = &intensity,
+    }};
+
+    const written = try binary_reader.writeDumpAlloc(std.testing.allocator, &spectra);
+    defer std.testing.allocator.free(written);
+    try std.testing.expectEqualSlices(u8, &KNOWN_DUMP_V1, written);
+
+    const parsed = try binary_reader.parseDump(&KNOWN_DUMP_V1, std.testing.allocator);
+    defer binary_reader.freeSpectra(std.testing.allocator, parsed);
+    try std.testing.expectEqual(@as(usize, 1), parsed.len);
+    try std.testing.expectEqual(@as(u32, 1), parsed[0].scan_id);
+    try std.testing.expectEqual(@as(u32, @bitCast(@as(f32, 1.0))), @as(u32, @bitCast(parsed[0].rt_seconds)));
+    try std.testing.expectEqual(@as(u8, 1), parsed[0].ms_level);
+    try std.testing.expectEqual(@as(u64, 0), @as(u64, @bitCast(parsed[0].precursor_mz)));
+    try std.testing.expectEqualSlices(f64, &mz, parsed[0].mz);
+    try std.testing.expectEqualSlices(f32, &intensity, parsed[0].intensity);
+}
+
 test "binary dump round-trip preserves spectra" {
     var mz_1 = [_]f64{ 100.0, 101.5, 150.25 };
     var intensity_1 = [_]f32{ 10.0, 20.0, 30.0 };

@@ -67,6 +67,30 @@ test "rans empty round-trip" {
     try std.testing.expectEqual(@as(usize, 0), decoded.len);
 }
 
+test "[unit] - [four-state rANS bytes]: matches a hand-calculated stream" {
+    const input = [_]u8{ 0, 1, 2, 3 };
+    var expected: [528]u8 = @splat(0);
+
+    // Four equally likely symbols normalize to 1024 and each updates one state without renormalizing.
+    for (0..4) |symbol| {
+        std.mem.writeInt(u16, expected[symbol * 2 ..][0..2], 1024, .little);
+        std.mem.writeInt(
+            u32,
+            expected[512 + symbol * 4 ..][0..4],
+            0x0200_0000 + @as(u32, @intCast(symbol)) * 1024,
+            .little,
+        );
+    }
+
+    const encoded = try rans.encodeAlloc(std.testing.allocator, &input);
+    defer std.testing.allocator.free(encoded);
+    try std.testing.expectEqualSlices(u8, &expected, encoded);
+
+    const decoded = try rans.decodeAlloc(std.testing.allocator, &expected, input.len);
+    defer std.testing.allocator.free(decoded);
+    try std.testing.expectEqualSlices(u8, &input, decoded);
+}
+
 test "[property] - [rANS resource bound]: encoded output stays within the decoder limit" {
     var values: [4096]u8 = undefined;
     for (&values, 0..) |*value, idx| value.* = @truncate(idx);
