@@ -1,18 +1,8 @@
 .{
     .name = .mzarc,
-    .version = "0.2.5",
+    .version = "0.3.0",
     .fingerprint = 0x23a58e985cd2488f,
     .minimum_zig_version = "0.16.0",
     .dependencies = .{},
-    .paths = .{
-        "build.zig",
-        "build.zig.zon",
-        "src",
-        "test",
-        "tools",
-        "LICENSE",
-        "LICENSES",
-        "README.md",
-        "CHANGELOG.md",
-    },
+    .paths = .{ "build.zig", "build.zig.zon", "src", "test", "tools/smoke_test.sh", "LICENSE", "LICENSES", "README.md", "CHANGELOG.md" },
 }
