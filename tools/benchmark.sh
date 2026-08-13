@@ -887,11 +887,11 @@ write_comparison 'Original mzML round trip' 'original mzML' "$mzml_bytes" "$rows
     if [[ "$sanity" == true ]]; then
         echo '## Machine-readable rows'
         echo
-        echo 'The full-precision Dump V1 rows are retained in [dump.tsv](dump.tsv). They are sanity output, not a regression baseline.'
+        echo 'The full-precision Dump V1 rows are retained in [dump.tsv](dump.tsv). They are sanity output, not benchmark evidence.'
     else
-        echo '## Machine-readable baseline'
+        echo '## Machine-readable rows'
         echo
-        echo 'The full-precision Dump V1 rows are retained in [dump.tsv](dump.tsv) for the planned local mzarc regression check. The reader-facing tables above are rounded.'
+        echo 'The full-precision Dump V1 rows are retained in [dump.tsv](dump.tsv) for direct local comparisons. The reader-facing tables above are rounded.'
         echo
         echo 'Column order: method, thread class, validation, artifact bytes, artifact percentage, encode mean ms, encode SD ms, encode MiB/s, encode RSS MiB, decode mean ms, decode SD ms, decode MiB/s, and decode RSS MiB.'
     fi

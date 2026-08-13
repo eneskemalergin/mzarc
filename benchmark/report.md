@@ -149,8 +149,8 @@ Comparison input: original mzML, 75.55 MiB (79221306 bytes).
 - Compression peers: `gzip 1.10`; `pigz 2.6`; `zstd 1.5.6`; `xz 5.6.4`; `MScompress 1.0.16`
 - Report generation: `jq-1.6`; `gnuplot 5.4 patchlevel 2`
 
-## Machine-readable baseline
+## Machine-readable rows
 
-The full-precision Dump V1 rows are retained in [dump.tsv](dump.tsv) for the planned local mzarc regression check. The reader-facing tables above are rounded.
+The full-precision Dump V1 rows are retained in [dump.tsv](dump.tsv) for direct local comparisons. The reader-facing tables above are rounded.
 
 Column order: method, thread class, validation, artifact bytes, artifact percentage, encode mean ms, encode SD ms, encode MiB/s, encode RSS MiB, decode mean ms, decode SD ms, decode MiB/s, and decode RSS MiB.
