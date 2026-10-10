@@ -27,7 +27,7 @@ run_checks() {
     local self="$repo_root/tools/benchmark.sh"
     local tiny="$data_root/examples/tiny.pwiz.1.1.mzML"
     local output report_text rows real_cmp
-    benchmark_check_root=$(mktemp -d "${TMPDIR:-/tmp}/mzarc-benchmark-check.XXXXXX")
+    benchmark_check_root=$(mktemp -d "${TMPDIR:-/var/tmp}/mzarc-benchmark-check.XXXXXX")
     trap 'rm -rf -- "${benchmark_check_root:-}"' EXIT
 
     unset MZARC_BENCH_CHECKING MZARC_BENCH_ZEBRAC MZARC_BENCH_MSCOMPRESS
@@ -340,7 +340,7 @@ readonly mzarc_version changelog_version zig_version zmz_version mzarc_commit
 readonly zebrac_version zebrac_json_version gzip_version pigz_version zstd_version
 readonly xz_version mscompress_version jq_version gnuplot_version measurement_word
 
-scratch=$(mktemp -d "${TMPDIR:-/tmp}/mzarc-benchmark.XXXXXX")
+scratch=$(mktemp -d "${TMPDIR:-/var/tmp}/mzarc-benchmark.XXXXXX")
 cleanup() {
     rm -rf -- "$scratch"
 }

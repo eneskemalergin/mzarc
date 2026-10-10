@@ -59,7 +59,7 @@ if [[ ! -f "$mzml_fixture" || ! -f "$mzml_expected" ]]; then
     exit 1
 fi
 
-scratch=$(mktemp -d "${TMPDIR:-/tmp}/mzarc-smoke.XXXXXX")
+scratch=$(mktemp -d "${TMPDIR:-/var/tmp}/mzarc-smoke.XXXXXX")
 cleanup() {
     rm -rf -- "$scratch"
 }
