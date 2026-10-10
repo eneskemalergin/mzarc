@@ -16,6 +16,7 @@ const Primitive = @FieldType(mzml.model.Encoding, "primitive");
 const Pipeline = @FieldType(mzml.model.Encoding, "pipeline");
 
 pub const flag_source_document: u32 = 1 << 4;
+const mzml_namespace = "http://psi.hupo.org/ms/mzml";
 const codec_zlib: u16 = 1;
 const profile_exact: u16 = 0;
 const profile_lossy_1: u16 = 1;
@@ -531,7 +532,15 @@ pub fn encodeLossy(io: std.Io, allocator: Allocator, input_path: []const u8, out
         .start_element => |start| {
             const local = start.name.expanded.local;
             const span: Span = .{ .start = event.span.start, .end = event.span.end };
-            if (std.mem.eql(u8, local, "spectrum") or std.mem.eql(u8, local, "chromatogram")) {
+            if (std.mem.eql(u8, local, "mzML")) {
+                // Drafts before 1.0 use their own namespace, array terms, and index layouts; lossy
+                // mode supports the mzML 1.x namespace only.
+                const namespace = start.name.expanded.namespace_uri orelse return error.UnsupportedVersion;
+                if (!std.mem.eql(u8, namespace, mzml_namespace)) return error.UnsupportedVersion;
+                if (start.attribute(null, "version")) |version| {
+                    if (std.mem.startsWith(u8, version.value, "0.")) return error.UnsupportedVersion;
+                }
+            } else if (std.mem.eql(u8, local, "spectrum") or std.mem.eql(u8, local, "chromatogram")) {
                 try encoder.rawTo(span.start);
                 try encoder.tag(.mark);
                 if (encoder.positions.items.len == max_positions) return error.TooManyRecords;

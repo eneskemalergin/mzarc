@@ -319,3 +319,16 @@ test "[regression] - [source-document lossy]: keeps an intensity array with a ne
     defer std.testing.allocator.free(output);
     try std.testing.expectEqualStrings(source, output);
 }
+
+test "[failure] - [source-document lossy]: rejects mzML drafts before 1.0" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    var a: [256]u8 = undefined;
+    var b: [256]u8 = undefined;
+    try tmp.dir.writeFile(std.testing.io, .{ .sub_path = "in", .data = "<?xml version=\"1.0\"?>\n<mzML xmlns=\"http://psi.hupo.org/schema_revision/mzML_0.99.1\" version=\"0.99.1\"></mzML>\n" });
+    try std.testing.expectError(error.UnsupportedVersion, source_document.encodeLossy(std.testing.io, std.testing.allocator, try pathIn(&tmp, &a, "in"), try pathIn(&tmp, &b, "arc")));
+
+    // A draft namespace without a version attribute is rejected too.
+    try tmp.dir.writeFile(std.testing.io, .{ .sub_path = "in", .data = "<?xml version=\"1.0\"?>\n<mzML xmlns=\"http://psi.hupo.org/schema_revision/mzML_0.99.10\"></mzML>\n" });
+    try std.testing.expectError(error.UnsupportedVersion, source_document.encodeLossy(std.testing.io, std.testing.allocator, try pathIn(&tmp, &a, "in"), try pathIn(&tmp, &b, "arc")));
+}
