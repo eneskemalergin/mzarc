@@ -462,6 +462,16 @@ fn eligible(in_spectrum: bool, terms: Terms, length: ?usize) ?Kind {
     };
 }
 
+/// Lossy records splice ASCII digits and Base64 into source bytes, so the source must use an
+/// ASCII-compatible encoding. UTF-16 shows itself in the first bytes: a byte-order mark, or a zero
+/// byte beside the document's first `<`.
+fn requireAsciiCompatible(io: std.Io, file: std.Io.File) !void {
+    var head: [2]u8 = undefined;
+    if (try file.readPositionalAll(io, &head, 0) < head.len) return;
+    if ((head[0] == 0xFE and head[1] == 0xFF) or (head[0] == 0xFF and head[1] == 0xFE) or
+        head[0] == 0 or head[1] == 0) return error.UnsupportedEncoding;
+}
+
 fn orderU64(key: u64, item: u64) std.math.Order {
     return std.math.order(key, item);
 }
@@ -490,6 +500,7 @@ pub fn encodeLossy(io: std.Io, allocator: Allocator, input_path: []const u8, out
     const source_file = try cwd.openFile(io, input_path, .{});
     defer source_file.close(io);
     const source_len = try source_file.length(io);
+    try requireAsciiCompatible(io, source_file);
     var input_buffer: [64 * 1024]u8 = undefined;
     var input = events_file.reader(io, &input_buffer);
 

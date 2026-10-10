@@ -271,3 +271,26 @@ test "[regression] - [source-document lossy]: keeps an array raw when its encode
     defer std.testing.allocator.free(output);
     try std.testing.expectEqualStrings(source, output);
 }
+
+test "[failure] - [source-document lossy]: rejects UTF-16 sources, which exact mode still stores" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    var a: [256]u8 = undefined;
+    var b: [256]u8 = undefined;
+    const text = "<?xml version=\"1.0\" encoding=\"UTF-16\"?><mzML/>";
+    var utf16: [2 + 2 * text.len]u8 = undefined;
+    utf16[0..2].* = .{ 0xFF, 0xFE };
+    for (text, 0..) |c, i| utf16[2 + 2 * i ..][0..2].* = .{ c, 0 };
+    try tmp.dir.writeFile(std.testing.io, .{ .sub_path = "in", .data = &utf16 });
+    try std.testing.expectError(error.UnsupportedEncoding, source_document.encodeLossy(std.testing.io, std.testing.allocator, try pathIn(&tmp, &a, "in"), try pathIn(&tmp, &b, "arc")));
+
+    // Without a byte-order mark the zero byte beside the first `<` gives UTF-16 away.
+    try tmp.dir.writeFile(std.testing.io, .{ .sub_path = "in", .data = utf16[2..] });
+    try std.testing.expectError(error.UnsupportedEncoding, source_document.encodeLossy(std.testing.io, std.testing.allocator, try pathIn(&tmp, &a, "in"), try pathIn(&tmp, &b, "arc")));
+
+    _ = try source_document.encodeExact(std.testing.io, std.testing.allocator, try pathIn(&tmp, &a, "in"), try pathIn(&tmp, &b, "arc"));
+    _ = try source_document.decode(std.testing.io, std.testing.allocator, try pathIn(&tmp, &b, "arc"), try pathIn(&tmp, &a, "out"));
+    const restored = try tmp.dir.readFileAlloc(std.testing.io, "out", std.testing.allocator, .unlimited);
+    defer std.testing.allocator.free(restored);
+    try std.testing.expectEqualSlices(u8, utf16[2..], restored);
+}
