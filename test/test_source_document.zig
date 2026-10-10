@@ -294,3 +294,28 @@ test "[failure] - [source-document lossy]: rejects UTF-16 sources, which exact m
     defer std.testing.allocator.free(restored);
     try std.testing.expectEqualSlices(u8, utf16[2..], restored);
 }
+
+fn oneArrayDocument(buffer: []u8, text: []u8, values: []const f32, encoded_length: []const u8) ![]const u8 {
+    const encoded = std.base64.standard.Encoder.encode(text, std.mem.sliceAsBytes(values));
+    var length_buffer: [16]u8 = undefined;
+    const length = if (encoded_length.len != 0) encoded_length else try std.fmt.bufPrint(&length_buffer, "{d}", .{encoded.len});
+    return std.fmt.bufPrint(buffer, "<?xml version=\"1.0\"?>\n<mzML xmlns=\"http://psi.hupo.org/ms/mzml\" version=\"1.1.0\"><run id=\"r\"><spectrumList count=\"1\"><spectrum index=\"0\" id=\"scan=1\" defaultArrayLength=\"{d}\"><binaryDataArrayList count=\"1\"><binaryDataArray encodedLength=\"{s}\"><cvParam cvRef=\"MS\" accession=\"MS:1000521\" name=\"32-bit float\"/><cvParam cvRef=\"MS\" accession=\"MS:1000576\" name=\"no compression\"/><cvParam cvRef=\"MS\" accession=\"MS:1000515\" name=\"intensity array\"/><binary>{s}</binary></binaryDataArray></binaryDataArrayList></spectrum></spectrumList></run></mzML>\n", .{ values.len, length, encoded });
+}
+
+test "[regression] - [source-document lossy]: keeps an intensity array with a negative value raw" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    var a: [256]u8 = undefined;
+    var b: [256]u8 = undefined;
+    var doc: [1024]u8 = undefined;
+    var text: [64]u8 = undefined;
+    const source = try oneArrayDocument(&doc, &text, &.{ 10.0, -2.5, 30.0 }, "");
+    try tmp.dir.writeFile(std.testing.io, .{ .sub_path = "in", .data = source });
+
+    const summary = try source_document.encodeLossy(std.testing.io, std.testing.allocator, try pathIn(&tmp, &a, "in"), try pathIn(&tmp, &b, "arc"));
+    try std.testing.expectEqual(@as(u64, 0), summary.arrays_coded);
+    _ = try source_document.decode(std.testing.io, std.testing.allocator, try pathIn(&tmp, &b, "arc"), try pathIn(&tmp, &a, "out"));
+    const output = try tmp.dir.readFileAlloc(std.testing.io, "out", std.testing.allocator, .unlimited);
+    defer std.testing.allocator.free(output);
+    try std.testing.expectEqualStrings(source, output);
+}

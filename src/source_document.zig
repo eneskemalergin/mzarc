@@ -398,7 +398,8 @@ fn codeArray(allocator: Allocator, kind: Kind, values: mzml.arrays.Values) !?Cod
                 },
                 else => return null,
             }
-            for (narrow) |value| if (!std.math.isFinite(value)) return null;
+            // Level 0 decodes to zero, so a negative value would lose its sign; such arrays stay raw.
+            for (narrow) |value| if (!std.math.isFinite(value) or value < 0) return null;
             const log_max = quantize.intensityLogMax(narrow);
             const codes = try allocator.alloc(u16, narrow.len);
             errdefer allocator.free(codes);
