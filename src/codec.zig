@@ -21,7 +21,7 @@ fn nsPct(part: u64, total: u64) f64 {
     return @as(f64, @floatFromInt(part)) * 100.0 / @as(f64, @floatFromInt(total));
 }
 
-const magic = "MZAR".*;
+pub const magic = "MZAR".*;
 pub const header_len = 32;
 pub const version_major: u16 = 1;
 pub const version_minor: u16 = 0;

@@ -86,6 +86,15 @@ pub fn build(b: *std.Build) void {
     // --- CLI ---
 
     const zmz = b.dependency("zmz", .{ .target = target, .optimize = optimize }).module("zmz");
+    const source_document_module = b.createModule(.{
+        .root_source_file = b.path("src/source_document.zig"),
+        .imports = &.{
+            .{ .name = "zmz", .module = zmz },
+            .{ .name = "crc32", .module = crc32_module },
+            .{ .name = "quantize", .module = quantize_module },
+            .{ .name = "codec", .module = codec_module },
+        },
+    });
 
     const mzarc_cli = b.addExecutable(.{
         .name = "mzarc",
@@ -102,6 +111,7 @@ pub fn build(b: *std.Build) void {
                 .{ .name = "codec", .module = codec_module },
                 .{ .name = "quantize", .module = quantize_module },
                 .{ .name = "zmz", .module = zmz },
+                .{ .name = "source_document", .module = source_document_module },
             },
         }),
     });
@@ -116,6 +126,7 @@ pub fn build(b: *std.Build) void {
         "test/test_rans.zig",
         "test/test_block.zig",
         "test/test_codec.zig",
+        "test/test_source_document.zig",
     };
     const test_step = b.step("test", "Run unit tests");
     for (test_roots) |test_root| {
@@ -133,6 +144,7 @@ pub fn build(b: *std.Build) void {
                     .{ .name = "crc32", .module = crc32_module },
                     .{ .name = "block", .module = block_module },
                     .{ .name = "codec", .module = codec_module },
+                    .{ .name = "source_document", .module = source_document_module },
                 },
             }),
         });
