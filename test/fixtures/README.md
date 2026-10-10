@@ -27,12 +27,12 @@ the source dump (min 16 peaks/spectrum) contains no such spectra naturally.
 file: test/fixtures/frozen.bin
 spectra: 1000
 total peaks: 202806
+ms1 count: 110
+ms2 count: 890
+zero intensity peaks: 0
 min peaks per spectrum: 0
 median peaks per spectrum: 66.5
 max peaks per spectrum: 2339
-zero-intensity peaks: 0
-ms1 count: 110
-ms2 count: 890
 ```
 
 ### SHA-256

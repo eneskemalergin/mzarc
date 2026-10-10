@@ -34,10 +34,6 @@ pub fn analyze(symbols: []const u8) Analysis {
     return buildAnalysis(countSymbols(symbols), symbols.len);
 }
 
-pub fn encodeAlloc(allocator: Allocator, symbols: []const u8) ![]u8 {
-    return encodeFromCountsAlloc(allocator, symbols, countSymbols(symbols));
-}
-
 pub fn encodeAnalyzedAlloc(allocator: Allocator, symbols: []const u8, analysis: Analysis) ![]u8 {
     if (analysis.len != symbols.len) return error.InvalidAnalysis;
     return encodeFromCountsAlloc(allocator, symbols, analysis.counts);

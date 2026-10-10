@@ -184,7 +184,20 @@ check_mzml_dump_peak_limit() {
     echo "PASS mzML dump rejects one peak over the limit"
 }
 
+check_dump_inspect_median() {
+    local output
+    output=$("$mzarc" dump-inspect "$fixture" 2>&1)
+    # The frozen fixture has 1,000 spectra; the mean of the two middle peak counts is 66.5.
+    if [[ $output != *"median peaks per spectrum: 66.5"* ]]; then
+        printf '%s\n' "$output" >&2
+        echo "FAIL dump-inspect median" >&2
+        return 1
+    fi
+    echo "PASS dump-inspect median"
+}
+
 run_quiet 'help' "$mzarc" --help
+check_dump_inspect_median
 check_mzml_dump
 check_mzml_dump_peak_limit
 run_quiet 'adversarial lossless round trips' "$mzarc" validate-adversarial "$adversarial"
