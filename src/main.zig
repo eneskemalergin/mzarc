@@ -7,6 +7,7 @@ const block = @import("block");
 const codec = @import("codec");
 const quantize = @import("quantize");
 const mzml_dump = @import("mzml_dump.zig");
+const source_document = @import("source_document");
 
 const DEFAULT_ENCODE_OPTIONS: block.EncodeOptions = .{};
 const LOSSY_MZ_HALF_STEP_DA: f64 = 0.5 / @as(f64, @floatFromInt(DEFAULT_ENCODE_OPTIONS.mz_scale_factor));
@@ -28,7 +29,8 @@ fn printUsage() void {
             "  mzarc dump <input.mzML> -o <output.bin>\n" ++
             "  mzarc dump-inspect <input.bin>\n" ++
             "  mzarc encode <input.bin> -o <output.mzarc> [--lossy] [--intensity-quant <levels>] [--mz-rans-min-gain <pct>] [--intensity-rans-min-gain <pct>] [--verbose-blocks] [--verbose-timing]\n" ++
-            "  mzarc decode <input.mzarc> -o <output.bin> [--verbose-timing]\n" ++
+            "  mzarc encode <input.mzML> -o <output.mzarc> [--lossy]\n" ++
+            "  mzarc decode <input.mzarc> -o <output.bin|output.mzML> [--verbose-timing]\n" ++
             "  mzarc inspect <input.mzarc> [--json] [--blocks]\n" ++
             "  mzarc validate <original.bin> <decoded.bin> --mode=lossless|lossy [--intensity-quant <levels>]\n" ++
             "  mzarc validate-adversarial <dir>\n",
@@ -115,6 +117,7 @@ fn commandEncode(io: std.Io, allocator: std.mem.Allocator, args: []const [:0]con
 
     const input_path = args[2];
     const output_path = try parseOutputPath(args[3..]);
+    if (std.ascii.endsWithIgnoreCase(input_path, ".mzml")) return encodeSourceDocument(io, allocator, input_path, output_path, args[3..]);
     const intensity_quant = try parseOptionalInt(u16, args[3..], "--intensity-quant");
     const mz_rans_min_gain = try parseOptionalInt(u8, args[3..], "--mz-rans-min-gain");
     const intensity_rans_min_gain = try parseOptionalInt(u8, args[3..], "--intensity-rans-min-gain");
@@ -133,11 +136,48 @@ fn commandEncode(io: std.Io, allocator: std.mem.Allocator, args: []const [:0]con
     std.debug.print("encoded: {s} -> {s}\n", .{ input_path, output_path });
 }
 
+/// Encodes a complete mzML document; the Dump V1 tuning options do not apply to it.
+fn encodeSourceDocument(io: std.Io, allocator: std.mem.Allocator, input_path: []const u8, output_path: []const u8, options: []const [:0]const u8) !void {
+    for (options, 0..) |arg, idx| {
+        if (std.mem.eql(u8, arg, "--lossy")) continue;
+        if (std.mem.eql(u8, arg, "-o") or std.mem.eql(u8, arg, "--output")) continue;
+        if (idx > 0 and (std.mem.eql(u8, options[idx - 1], "-o") or std.mem.eql(u8, options[idx - 1], "--output"))) continue;
+        std.debug.print("error: {s} does not apply to mzML input\n", .{arg});
+        return error.InvalidArguments;
+    }
+    const summary = if (hasFlag(options, "--lossy"))
+        try source_document.encodeLossy(io, allocator, input_path, output_path)
+    else
+        try source_document.encodeExact(io, allocator, input_path, output_path);
+    printStdout(io, "encoded: {s} -> {s}\nmode: {s}\nsource bytes: {d}\narchive bytes: {d}\n", .{
+        input_path, output_path, @tagName(summary.mode), summary.source_bytes, summary.archive_bytes,
+    });
+    if (summary.mode == .lossy) {
+        printStdout(io, "arrays coded: {d}\narrays kept exact: {d}\nindex entries corrected: {d}\n", .{
+            summary.arrays_coded, summary.arrays_kept, summary.offsets_corrected,
+        });
+    }
+}
+
+/// Whether the file starts with a source-document header; short or unreadable files are not.
+fn isSourceDocumentFile(io: std.Io, path: []const u8) bool {
+    const file = std.Io.Dir.cwd().openFile(io, path, .{}) catch return false;
+    defer file.close(io);
+    var header: [codec.header_len]u8 = undefined;
+    const got = file.readPositionalAll(io, &header, 0) catch return false;
+    return got == header.len and source_document.isSourceDocument(&header);
+}
+
 fn commandDecode(io: std.Io, allocator: std.mem.Allocator, args: []const [:0]const u8) !void {
     if (args.len < 4) return error.InvalidArguments;
 
     const input_path = args[2];
     const output_path = try parseOutputPath(args[3..]);
+    if (isSourceDocumentFile(io, input_path)) {
+        const summary = try source_document.decode(io, allocator, input_path, output_path);
+        printStdout(io, "decoded: {s} -> {s}\nmode: {s}\noutput bytes: {d}\n", .{ input_path, output_path, @tagName(summary.mode), summary.output_bytes });
+        return;
+    }
 
     try codec.decodeToDumpFile(io, allocator, input_path, output_path, .{
         .verbose_timing = hasFlag(args[3..], "--verbose-timing"),
@@ -245,6 +285,20 @@ fn commandInspect(io: std.Io, allocator: std.mem.Allocator, args: []const [:0]co
     }
     if (path == null) return error.InvalidArguments;
     const input_path = path.?;
+
+    if (isSourceDocumentFile(io, input_path)) {
+        const info = try source_document.inspect(io, input_path);
+        if (json_output) {
+            printStdout(io, "{{\"file\":{f},\"kind\":\"source-document\",\"mode\":\"{s}\",\"stream_bytes\":{d},\"archive_bytes\":{d}}}\n", .{
+                std.json.fmt(input_path, .{}), @tagName(info.header.mode), info.header.stream_len, info.archive_bytes,
+            });
+        } else {
+            printStdout(io, "file: {s}\nkind: source document\nmode: {s}\nstream bytes: {d}\narchive bytes: {d}\n", .{
+                input_path, @tagName(info.header.mode), info.header.stream_len, info.archive_bytes,
+            });
+        }
+        return;
+    }
 
     const inspection = try codec.inspectFileAlloc(io, allocator, input_path);
     defer codec.freeInspection(allocator, inspection);

@@ -196,10 +196,46 @@ check_dump_inspect_median() {
     echo "PASS dump-inspect median"
 }
 
+check_mzml_archives() {
+    local source_counts output_counts output
+    run_quiet 'mzML exact encode' "$mzarc" encode "$mzml_fixture" -o "$scratch/exact.mzarc"
+    run_quiet 'mzML exact decode' "$mzarc" decode "$scratch/exact.mzarc" -o "$scratch/exact.mzML"
+    if ! cmp -s "$mzml_fixture" "$scratch/exact.mzML"; then
+        echo "FAIL mzML exact round trip bytes" >&2
+        return 1
+    fi
+    echo "PASS mzML exact round trip bytes"
+
+    run_quiet 'mzML lossy encode' "$mzarc" encode "$mzml_fixture" -o "$scratch/lossy-doc.mzarc" --lossy
+    run_quiet 'mzML lossy decode' "$mzarc" decode "$scratch/lossy-doc.mzarc" -o "$scratch/lossy.mzML"
+    source_counts=$("$mzarc" dump "$mzml_fixture" -o "$scratch/source-dump.bin" | grep -E '^(spectra|total peaks|ms1 count|ms2 count):')
+    output_counts=$("$mzarc" dump "$scratch/lossy.mzML" -o "$scratch/lossy-dump.bin" | grep -E '^(spectra|total peaks|ms1 count|ms2 count):')
+    if [[ $source_counts != "$output_counts" ]]; then
+        echo "FAIL mzML lossy round trip counts" >&2
+        return 1
+    fi
+    echo "PASS mzML lossy round trip counts"
+
+    output=$("$mzarc" inspect "$scratch/lossy-doc.mzarc" 2>&1)
+    if [[ $output != *"kind: source document"* || $output != *"mode: lossy"* ]]; then
+        printf '%s\n' "$output" >&2
+        echo "FAIL mzML archive inspect" >&2
+        return 1
+    fi
+    echo "PASS mzML archive inspect"
+
+    if "$mzarc" encode "$mzml_fixture" -o "$scratch/rejected.mzarc" --intensity-quant 4096 >/dev/null 2>&1; then
+        echo "FAIL mzML encode accepted a Dump V1 option" >&2
+        return 1
+    fi
+    echo "PASS mzML encode rejects Dump V1 options"
+}
+
 run_quiet 'help' "$mzarc" --help
 check_dump_inspect_median
 check_mzml_dump
 check_mzml_dump_peak_limit
+check_mzml_archives
 run_quiet 'adversarial lossless round trips' "$mzarc" validate-adversarial "$adversarial"
 round_trip lossless
 round_trip lossy --lossy
