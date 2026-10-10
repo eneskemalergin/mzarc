@@ -218,6 +218,22 @@ check_mzml_archives() {
     fi
     echo "PASS mzML lossy round trip counts"
 
+    run_quiet 'mzML lossy bounds validation' \
+        "$mzarc" validate "$scratch/source-dump.bin" "$scratch/lossy-dump.bin" --mode=mzml-lossy
+    cp "$scratch/lossy-dump.bin" "$scratch/lossy-dump-invalid.bin"
+    # Byte 28 is the first m/z of the first spectrum; zero is neither the source value nor its quantization.
+    printf '\0\0\0\0\0\0\0\0' | dd \
+        of="$scratch/lossy-dump-invalid.bin" bs=1 seek=28 count=8 conv=notrunc 2>/dev/null
+    if "$mzarc" validate "$scratch/source-dump.bin" "$scratch/lossy-dump-invalid.bin" --mode=mzml-lossy >/dev/null 2>&1; then
+        echo "FAIL mzML lossy bounds validation accepted a changed m/z" >&2
+        return 1
+    fi
+    if "$mzarc" validate "$scratch/source-dump.bin" "$scratch/lossy-dump.bin" --mode=mzml-lossy --intensity-quant 4096 >/dev/null 2>&1; then
+        echo "FAIL mzML lossy bounds validation accepted --intensity-quant" >&2
+        return 1
+    fi
+    echo "PASS mzML lossy bounds validation rejects a changed m/z"
+
     output=$("$mzarc" inspect "$scratch/lossy-doc.mzarc" 2>&1)
     if [[ $output != *"kind: source document"* || $output != *"mode: lossy"* ]]; then
         printf '%s\n' "$output" >&2

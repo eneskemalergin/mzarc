@@ -32,7 +32,7 @@ fn printUsage() void {
             "  mzarc encode <input.mzML> -o <output.mzarc> [--lossy]\n" ++
             "  mzarc decode <input.mzarc> -o <output.bin|output.mzML> [--verbose-timing]\n" ++
             "  mzarc inspect <input.mzarc> [--json] [--blocks]\n" ++
-            "  mzarc validate <original.bin> <decoded.bin> --mode=lossless|lossy [--intensity-quant <levels>]\n" ++
+            "  mzarc validate <original.bin> <decoded.bin> --mode=lossless|lossy|mzml-lossy [--intensity-quant <levels>]\n" ++
             "  mzarc validate-adversarial <dir>\n",
         .{},
     );
@@ -455,6 +455,8 @@ fn checkLossySpectra(
     orig: []const binary_reader.RawSpectrum,
     dec: []const binary_reader.RawSpectrum,
     intensity_quant: u16,
+    // mzML lossy archives keep some arrays exact, so a bit-identical peak value also passes.
+    exact_allowed: bool,
     verbose: bool,
 ) bool {
     var all_pass = true;
@@ -490,18 +492,22 @@ fn checkLossySpectra(
             break;
         }
         for (o.mz, d.mz, o.intensity, d.intensity) |om, dm, oi, di| {
-            if (!std.math.isFinite(dm) or dm < 0.0) {
-                numeric_domain_mismatch = true;
-                continue;
+            const mz_exact = exact_allowed and @as(u64, @bitCast(om)) == @as(u64, @bitCast(dm));
+            if (!mz_exact) {
+                if (!std.math.isFinite(dm) or dm < 0.0) {
+                    numeric_domain_mismatch = true;
+                    continue;
+                }
+                const quantized_mz = quantize.quantizeMzValue(om, DEFAULT_ENCODE_OPTIONS.mz_scale_factor) catch {
+                    numeric_domain_mismatch = true;
+                    continue;
+                };
+                const expected_mz = quantize.dequantizeMzValue(quantized_mz, DEFAULT_ENCODE_OPTIONS.mz_scale_factor) catch unreachable;
+                if (@as(u64, @bitCast(dm)) != @as(u64, @bitCast(expected_mz))) mz_quantization_mismatch = true;
+                mz_max = @max(mz_max, @abs(om - dm));
             }
-            const quantized_mz = quantize.quantizeMzValue(om, DEFAULT_ENCODE_OPTIONS.mz_scale_factor) catch {
-                numeric_domain_mismatch = true;
-                continue;
-            };
-            const expected_mz = quantize.dequantizeMzValue(quantized_mz, DEFAULT_ENCODE_OPTIONS.mz_scale_factor) catch unreachable;
-            if (@as(u64, @bitCast(dm)) != @as(u64, @bitCast(expected_mz))) mz_quantization_mismatch = true;
-            mz_max = @max(mz_max, @abs(om - dm));
 
+            if (exact_allowed and @as(u32, @bitCast(oi)) == @as(u32, @bitCast(di))) continue;
             if (!std.math.isFinite(oi) or !std.math.isFinite(di)) {
                 numeric_domain_mismatch = true;
                 continue;
@@ -562,9 +568,11 @@ fn commandValidate(io: std.Io, allocator: std.mem.Allocator, args: []const [:0]c
 
     const lossless_mode = std.mem.eql(u8, mode_arg, "--mode=lossless");
     const lossy_mode = std.mem.eql(u8, mode_arg, "--mode=lossy");
-    if (!lossless_mode and !lossy_mode) return error.InvalidArguments;
+    const mzml_lossy_mode = std.mem.eql(u8, mode_arg, "--mode=mzml-lossy");
+    if (!lossless_mode and !lossy_mode and !mzml_lossy_mode) return error.InvalidArguments;
 
-    var intensity_quant = DEFAULT_ENCODE_OPTIONS.intensity_quant;
+    // The mzML lossy profile fixes its level count; only Dump V1 lossy accepts --intensity-quant.
+    var intensity_quant = if (mzml_lossy_mode) source_document.intensity_levels else DEFAULT_ENCODE_OPTIONS.intensity_quant;
     if (args.len == 7) {
         if (!lossy_mode or !std.mem.eql(u8, args[5], "--intensity-quant")) return error.InvalidArguments;
         intensity_quant = try std.fmt.parseInt(u16, args[6], 10);
@@ -579,7 +587,7 @@ fn commandValidate(io: std.Io, allocator: std.mem.Allocator, args: []const [:0]c
     const all_pass = if (lossless_mode)
         checkLosslessSpectra(io, orig, dec, true)
     else
-        checkLossySpectra(io, orig, dec, intensity_quant, true);
+        checkLossySpectra(io, orig, dec, intensity_quant, mzml_lossy_mode, true);
 
     if (!all_pass) return error.ValidationFailed;
 }

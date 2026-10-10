@@ -23,12 +23,32 @@ EOF
 repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 data_root=${MZARC_DATA:-$HOME/Github/data/mzml}
 
+# Removes a scratch tree this script created without a recursive delete: plain files at most
+# three levels deep, then the emptied directories. rmdir refuses anything left unexpected.
+remove_scratch() {
+    local root=$1 entry
+    if [[ -z "$root" || ! -d "$root" ]]; then
+        return 0
+    fi
+    for entry in "$root"/*/*/* "$root"/*/* "$root"/*; do
+        if [[ -f "$entry" || -L "$entry" ]]; then
+            rm -f -- "$entry"
+        fi
+    done
+    for entry in "$root"/*/*/ "$root"/*/; do
+        if [[ -d "$entry" ]]; then
+            rmdir -- "$entry"
+        fi
+    done
+    rmdir -- "$root"
+}
+
 run_checks() {
     local self="$repo_root/tools/benchmark.sh"
     local tiny="$data_root/examples/tiny.pwiz.1.1.mzML"
     local output report_text rows real_cmp
     benchmark_check_root=$(mktemp -d "${TMPDIR:-/var/tmp}/mzarc-benchmark-check.XXXXXX")
-    trap 'rm -rf -- "${benchmark_check_root:-}"' EXIT
+    trap 'remove_scratch "${benchmark_check_root:-}"' EXIT
 
     unset MZARC_BENCH_CHECKING MZARC_BENCH_ZEBRAC MZARC_BENCH_MSCOMPRESS
 
@@ -139,16 +159,24 @@ EOF
     report_text=$(<"$benchmark_check_root/success/report.md")
     for expected in '# Compression harness sanity check' 'Artifact / Dump V1' \
         'Artifact / original mzML' 'Threads (encode / decode)' '[P]' \
-        'byte exact' 'Dump V1 exact'; do
+        'byte exact' 'Dump V1 exact' '| mzarc exact ' '## Lossy archives' \
+        'mzML lossy bounds' 'Dump V1 lossy bounds' '## mzML ingest' 'IQR / median' \
+        'Load average'; do
         [[ "$report_text" == *"$expected"* ]] || \
             fail "report is missing: $expected"
     done
     shopt -s nullglob
     local json_files=("$benchmark_check_root/success/zebrac/"*.json)
     shopt -u nullglob
-    ((${#json_files[@]} == 34)) || fail 'sanity run did not retain 34 zebrac results'
+    ((${#json_files[@]} == 41)) || fail 'sanity run did not retain 41 zebrac results'
     rows=$(wc -l <"$benchmark_check_root/success/dump.tsv")
     ((rows == 8)) || fail 'sanity run did not retain eight Dump V1 rows'
+    rows=$(wc -l <"$benchmark_check_root/success/mzml.tsv")
+    ((rows == 10)) || fail 'sanity run did not retain ten original mzML rows'
+    rows=$(wc -l <"$benchmark_check_root/success/lossy.tsv")
+    ((rows == 2)) || fail 'sanity run did not retain two lossy rows'
+    rows=$(wc -l <"$benchmark_check_root/success/lossy-errors.tsv")
+    ((rows == 2)) || fail 'sanity run did not retain two lossy error rows'
     echo 'PASS benchmark check: complete sanity run'
 }
 
@@ -340,11 +368,12 @@ readonly mzarc_version changelog_version zig_version zmz_version mzarc_commit
 readonly zebrac_version zebrac_json_version gzip_version pigz_version zstd_version
 readonly xz_version mscompress_version jq_version gnuplot_version measurement_word
 
+cpu_governor=$(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor 2>/dev/null || echo unknown)
+load_start=$(cut -d' ' -f1-3 /proc/loadavg 2>/dev/null || echo unknown)
+readonly cpu_governor load_start
+
 scratch=$(mktemp -d "${TMPDIR:-/var/tmp}/mzarc-benchmark.XXXXXX")
-cleanup() {
-    rm -rf -- "$scratch"
-}
-trap cleanup EXIT
+trap 'remove_scratch "$scratch"' EXIT
 
 mkdir -p "$output_dir/zebrac"
 cp "$input" "$scratch/source.mzML"
@@ -374,9 +403,15 @@ mzml_bytes=$(stat -c %s "$scratch/source.mzML")
 dump_bytes=$(stat -c %s "$scratch/source.bin")
 readonly mzml_bytes dump_bytes
 readonly rows_dump="$output_dir/dump.tsv"
-readonly rows_mzml="$scratch/mzml.tsv"
+readonly rows_mzml="$output_dir/mzml.tsv"
+readonly rows_lossy="$output_dir/lossy.tsv"
+readonly lossy_errors="$output_dir/lossy-errors.tsv"
+readonly rows_ingest="$output_dir/ingest.tsv"
 : >"$rows_dump"
 : >"$rows_mzml"
+: >"$rows_lossy"
+: >"$lossy_errors"
+: >"$rows_ingest"
 
 zebrac_command() {
     local command=""
@@ -442,6 +477,9 @@ measure() {
          .results[0].wall_time.sample_count == $samples and
          (.results[0].wall_time.mean | type == "number") and
          (.results[0].wall_time.std_dev | type == "number") and
+         (.results[0].wall_time.median | type == "number") and
+         (.results[0].wall_time.q1 | type == "number") and
+         (.results[0].wall_time.q3 | type == "number") and
          .results[0].peak_rss.unit == "bytes" and
          .results[0].peak_rss.sample_count == $samples and
          (.results[0].peak_rss.median | type == "number")' \
@@ -478,14 +516,21 @@ record_row() {
           $validation,
           $artifact_bytes,
           (100 * $artifact_bytes / $input_bytes),
+          ($encode.wall_time.median / 1000000),
+          (($encode.wall_time.q3 - $encode.wall_time.q1) / 1000000),
+          ($input_bytes * 1000000000 / $encode.wall_time.median / 1048576),
+          ($encode.peak_rss.median / 1048576),
+          ($decode.wall_time.median / 1000000),
+          (($decode.wall_time.q3 - $decode.wall_time.q1) / 1000000),
+          ($input_bytes * 1000000000 / $decode.wall_time.median / 1048576),
+          ($decode.peak_rss.median / 1048576),
           ($encode.wall_time.mean / 1000000),
           ($encode.wall_time.std_dev / 1000000),
-          ($input_bytes * 1000000000 / $encode.wall_time.mean / 1048576),
-          ($encode.peak_rss.median / 1048576),
           ($decode.wall_time.mean / 1000000),
           ($decode.wall_time.std_dev / 1000000),
-          ($input_bytes * 1000000000 / $decode.wall_time.mean / 1048576),
-          ($decode.peak_rss.median / 1048576)
+          ($encode.instructions.median // ""),
+          ($decode.instructions.median // ""),
+          $input_bytes
         ] | @tsv' "$encode_json" >>"$rows"
 }
 
@@ -568,6 +613,28 @@ align_markdown_tables() {
     mv "$formatted" "$report"
 }
 
+# Prints one timing table (encode or decode) from rows; spread is the IQR as a share of the median.
+write_timing_table() {
+    local rows=$1
+    local direction=$2
+    local method thread_class validation artifact_bytes percent
+    local encode_median encode_iqr encode_rate encode_rss decode_median decode_iqr decode_rate decode_rss rest
+    local median iqr rate rss
+
+    echo '| Method | Median (ms) | IQR (ms) | IQR / median | MiB/s | Peak RSS (MiB) |'
+    echo '| --- | ---: | ---: | ---: | ---: | ---: |'
+    while IFS=$'\t' read -r method thread_class validation artifact_bytes percent \
+        encode_median encode_iqr encode_rate encode_rss decode_median decode_iqr decode_rate decode_rss rest; do
+        if [[ "$direction" == encode ]]; then
+            median=$encode_median iqr=$encode_iqr rate=$encode_rate rss=$encode_rss
+        else
+            median=$decode_median iqr=$decode_iqr rate=$decode_rate rss=$decode_rss
+        fi
+        awk -v method="$method" -v median="$median" -v iqr="$iqr" -v rate="$rate" -v rss="$rss" \
+            'BEGIN { printf "| %s | %.3f | %.3f | %.1f%% | %.2f | %.2f |\n", method, median, iqr, 100 * iqr / median, rate, rss }'
+    done <"$rows"
+}
+
 write_comparison() {
     local title=$1
     local input_label=$2
@@ -579,15 +646,18 @@ write_comparison() {
     local plot_path="$output_dir/$plot_name"
     local has_plot=false
     local input_mib
+    local method thread_class validation artifact_bytes percent rest
 
-    input_mib=$(awk -v bytes="$input_bytes" 'BEGIN { printf "%.2f", bytes / 1048576 }')
+    if [[ -n "$input_bytes" ]]; then
+        input_mib=$(awk -v bytes="$input_bytes" 'BEGIN { printf "%.2f", bytes / 1048576 }')
+    fi
 
-    if [[ "$sanity" != true && -n "$gnuplot_bin" ]]; then
+    if [[ "$sanity" != true && -n "$gnuplot_bin" && -n "$plot_name" ]]; then
         if "$gnuplot_bin" -c "$repo_root/tools/benchmark_plot.gp" \
             "$rows" "$plot_path" "$figure_title ($input_mib MiB input)" \
             "% of $input_label" \
             "$highlight_row" \
-            "n = $samples measurements after 1 warmup; throughput basis = input bytes; peak RSS = median; [P] = $threads workers"; then
+            "n = $samples measurements after 1 warmup; throughput basis = input bytes / median time; peak RSS = median; [P] = $threads workers"; then
             has_plot=true
         else
             rm -f -- "$plot_path"
@@ -598,8 +668,10 @@ write_comparison() {
     {
         echo "## $title"
         echo
-        echo "Comparison input: $input_label, $input_mib MiB ($input_bytes bytes)."
-        echo
+        if [[ -n "$input_bytes" ]]; then
+            echo "Comparison input: $input_label, $input_mib MiB ($input_bytes bytes)."
+            echo
+        fi
         if [[ "$has_plot" == true ]]; then
             echo "![$title summary]($plot_name)"
             echo
@@ -608,28 +680,18 @@ write_comparison() {
         echo
         echo "| Method | Threads (encode / decode) | Validation | Artifact bytes | Artifact / $input_label |"
         echo '| --- | --- | --- | ---: | ---: |'
-        while IFS=$'\t' read -r method thread_class validation artifact_bytes percent encode_mean encode_std encode_rate encode_rss decode_mean decode_std decode_rate decode_rss; do
+        while IFS=$'\t' read -r method thread_class validation artifact_bytes percent rest; do
             printf '| %s | %s | %s | %s | %.2f%% |\n' \
                 "$method" "$thread_class" "$validation" "$artifact_bytes" "$percent"
         done <"$rows"
         echo
         echo '### Encode'
         echo
-        echo '| Method | Mean ± SD (ms) | MiB/s | Peak RSS (MiB) |'
-        echo '| --- | ---: | ---: | ---: |'
-        while IFS=$'\t' read -r method thread_class validation artifact_bytes percent encode_mean encode_std encode_rate encode_rss decode_mean decode_std decode_rate decode_rss; do
-            printf '| %s | %.3f ± %.3f | %.2f | %.2f |\n' \
-                "$method" "$encode_mean" "$encode_std" "$encode_rate" "$encode_rss"
-        done <"$rows"
+        write_timing_table "$rows" encode
         echo
         echo '### Decode'
         echo
-        echo '| Method | Mean ± SD (ms) | MiB/s | Peak RSS (MiB) |'
-        echo '| --- | ---: | ---: | ---: |'
-        while IFS=$'\t' read -r method thread_class validation artifact_bytes percent encode_mean encode_std encode_rate encode_rss decode_mean decode_std decode_rate decode_rss; do
-            printf '| %s | %.3f ± %.3f | %.2f | %.2f |\n' \
-                "$method" "$decode_mean" "$decode_std" "$decode_rate" "$decode_rss"
-        done <"$rows"
+        write_timing_table "$rows" decode
         echo
     } >>"$output_dir/report.md"
 }
@@ -654,6 +716,107 @@ run_mzarc_dump() {
         "$dump_bytes" "$work/archive.mzarc" \
         "$output_dir/zebrac/dump-mzarc-encode.json" \
         "$output_dir/zebrac/dump-mzarc-decode.json"
+}
+
+run_mzarc_mzml() {
+    local work="$scratch/mzml-mzarc"
+    mkdir -p "$work"
+
+    "$mzarc" encode "$scratch/source.mzML" -o "$work/archive.mzarc" >/dev/null
+    "$mzarc" decode "$work/archive.mzarc" -o "$work/decoded.mzML" >/dev/null
+    cmp "$scratch/source.mzML" "$work/decoded.mzML"
+
+    measure mzml-mzarc-encode "$mzarc" encode "$scratch/source.mzML" -o "$work/archive.mzarc"
+    measure mzml-mzarc-decode "$mzarc" decode "$work/archive.mzarc" -o "$work/decoded.mzML"
+    cmp "$scratch/source.mzML" "$work/decoded.mzML"
+    record_row "$rows_mzml" 'mzarc exact' 'single / single' 'byte exact' \
+        "$mzml_bytes" "$work/archive.mzarc" \
+        "$output_dir/zebrac/mzml-mzarc-encode.json" \
+        "$output_dir/zebrac/mzml-mzarc-decode.json"
+}
+
+# Validates a lossy round trip and keeps the largest m/z and log1p intensity errors it observed.
+validate_lossy() {
+    local method=$1
+    local mode=$2
+    local source=$3
+    local decoded=$4
+    local arrays=$5
+    local output
+
+    output=$("$mzarc" validate "$source" "$decoded" "--mode=$mode")
+    awk -v method="$method" -v arrays="$arrays" '
+        $2 == "mz_max_observed_error" { mz = $3 }
+        $2 == "intensity_log1p_max_error" { log_error = $3; limit = $5 }
+        END {
+            if (mz == "" || log_error == "") exit 2
+            printf "%s\t%s\t%s\t%s\t%s\n", method, mz, log_error, limit, arrays
+        }
+    ' <<<"$output" >>"$lossy_errors"
+}
+
+run_mzarc_lossy_dump() {
+    local method='mzarc lossy (Dump V1 input)'
+    local work="$scratch/lossy-dump-mzarc"
+    mkdir -p "$work"
+
+    "$mzarc" encode "$scratch/source.bin" -o "$work/archive.mzarc" --lossy
+    "$mzarc" decode "$work/archive.mzarc" -o "$work/decoded.bin"
+    "$mzarc" validate "$scratch/source.bin" "$work/decoded.bin" --mode=lossy >/dev/null
+
+    measure lossy-dump-mzarc-encode "$mzarc" encode "$scratch/source.bin" -o "$work/archive.mzarc" --lossy
+    measure lossy-dump-mzarc-decode "$mzarc" decode "$work/archive.mzarc" -o "$work/decoded.bin"
+    validate_lossy "$method" lossy "$scratch/source.bin" "$work/decoded.bin" 'every array'
+    record_row "$rows_lossy" "$method" 'single / single' 'Dump V1 lossy bounds' \
+        "$dump_bytes" "$work/archive.mzarc" \
+        "$output_dir/zebrac/lossy-dump-mzarc-encode.json" \
+        "$output_dir/zebrac/lossy-dump-mzarc-decode.json"
+}
+
+run_mzarc_lossy_mzml() {
+    local method='mzarc lossy (mzML input)'
+    local work="$scratch/lossy-mzml-mzarc"
+    mkdir -p "$work"
+
+    local summary arrays
+    summary=$("$mzarc" encode "$scratch/source.mzML" -o "$work/archive.mzarc" --lossy)
+    arrays=$(awk -F': ' '
+        $1 == "arrays coded" { coded = $2 }
+        $1 == "arrays kept exact" { kept = $2 }
+        END { if (coded == "" || kept == "") exit 2; printf "%d of %d", coded, coded + kept }
+    ' <<<"$summary")
+    "$mzarc" decode "$work/archive.mzarc" -o "$work/decoded.mzML" >/dev/null
+    "$mzarc" dump "$work/decoded.mzML" -o "$work/decoded.bin" >/dev/null
+    "$mzarc" validate "$scratch/source.bin" "$work/decoded.bin" --mode=mzml-lossy >/dev/null
+
+    measure lossy-mzml-mzarc-encode "$mzarc" encode "$scratch/source.mzML" -o "$work/archive.mzarc" --lossy
+    measure lossy-mzml-mzarc-decode "$mzarc" decode "$work/archive.mzarc" -o "$work/decoded.mzML"
+    "$mzarc" dump "$work/decoded.mzML" -o "$work/decoded.bin" >/dev/null
+    validate_lossy "$method" mzml-lossy "$scratch/source.bin" "$work/decoded.bin" "$arrays"
+    record_row "$rows_lossy" "$method" 'single / single' 'mzML lossy bounds' \
+        "$mzml_bytes" "$work/archive.mzarc" \
+        "$output_dir/zebrac/lossy-mzml-mzarc-encode.json" \
+        "$output_dir/zebrac/lossy-mzml-mzarc-decode.json"
+}
+
+# Measures mzML to Dump V1 ingest; its output must equal the dump every other row starts from.
+run_mzarc_ingest() {
+    local work="$scratch/ingest"
+    mkdir -p "$work"
+
+    measure mzml-mzarc-dump "$mzarc" dump "$scratch/source.mzML" -o "$work/source.bin"
+    cmp "$scratch/source.bin" "$work/source.bin"
+    "$jq_bin" -r --argjson input_bytes "$mzml_bytes" --argjson output_bytes "$dump_bytes" '
+        .results[0] as $dump |
+        [
+          "mzarc dump",
+          $output_bytes,
+          ($dump.wall_time.median / 1000000),
+          (($dump.wall_time.q3 - $dump.wall_time.q1) / 1000000),
+          ($input_bytes * 1000000000 / $dump.wall_time.median / 1048576),
+          ($dump.peak_rss.median / 1048576),
+          ($dump.instructions.median // "")
+        ] | @tsv' "$output_dir/zebrac/mzml-mzarc-dump.json" >"$rows_ingest"
 }
 
 run_gzip() {
@@ -779,6 +942,9 @@ run_mscompress() {
         "$output_dir/zebrac/mzml-mscompress-$suffix-decode.json"
 }
 
+echo "measuring mzML to Dump V1 ingest"
+run_mzarc_ingest
+
 echo "testing and measuring the Dump V1 comparison"
 run_mzarc_dump
 run_gzip dump "$scratch/source.bin" "$dump_bytes" "$rows_dump"
@@ -790,6 +956,7 @@ run_xz dump "$scratch/source.bin" "$dump_bytes" "$rows_dump" 1 single 'xz -6 -T1
 run_xz dump "$scratch/source.bin" "$dump_bytes" "$rows_dump" "$threads" "fixed-$threads" "xz -6 -T$threads [P]"
 
 echo "testing and measuring the direct mzML comparison"
+run_mzarc_mzml
 run_gzip mzml "$scratch/source.mzML" "$mzml_bytes" "$rows_mzml"
 run_pigz mzml "$scratch/source.mzML" "$mzml_bytes" "$rows_mzml" 1 single 'pigz -6 -p1'
 run_pigz mzml "$scratch/source.mzML" "$mzml_bytes" "$rows_mzml" "$threads" "fixed-$threads" "pigz -6 -p$threads [P]"
@@ -800,44 +967,88 @@ run_xz mzml "$scratch/source.mzML" "$mzml_bytes" "$rows_mzml" "$threads" "fixed-
 run_mscompress 1 single 'MScompress -t1'
 run_mscompress "$threads" "fixed-$threads" "MScompress -t$threads [P]"
 
+echo "testing and measuring the lossy profiles"
+run_mzarc_lossy_dump
+run_mzarc_lossy_mzml
+load_end=$(cut -d' ' -f1-3 /proc/loadavg 2>/dev/null || echo unknown)
+readonly load_end
+
+# Findings are computed from the rows, so the wording follows whatever this run measured.
+# Columns: 1 method, 2 threads, 4 bytes, 5 percent, 8 encode MiB/s, 9 encode RSS, 12 decode MiB/s, 13 decode RSS.
+findings_awk='
+    function mib(bytes) { return bytes / 1048576 }
+    function versus(own, other) {
+        if (own <= other) return sprintf("%.2f%% smaller than", 100 * (other - own) / other)
+        return sprintf("%.2f%% larger than", 100 * (own - other) / other)
+    }
+    function rank(column, own, row, count) {
+        count = 1
+        for (row = 1; row <= rows; row++) if (value[row, column] > own) count++
+        return count
+    }
+    {
+        rows++
+        name[rows] = $1; threads[rows] = $2; validation[rows] = $3
+        for (column = 4; column <= 13; column++) value[rows, column] = $column
+        if ($1 == target) own = rows
+    }
+    function best(column, lowest, single_only, exact_only, row, found) {
+        found = 0
+        for (row = 1; row <= rows; row++) {
+            if (row == own) continue
+            if (single_only && threads[row] != "single / single") continue
+            if (exact_only && validation[row] != "byte exact") continue
+            if (!found || (lowest ? value[row, column] < value[found, column] : value[row, column] > value[found, column])) found = row
+        }
+        return found
+    }
+    END {
+        if (!own) exit 2
+        small = best(4, 1, 0, 1); fast_single = best(8, 0, 1, 0); fast_encode = best(8, 0, 0, 0); fast_decode = best(12, 0, 0, 0)
+        low_encode = best(9, 1, 0, 0); low_decode = best(13, 1, 0, 0)
+        if (!small || !fast_single || !fast_encode || !fast_decode) exit 2
+        printf "- **%s:** `%s` writes %.2f MiB (%.2f%% of the input), %s the smallest byte-exact peer, `%s` (%.2f MiB).", label, target, mib(value[own, 4]), value[own, 5], versus(value[own, 4], value[small, 4]), name[small], mib(value[small, 4])
+        other = best(4, 1, 0, 0)
+        if (other && other != small && value[other, 4] < value[own, 4]) printf " `%s` writes %.2f MiB but is validated as %s.", name[other], mib(value[other, 4]), validation[other]
+        printf "\n"
+        printf "  Encode: %.2f MiB/s, rank %d of %d rows; the fastest single-threaded peer is `%s` at %.2f MiB/s", value[own, 8], rank(8, value[own, 8]), rows, name[fast_single], value[fast_single, 8]
+        if (fast_encode != fast_single) printf " and the fastest peer overall is `%s` at %.2f MiB/s", name[fast_encode], value[fast_encode, 8]
+        printf "."
+        printf " Decode: %.2f MiB/s, rank %d of %d; the fastest is `%s` at %.2f MiB/s.", value[own, 12], rank(12, value[own, 12]), rows, name[fast_decode], value[fast_decode, 12]
+        printf " Peak RSS: %.2f MiB encode and %.2f MiB decode; the lowest peers are `%s` (%.2f MiB) and `%s` (%.2f MiB).\n", value[own, 9], value[own, 13], name[low_encode], value[low_encode, 9], name[low_decode], value[low_decode, 13]
+    }
+'
+
 {
+    echo '<!-- markdownlint-disable MD024 -->'
+    echo
     if [[ "$sanity" == true ]]; then
-        echo '<!-- markdownlint-disable MD024 -->'
-        echo
         echo '# Compression harness sanity check'
         echo
         echo 'This parser-example run checks command wiring and round trips. Its size, timing, RSS, and rankings are not benchmark evidence.'
     else
-        echo '<!-- markdownlint-disable MD024 -->'
-        echo
         echo '# Reference compression benchmark'
         echo
-        echo 'This report compares lossless compression of one mzML-derived Dump V1 input and the original mzML document. Compare methods only within the same input section because the inputs and validation contracts differ.'
+        echo 'This report measures one mzML file three ways: lossless compression of its Dump V1 spectra, lossless compression of the original document, and the mzarc lossy profiles. Compare methods only within one section, because the inputs and validation contracts differ.'
         echo
         echo '## Key findings'
         echo
-        awk -F $'\t' -v workers="$threads" '
-            $1 == "mzarc lossless" { mzarc_bytes = $4; mzarc_pct = $5; mzarc_encode = $8; mzarc_encode_rss = $9; mzarc_decode = $12; mzarc_decode_rss = $13 }
-            $1 == "xz -6 -T1" { xz_bytes = $4 }
-            $1 == "zstd -3 --single-thread" { zstd_decode = $12 }
-            $1 ~ /^zstd -3 -T[0-9]+ \[P\]$/ { zstd_parallel_encode = $8; zstd_parallel_decode = $12 }
-            $1 == "gzip -6" { gzip_encode_rss = $9; gzip_decode_rss = $13 }
-            END {
-                if (!mzarc_bytes || !xz_bytes || !zstd_decode || !zstd_parallel_encode || !zstd_parallel_decode || !gzip_encode_rss) exit 2
-                printf "- mzarc produces a %.2f MiB artifact from the Dump V1 input (%.2f%% of input), %.2f%% smaller than the next-smallest single-threaded byte-exact row, xz `-6 -T1`.\n", mzarc_bytes / 1048576, mzarc_pct, 100 * (xz_bytes - mzarc_bytes) / xz_bytes
-                printf "- mzarc is the fastest single-threaded Dump V1 encoder at %.2f MiB/s. The fixed-%d zstd row leads overall encode at %.2f MiB/s. zstd records %.2f MiB/s decode for the single-thread artifact and %.2f MiB/s for the fixed-%d artifact; both decode operations are single-threaded.\n", mzarc_encode, workers, zstd_parallel_encode, zstd_decode, zstd_parallel_decode, workers
-                printf "- mzarc peak RSS is %.2f MiB for encode and %.2f MiB for decode on this file. gzip records the lowest values in the Dump V1 table at %.2f MiB and %.2f MiB.\n", mzarc_encode_rss, mzarc_decode_rss, gzip_encode_rss, gzip_decode_rss
+        awk -F $'\t' -v target='mzarc lossless' -v label='Dump V1' "$findings_awk" "$rows_dump"
+        awk -F $'\t' -v target='mzarc exact' -v label='Original mzML' "$findings_awk" "$rows_mzml"
+        awk -F $'\t' -v exact_bytes="$(awk -F $'\t' '$1 == "mzarc exact" { print $4 }' "$rows_mzml")" \
+            -v lossless_bytes="$(awk -F $'\t' '$1 == "mzarc lossless" { print $4 }' "$rows_dump")" '
+            FNR == NR { mz_error[$1] = $2; log_error[$1] = $3; limit[$1] = $4; next }
+            $1 ~ /Dump V1/ { dump_pct = $5; dump_bytes = $4; dump_name = $1 }
+            $1 ~ /mzML/ { mzml_pct = $5; mzml_bytes = $4; mzml_name = $1 }
+            function versus(own, other) {
+                if (own <= other) return sprintf("%.2f%% smaller than", 100 * (other - own) / other)
+                return sprintf("%.2f%% larger than", 100 * (own - other) / other)
             }
-        ' "$rows_dump"
-        awk -F $'\t' -v workers="$threads" '
-            $1 == "xz -6 -T1" { xz_pct = $5 }
-            $1 ~ /^zstd -3 -T[0-9]+ \[P\]$/ { zstd_encode = $8; zstd_decode = $12 }
-            $1 ~ /^MScompress -t[0-9]+ \[P\]$/ { mscompress_pct = $5 }
             END {
-                if (!xz_pct || !zstd_encode || !zstd_decode || !mscompress_pct) exit 2
-                printf "- On original mzML, MScompress `-t%d` writes the smallest artifact at %.2f%% but is validated as Dump V1 exact. xz `-6 -T1` is the smallest document-byte-exact row at %.2f%%. The fixed-%d zstd row records %.2f MiB/s encode; its single-threaded decode records %.2f MiB/s.\n", workers, mscompress_pct, xz_pct, workers, zstd_encode, zstd_decode
+                if (!dump_bytes || !mzml_bytes || !exact_bytes || !lossless_bytes) exit 2
+                printf "- **Lossy:** the mzML lossy archive is %.2f%% of the original document, %s the exact archive; the Dump V1 lossy archive is %.2f%% of its input, %s the lossless archive. Largest observed errors: m/z %s Da and log1p intensity %s (mzML), m/z %s Da and log1p intensity %s (Dump V1), against a format-wide log1p limit of %s.\n", mzml_pct, versus(mzml_bytes, exact_bytes), dump_pct, versus(dump_bytes, lossless_bytes), mz_error[mzml_name], log_error[mzml_name], mz_error[dump_name], log_error[dump_name], limit[mzml_name]
             }
-        ' "$rows_mzml"
+        ' "$lossy_errors" "$rows_lossy"
     fi
     echo
     echo '## Run context'
@@ -846,54 +1057,103 @@ run_mscompress "$threads" "fixed-$threads" "MScompress -t$threads [P]"
     echo "- Source shape: $spectra spectra; $total_peaks peaks; $ms1_count MS1 and $ms2_count MS2 spectra"
     echo "- Measured: $(date --iso-8601=seconds)"
     echo "- Host: $cpu; $host"
+    echo "- CPU frequency governor: $cpu_governor"
+    echo "- Load average (1, 5, 15 min): $load_start before the build, $load_end after the last measurement"
     echo '- mzarc build: stripped ReleaseFast, single-threaded'
     echo "- Sampling: $samples $measurement_word per operation after one warmup"
     echo "- Parallel rows: $threads workers, marked \`[P]\`; direction-specific behavior remains in the tables"
     echo '- Execution: each operation is measured independently; files are reused after untimed validation and one warmup'
-    echo '- Throughput: uncompressed input bytes divided by mean wall time'
+    echo '- Timing: median wall time with its interquartile range (IQR); throughput is uncompressed input bytes divided by the median'
     echo '- Peak RSS: median zebrac direct-child RSS'
+    awk -F $'\t' -v threshold=5 '
+        {
+            for (direction = 0; direction < 2; direction++) {
+                median = $(6 + 4 * direction); iqr = $(7 + 4 * direction); total++
+                if (median <= 0 || 100 * iqr / median <= threshold) continue
+                noisy++; spread[noisy] = 100 * iqr / median
+                label[noisy] = sprintf("`%s` %s", $1, direction ? "decode" : "encode")
+            }
+        }
+        END {
+            if (!noisy) { printf "- Spread: every one of the %d operations has an IQR at or below %d%% of its median\n", total, threshold; exit }
+            for (shown = 1; shown <= 3 && shown <= noisy; shown++) {
+                worst = 0
+                for (row = 1; row <= noisy; row++) if (!(row in used) && (!worst || spread[row] > spread[worst])) worst = row
+                used[worst] = 1; list = list (shown > 1 ? ", " : "") sprintf("%s %.1f%%", label[worst], spread[worst])
+            }
+            printf "- Spread: %d of %d operations have an IQR above %d%% of their median (largest: %s); compare those timings only after a repeat run\n", noisy, total, threshold, list
+        }
+    ' "$rows_dump" "$rows_mzml" "$rows_lossy"
     echo
 } >"$output_dir/report.md"
-if [[ "$sanity" != true ]]; then
-    mzarc_bytes=$(awk -F $'\t' '$1 == "mzarc lossless" { print $4; exit }' "$rows_dump")
-    dump_of_mzml=$(awk -v dump="$dump_bytes" -v mzml="$mzml_bytes" 'BEGIN { printf "%.2f", 100 * dump / mzml }')
-    mzarc_of_mzml=$(awk -v artifact="$mzarc_bytes" -v mzml="$mzml_bytes" 'BEGIN { printf "%.2f", 100 * artifact / mzml }')
-    {
-        echo '## Input size context'
-        echo
-        echo '| Representation | Bytes | MiB | Representation / original mzML |'
-        echo '| --- | ---: | ---: | ---: |'
-        awk -v bytes="$mzml_bytes" 'BEGIN { printf "| Original mzML | %d | %.2f | 100.00%% |\n", bytes, bytes / 1048576 }'
-        awk -v bytes="$dump_bytes" -v pct="$dump_of_mzml" 'BEGIN { printf "| Dump V1 retained fields | %d | %.2f | %s%% |\n", bytes, bytes / 1048576, pct }'
-        awk -v bytes="$mzarc_bytes" -v pct="$mzarc_of_mzml" 'BEGIN { printf "| mzarc lossless | %d | %.2f | %s%% |\n", bytes, bytes / 1048576, pct }'
-        echo
-        echo 'The mzarc percentage against original mzML describes the current mzML-to-Dump-V1-to-mzarc storage path. mzarc reads Dump V1 and does not reproduce the original mzML document.'
-        echo
-    } >>"$output_dir/report.md"
-fi
+
+{
+    echo '## Input size context'
+    echo
+    echo '| Representation | Bytes | MiB | Representation / original mzML |'
+    echo '| --- | ---: | ---: | ---: |'
+    awk -F $'\t' -v mzml="$mzml_bytes" -v dump="$dump_bytes" '
+        function row(label, bytes) { printf "| %s | %d | %.2f | %.2f%% |\n", label, bytes, bytes / 1048576, 100 * bytes / mzml }
+        FILENAME ~ /dump.tsv$/ && $1 == "mzarc lossless" { lossless = $4 }
+        FILENAME ~ /mzml.tsv$/ && $1 == "mzarc exact" { exact = $4 }
+        FILENAME ~ /lossy.tsv$/ && $1 ~ /mzML/ { lossy_mzml = $4 }
+        FILENAME ~ /lossy.tsv$/ && $1 ~ /Dump V1/ { lossy_dump = $4 }
+        END {
+            row("Original mzML", mzml)
+            row("mzarc exact archive of the document", exact)
+            row("mzarc lossy archive of the document", lossy_mzml)
+            row("Dump V1 retained fields", dump)
+            row("mzarc lossless archive of Dump V1", lossless)
+            row("mzarc lossy archive of Dump V1", lossy_dump)
+        }
+    ' "$rows_dump" "$rows_mzml" "$rows_lossy"
+    echo
+    echo 'The document archives restore the whole mzML file: exactly, or with only spectrum m/z and intensity values changed within their bounds. The Dump V1 archives restore only the spectrum fields Dump V1 keeps.'
+    echo
+    echo '## mzML ingest'
+    echo
+    echo 'Converting the original mzML to Dump V1 with `mzarc dump`. Its output is checked byte for byte against the dump every Dump V1 row starts from.'
+    echo
+    echo '| Step | Output bytes | Median (ms) | IQR (ms) | mzML MiB/s | Peak RSS (MiB) |'
+    echo '| --- | ---: | ---: | ---: | ---: | ---: |'
+    awk -F $'\t' '{ printf "| `%s` | %d | %.3f | %.3f | %.2f | %.2f |\n", $1, $2, $3, $4, $5, $6 }' "$rows_ingest"
+    echo
+} >>"$output_dir/report.md"
+
 write_comparison 'Dump V1 round trip' 'Dump V1' "$dump_bytes" "$rows_dump" \
     'dump-summary.svg' 0 "mzML-derived Dump V1 round trip: $source_name"
 write_comparison 'Original mzML round trip' 'original mzML' "$mzml_bytes" "$rows_mzml" \
-    'mzml-summary.svg' -1 "Original mzML round trip: $source_name"
+    'mzml-summary.svg' 0 "Original mzML round trip: $source_name"
+write_comparison 'Lossy archives' 'its input' '' "$rows_lossy" '' '' ''
 {
+    echo 'Observed errors, from `mzarc validate` after the timed runs:'
+    echo
+    echo '| Method | Arrays transformed | Max m/z error (Da) | Max log1p intensity error | Format-wide log1p limit |'
+    echo '| --- | ---: | ---: | ---: | ---: |'
+    awk -F $'\t' '{ printf "| %s | %s | %s | %s | %s |\n", $1, $5, $2, $3, $4 }' "$lossy_errors"
+    echo
+    echo 'The mzML profile keeps an array exact when the profile cannot hold it: 32-bit m/z, unsupported compression, negative or non-finite intensity. Errors are measured over the transformed values.'
+    echo
     echo '## Validation boundaries'
     echo
-    echo '- mzarc, gzip, pigz, zstd, and xz reproduce their Dump V1 input byte for byte.'
-    echo '- gzip, pigz, zstd, and xz reproduce the original mzML document byte for byte.'
+    echo '- mzarc lossless, gzip, pigz, zstd, and xz reproduce their Dump V1 input byte for byte.'
+    echo '- mzarc exact, gzip, pigz, zstd, and xz reproduce the original mzML document byte for byte.'
     echo '- MScompress reproduces the fields retained by Dump V1 here, not necessarily the original document bytes. Its decoded mzML is converted through the same Dump V1 converter and compared byte for byte with the source dump.'
+    echo '- mzarc lossy (Dump V1 input) passes `mzarc validate --mode=lossy`: metadata exact, every m/z equal to its quantized value, and intensity within the format-wide log1p limit.'
+    echo '- mzarc lossy (mzML input) passes `mzarc validate --mode=mzml-lossy` on the Dump V1 of its decoded document: every peak is unchanged or carries the same transform within the same limit. The archive format restores every other document byte; the test suite and the release sweep check that.'
     echo
     echo '## Limits'
     echo
     echo '- This report covers one file and one acquisition shape. It does not establish performance or RSS behavior across the broader corpus.'
-    echo '- mzarc currently starts from Dump V1. The original mzML section therefore has no mzarc row.'
-    echo '- The runner does not clear filesystem caches, randomize operation order, isolate CPUs, or control system load and CPU frequency.'
+    echo '- Lossy rows are not comparable with the lossless and exact rows; they trade bounded spectrum error for size.'
+    echo '- The runner does not clear filesystem caches, randomize operation order, isolate CPUs, or control system load and CPU frequency. The load average and spread lines above show how quiet the run was.'
     echo '- Wall time and RSS are measurements from one host, not portable guarantees.'
     echo
     echo '## Tool versions'
     echo
     echo "- mzarc: \`v$mzarc_version\` at \`$mzarc_commit\`"
     echo "- Build: Zig \`$zig_version\`; stripped ReleaseFast; single-threaded"
-    echo "- Ingest: \`mzarc dump\` on zmz \`$zmz_version\`"
+    echo "- Ingest and mzML reading: \`mzarc dump\` on zmz \`$zmz_version\`"
     echo "- Measurement: \`$zebrac_version\`"
     echo "- Compression peers: \`$gzip_version\`; \`$pigz_version\`; \`$zstd_version\`; \`$xz_version\`; \`MScompress $mscompress_version\`"
     if [[ -n "$gnuplot_bin" ]]; then
@@ -902,17 +1162,17 @@ write_comparison 'Original mzML round trip' 'original mzML' "$mzml_bytes" "$rows
         echo "- Report generation: \`$jq_version\`; gnuplot not installed, so figures were omitted"
     fi
     echo
+    echo '## Machine-readable rows'
+    echo
     if [[ "$sanity" == true ]]; then
-        echo '## Machine-readable rows'
-        echo
-        echo 'The full-precision Dump V1 rows are retained in [dump.tsv](dump.tsv). They are sanity output, not benchmark evidence.'
+        echo 'The full-precision rows are retained beside this report. They are sanity output, not benchmark evidence.'
     else
-        echo '## Machine-readable rows'
-        echo
-        echo 'The full-precision Dump V1 rows are retained in [dump.tsv](dump.tsv) for direct local comparisons. The reader-facing tables above are rounded.'
-        echo
-        echo 'Column order: method, thread class, validation, artifact bytes, artifact percentage, encode mean ms, encode SD ms, encode MiB/s, encode RSS MiB, decode mean ms, decode SD ms, decode MiB/s, and decode RSS MiB.'
+        echo 'The full-precision rows are retained beside this report for direct local comparisons; the tables above are rounded. Every zebrac result is in `zebrac/`.'
     fi
+    echo
+    echo '- [dump.tsv](dump.tsv), [mzml.tsv](mzml.tsv), and [lossy.tsv](lossy.tsv): method, thread class, validation, artifact bytes, artifact percentage of input, encode median ms, encode IQR ms, encode MiB/s, encode RSS MiB, decode median ms, decode IQR ms, decode MiB/s, decode RSS MiB, encode mean ms, encode SD ms, decode mean ms, decode SD ms, encode median instructions, decode median instructions, and input bytes.'
+    echo '- [lossy-errors.tsv](lossy-errors.tsv): method, max m/z error in Da, max log1p intensity error, the format-wide log1p limit, and the arrays transformed.'
+    echo '- [ingest.tsv](ingest.tsv): step, output bytes, median ms, IQR ms, mzML MiB/s, peak RSS MiB, and median instructions.'
 } >>"$output_dir/report.md"
 
 align_markdown_tables "$output_dir/report.md"
