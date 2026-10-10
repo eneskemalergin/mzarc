@@ -332,3 +332,95 @@ test "[failure] - [source-document lossy]: rejects mzML drafts before 1.0" {
     try tmp.dir.writeFile(std.testing.io, .{ .sub_path = "in", .data = "<?xml version=\"1.0\"?>\n<mzML xmlns=\"http://psi.hupo.org/schema_revision/mzML_0.99.10\"></mzML>\n" });
     try std.testing.expectError(error.UnsupportedVersion, source_document.encodeLossy(std.testing.io, std.testing.allocator, try pathIn(&tmp, &a, "in"), try pathIn(&tmp, &b, "arc")));
 }
+
+/// One m/z record stream: the array record alone, between two raw spans, with the given layout byte.
+fn mzRecordStream(allocator: std.mem.Allocator, stream: *std.ArrayList(u8), layout: u8, codes: []const u64) !void {
+    try stream.append(allocator, 1);
+    try stream.appendSlice(allocator, &std.mem.toBytes(std.mem.nativeToLittle(u64, 3)));
+    try stream.appendSlice(allocator, "<b>");
+    try stream.appendSlice(allocator, &.{ 2, 1, 1, 0 }); // array: m/z, f64, no compression
+    try stream.appendSlice(allocator, &std.mem.toBytes(std.mem.nativeToLittle(u32, @intCast(codes.len))));
+    try stream.append(allocator, layout);
+    for (codes) |code| try stream.appendSlice(allocator, &std.mem.toBytes(std.mem.nativeToLittle(u64, code)));
+    try stream.append(allocator, 0);
+}
+
+test "[integration] - [source-document lossy]: rounds flagged m/z arrays to f32 and leaves others alone" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const allocator = std.testing.allocator;
+    const codes = [_]u64{ 50_049_999, 150_000_123 };
+
+    for ([_]u8{ 0x00, 0x02 }) |layout| {
+        var stream: std.ArrayList(u8) = .empty;
+        defer stream.deinit(allocator);
+        try mzRecordStream(allocator, &stream, layout, &codes);
+        const archive = try handArchive(allocator, source_document.flag_source_document, 1, stream.items);
+        defer allocator.free(archive);
+
+        // Independent expectation: code / 500000 in f64, rounded to f32 when the f32 bit is set.
+        var raw: [codes.len * 8]u8 = undefined;
+        for (codes, 0..) |code, i| {
+            var value = @as(f64, @floatFromInt(code)) / 500000.0;
+            if (layout & 0x02 != 0) value = @as(f32, @floatCast(value));
+            std.mem.writeInt(u64, raw[i * 8 ..][0..8], @bitCast(value), .little);
+        }
+        var text: [32]u8 = undefined;
+        var expected_buffer: [64]u8 = undefined;
+        const expected = try std.fmt.bufPrint(&expected_buffer, "<b>{s}", .{std.base64.standard.Encoder.encode(&text, &raw)});
+
+        const decoded = try decodeBytes(&tmp, archive);
+        defer allocator.free(decoded);
+        try std.testing.expectEqualStrings(expected, decoded);
+    }
+
+    // Bits other than the layout and the f32 flag are reserved.
+    var stream: std.ArrayList(u8) = .empty;
+    defer stream.deinit(allocator);
+    try mzRecordStream(allocator, &stream, 0x04, &codes);
+    const archive = try handArchive(allocator, source_document.flag_source_document, 1, stream.items);
+    defer allocator.free(archive);
+    try std.testing.expectError(error.InvalidRecord, decodeBytes(&tmp, archive));
+}
+
+fn mzDocument(buffer: []u8, text: []u8, values: []const f64) ![]const u8 {
+    const encoded = std.base64.standard.Encoder.encode(text, std.mem.sliceAsBytes(values));
+    return std.fmt.bufPrint(buffer, "<?xml version=\"1.0\"?>\n<mzML xmlns=\"http://psi.hupo.org/ms/mzml\" version=\"1.1.0\"><run id=\"r\"><spectrumList count=\"1\"><spectrum index=\"0\" id=\"scan=1\" defaultArrayLength=\"{d}\"><binaryDataArrayList count=\"1\"><binaryDataArray encodedLength=\"{d}\"><cvParam cvRef=\"MS\" accession=\"MS:1000523\" name=\"64-bit float\"/><cvParam cvRef=\"MS\" accession=\"MS:1000576\" name=\"no compression\"/><cvParam cvRef=\"MS\" accession=\"MS:1000514\" name=\"m/z array\"/><binary>{s}</binary></binaryDataArray></binaryDataArrayList></spectrum></spectrumList></run></mzML>\n", .{ values.len, encoded.len, encoded });
+}
+
+test "[property] - [source-document lossy]: restores f32-valued m/z exactly and quantizes other m/z" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    var a: [256]u8 = undefined;
+    var b: [256]u8 = undefined;
+    var doc: [2048]u8 = undefined;
+    var text: [256]u8 = undefined;
+
+    // Values an instrument wrote as f32 and the document stores as f64.
+    const f32_values = [_]f64{ @as(f32, 100.1), @as(f32, 445.12003), @as(f32, 1999.9876) };
+    const source = try mzDocument(&doc, &text, &f32_values);
+    try tmp.dir.writeFile(std.testing.io, .{ .sub_path = "in", .data = source });
+    var summary = try source_document.encodeLossy(std.testing.io, std.testing.allocator, try pathIn(&tmp, &a, "in"), try pathIn(&tmp, &b, "arc"));
+    try std.testing.expectEqual(@as(u64, 1), summary.arrays_coded);
+    _ = try source_document.decode(std.testing.io, std.testing.allocator, try pathIn(&tmp, &b, "arc"), try pathIn(&tmp, &a, "out"));
+    const restored = try tmp.dir.readFileAlloc(std.testing.io, "out", std.testing.allocator, .unlimited);
+    defer std.testing.allocator.free(restored);
+    try std.testing.expectEqualStrings(source, restored);
+
+    // A value with more than f32 precision keeps the quantized reconstruction.
+    const f64_values = [_]f64{ 100.1, 445.123456789 };
+    const quantized = try mzDocument(&doc, &text, &f64_values);
+    try tmp.dir.writeFile(std.testing.io, .{ .sub_path = "in", .data = quantized });
+    summary = try source_document.encodeLossy(std.testing.io, std.testing.allocator, try pathIn(&tmp, &a, "in"), try pathIn(&tmp, &b, "arc"));
+    try std.testing.expectEqual(@as(u64, 1), summary.arrays_coded);
+    _ = try source_document.decode(std.testing.io, std.testing.allocator, try pathIn(&tmp, &b, "arc"), try pathIn(&tmp, &a, "out"));
+    const output = try tmp.dir.readFileAlloc(std.testing.io, "out", std.testing.allocator, .unlimited);
+    defer std.testing.allocator.free(output);
+    var expected_values: [f64_values.len]f64 = undefined;
+    for (f64_values, &expected_values) |value, *expected| {
+        expected.* = try quantize.dequantizeMzValue(try quantize.quantizeMzValue(value, 500_000), 500_000);
+    }
+    var expected_doc: [2048]u8 = undefined;
+    var expected_text: [256]u8 = undefined;
+    try std.testing.expectEqualStrings(try mzDocument(&expected_doc, &expected_text, &expected_values), output);
+}

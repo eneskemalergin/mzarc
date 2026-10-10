@@ -46,7 +46,9 @@ const Tag = enum(u8) {
 };
 
 const Kind = enum(u8) { mz = 1, intensity = 2 };
-const MzLayout = enum(u8) { absolute = 0, delta = 1 };
+const MzLayout = enum(u1) { absolute = 0, delta = 1 };
+/// Layout-byte bit: every value of the array is an f32, so the decoder rounds each value to f32.
+const mz_f32_values: u8 = 0x02;
 
 pub const Mode = enum { exact, lossy };
 
@@ -365,7 +367,7 @@ const TextSource = struct {
 };
 
 const Coded = union(Kind) {
-    mz: []u64,
+    mz: struct { codes: []u64, f32_values: bool },
     intensity: struct { log_max: f32, codes: []u16 },
 };
 
@@ -378,13 +380,21 @@ fn codeArray(allocator: Allocator, kind: Kind, values: mzml.arrays.Values) !?Cod
                 else => return null,
             };
             const codes = try allocator.alloc(u64, source.len);
+            // f32 values survive exactly when rounding the reconstruction to f32 gives them back.
+            var f32_values = true;
             for (source, codes) |value, *code| {
                 code.* = quantize.quantizeMzValue(value, mz_scale) catch {
                     allocator.free(codes);
                     return null;
                 };
+                if (f32_values) {
+                    const narrow: f32 = @floatCast(value);
+                    const restored: f32 = @floatCast(quantize.dequantizeMzValue(code.*, mz_scale) catch unreachable);
+                    f32_values = @as(u64, @bitCast(@as(f64, narrow))) == @as(u64, @bitCast(value)) and
+                        @as(u32, @bitCast(restored)) == @as(u32, @bitCast(narrow));
+                }
             }
-            return .{ .mz = codes };
+            return .{ .mz = .{ .codes = codes, .f32_values = f32_values } };
         },
         .intensity => {
             const count = switch (values) {
@@ -412,7 +422,7 @@ fn codeArray(allocator: Allocator, kind: Kind, values: mzml.arrays.Values) !?Cod
 
 fn freeCoded(allocator: Allocator, coded: Coded) void {
     switch (coded) {
-        .mz => |codes| allocator.free(codes),
+        .mz => |m| allocator.free(m.codes),
         .intensity => |i| allocator.free(i.codes),
     }
 }
@@ -423,11 +433,13 @@ fn writeArrayRecord(out: *std.Io.Writer, coded: Coded, primitive: Primitive, pip
     try out.writeByte(if (primitive == .float64) 1 else 0);
     try out.writeByte(if (pipeline == .zlib) 1 else 0);
     switch (coded) {
-        .mz => |codes| {
+        .mz => |m| {
+            const codes = m.codes;
             try out.writeInt(u32, @intCast(codes.len), .little);
             var increasing = true;
             for (1..codes.len) |i| increasing = increasing and codes[i] >= codes[i - 1];
-            try out.writeByte(@intFromEnum(if (increasing) MzLayout.delta else MzLayout.absolute));
+            const layout: MzLayout = if (increasing) .delta else .absolute;
+            try out.writeByte(@as(u8, @intFromEnum(layout)) | if (m.f32_values) mz_f32_values else 0);
             if (increasing) {
                 var previous: u64 = 0;
                 for (codes) |code| {
@@ -801,7 +813,10 @@ const ArrayDecoder = struct {
             .mz => blk: {
                 if (primitive != .float64) return error.InvalidRecord;
                 try self.values64.resize(self.allocator, count);
-                const layout = std.enums.fromInt(MzLayout, try stream.readInt(u8)) orelse return error.InvalidRecord;
+                const layout_byte = try stream.readInt(u8);
+                if (layout_byte & ~(mz_f32_values | 1) != 0) return error.InvalidRecord;
+                const layout: MzLayout = @enumFromInt(layout_byte & 1);
+                const f32_values = layout_byte & mz_f32_values != 0;
                 var previous: u64 = 0;
                 for (self.values64.items) |*value| {
                     const code = switch (layout) {
@@ -810,6 +825,11 @@ const ArrayDecoder = struct {
                     };
                     previous = code;
                     value.* = try quantize.dequantizeMzValue(code, mz_scale);
+                    if (f32_values) {
+                        const narrow: f32 = @floatCast(value.*);
+                        if (!std.math.isFinite(narrow)) return error.InvalidRecord;
+                        value.* = narrow;
+                    }
                 }
                 break :blk try self.encoder.encode(f64, self.values64.items, .{ .pipeline = pipeline });
             },
