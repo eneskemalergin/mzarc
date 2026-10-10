@@ -3,8 +3,9 @@ version: 2
 updates:
   - package-ecosystem: "uv"
     directory: "/"
+    target-branch: "dev"
     schedule:
-      interval: "weekly"
+      interval: "monthly"
     groups:
       python-dependencies:
         patterns:
@@ -12,8 +13,9 @@ updates:
 
   - package-ecosystem: "github-actions"
     directory: "/"
+    target-branch: "dev"
     schedule:
-      interval: "weekly"
+      interval: "monthly"
     groups:
       github-actions:
         patterns:
