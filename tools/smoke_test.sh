@@ -61,7 +61,9 @@ fi
 
 scratch=$(mktemp -d "${TMPDIR:-/var/tmp}/mzarc-smoke.XXXXXX")
 cleanup() {
-    rm -rf -- "$scratch"
+    # The smoke checks write only plain files directly under the scratch directory.
+    rm -f -- "$scratch"/*
+    rmdir -- "$scratch"
 }
 trap cleanup EXIT
 
