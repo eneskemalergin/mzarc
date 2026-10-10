@@ -101,7 +101,6 @@ pub fn build(b: *std.Build) void {
                 .{ .name = "block", .module = block_module },
                 .{ .name = "codec", .module = codec_module },
                 .{ .name = "quantize", .module = quantize_module },
-                .{ .name = "rans", .module = rans_module },
                 .{ .name = "zmz", .module = zmz },
             },
         }),

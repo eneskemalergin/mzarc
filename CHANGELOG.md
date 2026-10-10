@@ -27,6 +27,8 @@ All notable changes to mzarc are documented here. The format follows [Keep a Cha
 - **Repository:**
   - Removes the tracked zebrac binary; install zebrac 0.6.2 on `PATH` instead.
   - Removes the CRC code adapted from `crc32fast` and its license notice.
+- **CLI:**
+  - Removes the benchmark-only `benchmark-rans-core` command.
 
 ## [0.3.0] - 2026-08-13
 
