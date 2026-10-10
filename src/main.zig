@@ -67,7 +67,9 @@ fn commandDumpInspect(io: std.Io, allocator: std.mem.Allocator, path: []const u8
     }
 
     std.sort.pdq(u64, peak_counts, {}, std.sort.asc(u64));
-    const median_peaks: u64 = if (spectra.len > 0) peak_counts[spectra.len / 2] else 0;
+    // Twice the median keeps it exact: an even count averages the two middle values.
+    const n = peak_counts.len;
+    const median_twice: u64 = if (n == 0) 0 else if (n % 2 == 1) 2 * peak_counts[n / 2] else peak_counts[n / 2 - 1] + peak_counts[n / 2];
 
     std.debug.print("file: {s}\n", .{path});
     std.debug.print("spectra: {}\n", .{spectra.len});
@@ -76,7 +78,7 @@ fn commandDumpInspect(io: std.Io, allocator: std.mem.Allocator, path: []const u8
     std.debug.print("ms2 count: {}\n", .{ms2_count});
     std.debug.print("zero intensity peaks: {}\n", .{zero_intensity});
     std.debug.print("min peaks per spectrum: {}\n", .{min_peaks});
-    std.debug.print("median peaks per spectrum: {}\n", .{median_peaks});
+    std.debug.print("median peaks per spectrum: {}{s}\n", .{ median_twice / 2, if (median_twice % 2 == 1) ".5" else "" });
     std.debug.print("max peaks per spectrum: {}\n", .{max_peaks});
 }
 
