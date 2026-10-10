@@ -43,6 +43,20 @@ ms2 count: 890
 
 `zig build check-fixture` re-hashes `frozen.bin` at build time (`sha256sum`, or `shasum -a 256` on macOS) and fails if the digest does not match.
 
+## small.mzML and small.bin
+
+`small.mzML` is a hand-written 7,758-byte mzML document for `mzarc dump`. It has four spectra and one chromatogram, and covers:
+
+- retention time in minutes and in seconds, and a spectrum without one;
+- f64 and f32 arrays, zlib and uncompressed;
+- array terms given directly and through referenceable parameter groups;
+- an MS2 precursor, and an MS2 spectrum without one;
+- unsorted m/z with a tie, which must sort stably;
+- an ID without `scan=` (falls back to the index) and an ID whose first `scan=` has no digits;
+- an empty spectrum and a chromatogram, which the dump skips.
+
+`small.bin` is the expected 220-byte Dump V1. It was produced on 2026-10-10 by `tools/mzml_dump.py` (Pyteomics 5.0.1), independently of the Zig converter, and stays the frozen expectation after the Python converter is removed. `tools/smoke_test.sh` compares `mzarc dump` output with it byte for byte, and checks that a dump of the fixture cut at byte 4,000 fails without replacing an existing destination.
+
 ## Adversarial corpus (test/adversarial/)
 
 The files were generated deterministically with seed 42. The original generator is no longer retained.

@@ -87,6 +87,8 @@ pub fn build(b: *std.Build) void {
 
     // --- CLI ---
 
+    const zmz = b.dependency("zmz", .{ .target = target, .optimize = optimize }).module("zmz");
+
     const mzarc_cli = b.addExecutable(.{
         .name = "mzarc",
         .root_module = b.createModule(.{
@@ -102,6 +104,7 @@ pub fn build(b: *std.Build) void {
                 .{ .name = "codec", .module = codec_module },
                 .{ .name = "quantize", .module = quantize_module },
                 .{ .name = "rans", .module = rans_module },
+                .{ .name = "zmz", .module = zmz },
             },
         }),
     });
