@@ -7,6 +7,7 @@ const block = @import("block");
 const codec = @import("codec");
 const quantize = @import("quantize");
 const rans = @import("rans");
+const mzml_dump = @import("mzml_dump.zig");
 
 const DEFAULT_ENCODE_OPTIONS: block.EncodeOptions = .{};
 const LOSSY_MZ_HALF_STEP_DA: f64 = 0.5 / @as(f64, @floatFromInt(DEFAULT_ENCODE_OPTIONS.mz_scale_factor));
@@ -25,6 +26,7 @@ fn printStdout(io: std.Io, comptime fmt: []const u8, args: anytype) void {
 fn printUsage() void {
     std.debug.print(
         "Usage:\n" ++
+            "  mzarc dump <input.mzML> -o <output.bin>\n" ++
             "  mzarc dump-inspect <input.bin>\n" ++
             "  mzarc encode <input.bin> -o <output.mzarc> [--lossy] [--intensity-quant <levels>] [--mz-rans-min-gain <pct>] [--intensity-rans-min-gain <pct>] [--verbose-blocks] [--verbose-timing]\n" ++
             "  mzarc decode <input.mzarc> -o <output.bin> [--verbose-timing]\n" ++
@@ -918,6 +920,19 @@ pub fn main(init: std.process.Init) !void {
 
     if (args.len == 2 and (std.mem.eql(u8, args[1], "-h") or std.mem.eql(u8, args[1], "--help"))) {
         printUsage();
+        return;
+    }
+
+    if (std.mem.eql(u8, args[1], "dump")) {
+        if (args.len != 5) {
+            printUsage();
+            return error.InvalidArguments;
+        }
+        const output_path = try parseOutputPath(args);
+        const summary = try mzml_dump.dump(io, init.gpa, args[2], output_path);
+        printStdout(io, "input: {s}\noutput: {s}\nspectra: {d}\ntotal peaks: {d}\nms1 count: {d}\nms2 count: {d}\noutput bytes: {d}\n", .{
+            args[2], output_path, summary.spectra, summary.peaks, summary.ms1, summary.ms2, summary.bytes,
+        });
         return;
     }
 
