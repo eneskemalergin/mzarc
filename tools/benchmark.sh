@@ -248,7 +248,6 @@ if [[ -e "$output_dir" ]]; then
     exit 1
 fi
 
-readonly python="$repo_root/.venv/bin/python"
 zig=$(command -v zig || true)
 readonly zig
 readonly mzarc="$repo_root/zig-out/bin/mzarc"
@@ -260,7 +259,7 @@ if [[ ${MZARC_BENCH_CHECKING:-} == true ]]; then
 fi
 readonly zebrac mscompress
 
-for path in "$python" "$zig" "$zebrac" "$mscompress"; do
+for path in "$zig" "$zebrac" "$mscompress"; do
     if [[ -z "$path" || ! -x "$path" ]]; then
         echo "error: required executable not found: ${path:-zig or zebrac on PATH}" >&2
         if [[ "$path" == "$mscompress" ]]; then
@@ -302,9 +301,14 @@ if [[ "$zig_version" != 0.16.0 ]]; then
     echo "error: Zig 0.16.0 is required; $zig reports $zig_version" >&2
     exit 1
 fi
-python_version=$("$python" --version 2>&1)
-python_version=${python_version#Python }
-pyteomics_version=$("$python" -c 'import importlib.metadata; print(importlib.metadata.version("pyteomics"))')
+zmz_root="$repo_root/../zmz"
+if ! zmz_version=$(git -C "$zmz_root" rev-parse --short HEAD 2>/dev/null); then
+    echo "error: zmz checkout not found: $zmz_root" >&2
+    exit 1
+fi
+if [[ -n $(git -C "$zmz_root" status --porcelain --untracked-files=no) ]]; then
+    zmz_version+=" (dirty)"
+fi
 zebrac_version=$("$zebrac" --version)
 zebrac_json_version=${zebrac_version#zebrac }
 if [[ -z "$zebrac_json_version" || "$zebrac_json_version" == "$zebrac_version" ]]; then
@@ -325,7 +329,7 @@ measurement_word='measurements'
 if ((samples == 1)); then
     measurement_word='measurement'
 fi
-readonly mzarc_version changelog_version zig_version python_version pyteomics_version
+readonly mzarc_version changelog_version zig_version zmz_version
 readonly zebrac_version zebrac_json_version gzip_version pigz_version zstd_version
 readonly xz_version mscompress_version jq_version gnuplot_version measurement_word
 
@@ -345,8 +349,7 @@ cd "$repo_root"
     --summary all
 
 echo "creating one Dump V1 input"
-"$python" "$repo_root/tools/mzml_dump.py" "$scratch/source.mzML" \
-    -o "$scratch/source.bin"
+"$mzarc" dump "$scratch/source.mzML" -o "$scratch/source.bin"
 dump_info=$("$mzarc" dump-inspect "$scratch/source.bin" 2>&1)
 spectra=$(awk -F': ' '$1 == "spectra" { print $2; exit }' <<<"$dump_info")
 total_peaks=$(awk -F': ' '$1 == "total peaks" { print $2; exit }' <<<"$dump_info")
@@ -756,14 +759,12 @@ run_mscompress() {
 
     "$mscompress" -t "$workers" "$scratch/source.mzML" "$work/archive.msz"
     "$mscompress" -t "$workers" "$work/archive.msz" "$work/decoded.mzML"
-    "$python" "$repo_root/tools/mzml_dump.py" "$work/decoded.mzML" \
-        -o "$work/decoded.bin" >/dev/null
+    "$mzarc" dump "$work/decoded.mzML" -o "$work/decoded.bin" >/dev/null
     cmp "$scratch/source.bin" "$work/decoded.bin"
 
     measure "mzml-mscompress-$suffix-encode" "$mscompress" -t "$workers" "$scratch/source.mzML" "$work/archive.msz"
     measure "mzml-mscompress-$suffix-decode" "$mscompress" -t "$workers" "$work/archive.msz" "$work/decoded.mzML"
-    "$python" "$repo_root/tools/mzml_dump.py" "$work/decoded.mzML" \
-        -o "$work/decoded.bin" >/dev/null
+    "$mzarc" dump "$work/decoded.mzML" -o "$work/decoded.bin" >/dev/null
     cmp "$scratch/source.bin" "$work/decoded.bin"
     record_row "$rows_mzml" "$label" "$suffix / $suffix" 'Dump V1 exact' \
         "$mzml_bytes" "$work/archive.msz" \
@@ -885,7 +886,7 @@ write_comparison 'Original mzML round trip' 'original mzML' "$mzml_bytes" "$rows
     echo
     echo "- mzarc: \`v$mzarc_version\`"
     echo "- Build: Zig \`$zig_version\`; stripped ReleaseFast; single-threaded"
-    echo "- Ingest: Python \`$python_version\`; Pyteomics \`$pyteomics_version\`"
+    echo "- Ingest: \`mzarc dump\` on zmz \`$zmz_version\`"
     echo "- Measurement: \`$zebrac_version\`"
     echo "- Compression peers: \`$gzip_version\`; \`$pigz_version\`; \`$zstd_version\`; \`$xz_version\`; \`MScompress $mscompress_version\`"
     if [[ -n "$gnuplot_bin" ]]; then
