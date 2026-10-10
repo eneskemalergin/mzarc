@@ -14,14 +14,18 @@ Options:
   --sanity        Label parser-example output as a sanity check.
   --check         Run the focused local benchmark checks.
   -h, --help      Show this help.
+
+Environment:
+  MZARC_DATA      Local data root (default: ~/Github/data/mzml).
 EOF
 }
 
 repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+data_root=${MZARC_DATA:-$HOME/Github/data/mzml}
 
 run_checks() {
     local self="$repo_root/tools/benchmark.sh"
-    local tiny="$repo_root/data/examples/tiny.pwiz.1.1.mzML"
+    local tiny="$data_root/examples/tiny.pwiz.1.1.mzML"
     local output report_text rows real_cmp
     benchmark_check_root=$(mktemp -d "${TMPDIR:-/tmp}/mzarc-benchmark-check.XXXXXX")
     trap 'rm -rf -- "${benchmark_check_root:-}"' EXIT
@@ -104,8 +108,10 @@ EOF
     [[ ! -e "$benchmark_check_root/malformed/report.md" ]] || \
         fail 'malformed zebrac result produced a report'
 
+    # The fake cmp gets its own PATH entry; the fake zebrac above must not shadow the real one.
     real_cmp=$(command -v cmp) || fail 'cmp is unavailable'
-    cat >"$benchmark_check_root/fake/cmp" <<EOF
+    mkdir "$benchmark_check_root/fake-cmp"
+    cat >"$benchmark_check_root/fake-cmp/cmp" <<EOF
 #!/usr/bin/env bash
 if [[ \$# -eq 2 && \$1 == */source.bin && \$2 == */dump-gzip/source ]]; then
     echo 'injected byte mismatch' >&2
@@ -113,9 +119,9 @@ if [[ \$# -eq 2 && \$1 == */source.bin && \$2 == */dump-gzip/source ]]; then
 fi
 exec "$real_cmp" "\$@"
 EOF
-    chmod +x "$benchmark_check_root/fake/cmp"
+    chmod +x "$benchmark_check_root/fake-cmp/cmp"
     expect_failure 'failed peer validation' 'injected byte mismatch' \
-        env PATH="$benchmark_check_root/fake:$PATH" \
+        env PATH="$benchmark_check_root/fake-cmp:$PATH" \
         bash "$self" --sanity --samples 1 \
         --output "$benchmark_check_root/validation" "$tiny"
     [[ ! -e "$benchmark_check_root/validation/report.md" ]] || \
@@ -222,7 +228,7 @@ if [[ ! -f "$input" ]]; then
 fi
 input=$(realpath "$input")
 readonly source_name=${input##*/}
-if [[ "$input" == "$repo_root/data/examples/"* && "$sanity" != true ]]; then
+if [[ "$input" == "$(realpath -m "$data_root")/examples/"* && "$sanity" != true ]]; then
     echo 'error: parser examples are sanity inputs, not benchmark inputs' >&2
     echo 'rerun with --sanity to check harness wiring' >&2
     exit 1
@@ -242,10 +248,10 @@ if [[ -e "$output_dir" ]]; then
     exit 1
 fi
 
-readonly python="$repo_root/.venv/bin/python"
-readonly zig="$repo_root/zig-0.16.0/zig"
+zig=$(command -v zig || true)
+readonly zig
 readonly mzarc="$repo_root/zig-out/bin/mzarc"
-zebrac="$repo_root/tools/zebrac"
+zebrac=$(command -v zebrac || true)
 mscompress="$repo_root/tools/bin/mscompress-msz"
 if [[ ${MZARC_BENCH_CHECKING:-} == true ]]; then
     zebrac="${MZARC_BENCH_ZEBRAC:-$zebrac}"
@@ -253,9 +259,9 @@ if [[ ${MZARC_BENCH_CHECKING:-} == true ]]; then
 fi
 readonly zebrac mscompress
 
-for path in "$python" "$zig" "$zebrac" "$mscompress"; do
-    if [[ ! -x "$path" ]]; then
-        echo "error: required executable not found: $path" >&2
+for path in "$zig" "$zebrac" "$mscompress"; do
+    if [[ -z "$path" || ! -x "$path" ]]; then
+        echo "error: required executable not found: ${path:-zig or zebrac on PATH}" >&2
         if [[ "$path" == "$mscompress" ]]; then
             echo "run: bash tools/build_mscompress.sh" >&2
         fi
@@ -291,9 +297,18 @@ if [[ -z "$mzarc_version" || "$mzarc_version" != "$changelog_version" ]]; then
     exit 1
 fi
 zig_version=$("$zig" version)
-python_version=$("$python" --version 2>&1)
-python_version=${python_version#Python }
-pyteomics_version=$("$python" -c 'import importlib.metadata; print(importlib.metadata.version("pyteomics"))')
+if [[ "$zig_version" != 0.16.0 ]]; then
+    echo "error: Zig 0.16.0 is required; $zig reports $zig_version" >&2
+    exit 1
+fi
+zmz_root="$repo_root/../zmz"
+if ! zmz_version=$(git -C "$zmz_root" rev-parse --short HEAD 2>/dev/null); then
+    echo "error: zmz checkout not found: $zmz_root" >&2
+    exit 1
+fi
+if [[ -n $(git -C "$zmz_root" status --porcelain --untracked-files=no) ]]; then
+    zmz_version+=" (dirty)"
+fi
 zebrac_version=$("$zebrac" --version)
 zebrac_json_version=${zebrac_version#zebrac }
 if [[ -z "$zebrac_json_version" || "$zebrac_json_version" == "$zebrac_version" ]]; then
@@ -314,7 +329,7 @@ measurement_word='measurements'
 if ((samples == 1)); then
     measurement_word='measurement'
 fi
-readonly mzarc_version changelog_version zig_version python_version pyteomics_version
+readonly mzarc_version changelog_version zig_version zmz_version
 readonly zebrac_version zebrac_json_version gzip_version pigz_version zstd_version
 readonly xz_version mscompress_version jq_version gnuplot_version measurement_word
 
@@ -331,12 +346,10 @@ echo "building stripped ReleaseFast mzarc"
 cd "$repo_root"
 "$zig" build --release=fast \
     --cache-dir "$repo_root/.zig-cache" \
-    --global-cache-dir "$scratch/zig-global" \
     --summary all
 
 echo "creating one Dump V1 input"
-"$python" "$repo_root/tools/mzml_dump.py" "$scratch/source.mzML" \
-    -o "$scratch/source.bin"
+"$mzarc" dump "$scratch/source.mzML" -o "$scratch/source.bin"
 dump_info=$("$mzarc" dump-inspect "$scratch/source.bin" 2>&1)
 spectra=$(awk -F': ' '$1 == "spectra" { print $2; exit }' <<<"$dump_info")
 total_peaks=$(awk -F': ' '$1 == "total peaks" { print $2; exit }' <<<"$dump_info")
@@ -746,14 +759,12 @@ run_mscompress() {
 
     "$mscompress" -t "$workers" "$scratch/source.mzML" "$work/archive.msz"
     "$mscompress" -t "$workers" "$work/archive.msz" "$work/decoded.mzML"
-    "$python" "$repo_root/tools/mzml_dump.py" "$work/decoded.mzML" \
-        -o "$work/decoded.bin" >/dev/null
+    "$mzarc" dump "$work/decoded.mzML" -o "$work/decoded.bin" >/dev/null
     cmp "$scratch/source.bin" "$work/decoded.bin"
 
     measure "mzml-mscompress-$suffix-encode" "$mscompress" -t "$workers" "$scratch/source.mzML" "$work/archive.msz"
     measure "mzml-mscompress-$suffix-decode" "$mscompress" -t "$workers" "$work/archive.msz" "$work/decoded.mzML"
-    "$python" "$repo_root/tools/mzml_dump.py" "$work/decoded.mzML" \
-        -o "$work/decoded.bin" >/dev/null
+    "$mzarc" dump "$work/decoded.mzML" -o "$work/decoded.bin" >/dev/null
     cmp "$scratch/source.bin" "$work/decoded.bin"
     record_row "$rows_mzml" "$label" "$suffix / $suffix" 'Dump V1 exact' \
         "$mzml_bytes" "$work/archive.msz" \
@@ -875,7 +886,7 @@ write_comparison 'Original mzML round trip' 'original mzML' "$mzml_bytes" "$rows
     echo
     echo "- mzarc: \`v$mzarc_version\`"
     echo "- Build: Zig \`$zig_version\`; stripped ReleaseFast; single-threaded"
-    echo "- Ingest: Python \`$python_version\`; Pyteomics \`$pyteomics_version\`"
+    echo "- Ingest: \`mzarc dump\` on zmz \`$zmz_version\`"
     echo "- Measurement: \`$zebrac_version\`"
     echo "- Compression peers: \`$gzip_version\`; \`$pigz_version\`; \`$zstd_version\`; \`$xz_version\`; \`MScompress $mscompress_version\`"
     if [[ -n "$gnuplot_bin" ]]; then

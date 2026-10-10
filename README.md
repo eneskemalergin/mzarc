@@ -32,26 +32,25 @@
 The current input path is intentionally split:
 
 ```text
-mzML -> Python Dump V1 converter -> Zig codec -> .mzarc
+mzML -> mzarc dump -> Dump V1 -> Zig codec -> .mzarc
 ```
 
-Python handles mzML parsing through Pyteomics. Zig owns Dump V1 validation, compression, decompression, and the performance-sensitive transforms. A lossless mzarc round trip preserves the fields retained by Dump V1; it does not reproduce the original mzML document.
+`mzarc dump` reads mzML through [zmz](https://github.com/eneskemalergin/zmz), a Zig mzML library, and writes Dump V1. Zig owns Dump V1 validation, compression, decompression, and the performance-sensitive transforms. A lossless mzarc round trip preserves the fields retained by Dump V1; it does not reproduce the original mzML document.
 
 The CLI also provides a controlled lossy intensity mode. The `.mzarc` 1.0 format remains under development, so neither mode is use-ready yet.
 
 ## Quick start
 
-mzarc uses Zig 0.16.0. Place Zig at `./zig-0.16.0/zig`; the local compiler directory is not tracked. Building the codec and CLI does not require Python.
+mzarc uses Zig 0.16.0 from `PATH`. The build reads zmz from a checkout beside this repository (`../zmz`). Building, testing, and running mzarc do not require Python.
 
 ```bash
-./zig-0.16.0/zig build --release=fast
+zig build --release=fast
 ```
 
-The full repository also contains the temporary mzML converter. It requires Python 3.12 or 3.13 and is managed with [uv](https://docs.astral.sh/uv/). Convert an mzML file, encode its retained spectra, and inspect the archive:
+Convert an mzML file, encode its retained spectra, and inspect the archive:
 
 ```bash
-uv sync
-uv run python tools/mzml_dump.py input.mzML -o input.bin
+./zig-out/bin/mzarc dump input.mzML -o input.bin
 ./zig-out/bin/mzarc encode input.bin -o input.mzarc
 ./zig-out/bin/mzarc inspect input.mzarc
 ```
@@ -63,11 +62,11 @@ Decode and validate a lossless round trip:
 ./zig-out/bin/mzarc validate input.bin restored.bin --mode=lossless
 ```
 
-The release build installs a stripped ReleaseFast binary for the host architecture's baseline CPU. It retains frame pointers and unwind metadata. Run `./zig-0.16.0/zig build` for a native-host Debug binary with symbols.
+The release build installs a stripped ReleaseFast binary for the host architecture's baseline CPU. It retains frame pointers and unwind metadata. Run `zig build` for a native-host Debug binary with symbols.
 
 ## Benchmark
 
-The [reference report](https://github.com/eneskemalergin/mzarc/blob/main/benchmark/report.md) measures `data/PXD075509/15HCD_1.mzML`: 9,001 spectra and 2,668,458 peaks. Each operation has five measured samples after one warmup. Rows marked `[P]` use four workers; mzarc remains single-threaded.
+The [reference report](https://github.com/eneskemalergin/mzarc/blob/main/benchmark/report.md) measures `15HCD_1.mzML` from PXD075509: 9,001 spectra and 2,668,458 peaks. Each operation has five measured samples after one warmup. Rows marked `[P]` use four workers; mzarc remains single-threaded.
 
 | Representation          | Size      | Relative to original mzML |
 | ----------------------- | --------: | ------------------------: |
@@ -98,19 +97,19 @@ CRC-32/ISO-HDLC uses runtime-selected PCLMUL on supported x86-64 processors and 
 
 ## Development
 
-Run the focused and combined local gates with the pinned compiler:
+Run the focused and combined local gates with Zig 0.16.0:
 
 ```bash
-./zig-0.16.0/zig build test --summary all
-./zig-0.16.0/zig build ci --release=fast --summary all
+zig build test --summary all
+zig build ci --release=fast --summary all
 ```
 
-The combined release gate runs ReleaseFast tests, verifies the frozen fixture, and exercises adversarial, lossless, and lossy CLI round trips against the stripped binary. It does not require Python or local mzML data.
+The combined release gate runs ReleaseFast tests, verifies the frozen fixture, checks `mzarc dump` against a small mzML fixture, and exercises adversarial, lossless, and lossy CLI round trips against the stripped binary. It does not require Python or local mzML data.
 
-The local comparison requires the peer tools described in the [repository tool notes](https://github.com/eneskemalergin/mzarc/blob/main/tools/README.md) and an ignored local copy of the reference mzML file:
+The local comparison requires the peer tools described in the [repository tool notes](tools/README.md) and a local copy of the reference mzML file:
 
 ```bash
-bash tools/benchmark.sh data/PXD075509/15HCD_1.mzML
+bash tools/benchmark.sh ~/Github/data/mzml/PXD075509/15HCD_1.mzML
 ```
 
 Repository responsibilities stay narrow:
@@ -118,19 +117,20 @@ Repository responsibilities stay narrow:
 ```text
 src/         Zig codec and CLI
 test/        Unit, property, malformed-input, fixture, and CLI data
-tools/       mzML conversion and local benchmark commands
+tools/       Local benchmark, smoke, and reference-converter commands
 benchmark/   Reference report, baseline row, and summary figures
-data/        Local real-data inputs, ignored by Git
 ```
 
-The Zig source package contains the binary build, its tests, licenses, and release notes. Python conversion, benchmarks, peer binaries, data, and local development files remain repository-only.
+Real-data inputs live outside the repository; the benchmark reads them from `~/Github/data/mzml` unless `MZARC_DATA` names another root.
+
+The Zig source package contains the binary build, its tests, licenses, and release notes. The Python reference converter, benchmarks, peer binaries, and local development files remain repository-only.
 
 ## Roadmap
 
 Current directions include:
 
 - Finish supported-host memory and release checks before declaring `.mzarc` use-ready.
-- Replace the Python conversion boundary with native, bounded mzML input and validated indexed mzML output.
+- Add native lossless and lossy mzML archives that restore the source document, not only the Dump V1 fields.
 - Broaden correctness, performance, and memory checks across acquisition shapes, file sizes, and supported hosts.
 - Keep improving archive size, throughput, and RSS where measurements show a material cost.
 - Explore DIA-specific coding and native vendor-format readers when representative data and stable interfaces justify them.
@@ -151,7 +151,8 @@ Concurrency remains outside the current product scope.
 
 - [PXD075509](https://www.ebi.ac.uk/pride/archive/projects/PXD075509), the current reference dataset.
 - [Zig](https://ziglang.org), the language used for the codec, CLI, and tests.
-- [Pyteomics](https://github.com/levitsky/pyteomics), the current mzML ingestion library.
+- [zmz](https://github.com/eneskemalergin/zmz), the Zig mzML library behind `mzarc dump`.
+- [Pyteomics](https://github.com/levitsky/pyteomics), used by the reference converter `tools/mzml_dump.py`.
 - [zebrac](https://github.com/eneskemalergin/zebrac), the Linux measurement tool used by the reference report.
 
 ---

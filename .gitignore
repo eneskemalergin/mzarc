@@ -4,11 +4,8 @@ zig-cache/
 .zig-cache/
 .zig-global-cache/
 
-# Local Zig installation (download separately)
-zig-*/
-
-# Local zig wrapper (uses project-local zig installation)
-/zig
+# Package directory that a stray `zig fetch .` would create
+zig-pkg/
 
 # Editor
 .vscode/

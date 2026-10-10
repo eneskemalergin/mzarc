@@ -4,7 +4,7 @@ Frozen validation fixtures used by `zig build ci` and `zig build check-fixture`.
 
 ## frozen.bin
 
-A deterministically sliced 1,000-spectrum subset of `data/PXD075509/15HCD_1.bin`. The original generator is no longer retained; the frozen bytes and narrow integrity check are the current contract.
+A deterministically sliced 1,000-spectrum subset of the PXD075509 `15HCD_1.bin` Dump V1 (then under the repository's `data/`, now in `~/Github/data/mzml/PXD075509/`). The original generator is no longer retained; the frozen bytes and narrow integrity check are the current contract.
 
 ### Composition constraints
 
