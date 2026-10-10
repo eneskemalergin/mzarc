@@ -24,6 +24,8 @@ All notable changes to mzarc are documented here. The format follows [Keep a Cha
 - **Benchmarking:**
   - Creates the Dump V1 input with `mzarc dump` instead of Python, and records the zmz commit in the report.
   - Uses `zig` and `zebrac` from `PATH` and reads local data from `~/Github/data/mzml` or `MZARC_DATA`.
+  - Measures mzarc's exact mzML archive beside the peers on the original document, both lossy profiles with their observed errors, and `mzarc dump` ingest.
+  - Reports median wall time with its interquartile range, flags operations whose spread exceeds 5%, records the load average and CPU governor, and computes the key findings from the measured rows.
 
 ### Fixed
 

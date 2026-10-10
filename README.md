@@ -85,22 +85,24 @@ The release build installs a stripped ReleaseFast binary for the host architectu
 
 The [reference report](https://github.com/eneskemalergin/mzarc/blob/main/benchmark/report.md) measures `15HCD_1.mzML` from PXD075509: 9,001 spectra and 2,668,458 peaks. Each operation has five measured samples after one warmup. Rows marked `[P]` use four workers; mzarc remains single-threaded.
 
-| Representation          | Size      | Relative to original mzML |
-| ----------------------- | --------: | ------------------------: |
-| Original mzML           | 75.55 MiB |                   100.00% |
-| Dump V1 retained fields | 30.78 MiB |                    40.74% |
-| mzarc lossless          | 14.46 MiB |                    19.14% |
+| Representation                      | Size      | Relative to original mzML |
+| ----------------------------------- | --------: | ------------------------: |
+| Original mzML                       | 75.55 MiB |                   100.00% |
+| mzarc exact archive of the document | 24.00 MiB |                    31.77% |
+| mzarc lossy archive of the document | 15.18 MiB |                    20.10% |
+| Dump V1 retained fields             | 30.78 MiB |                    40.74% |
+| mzarc lossless archive of Dump V1   | 14.46 MiB |                    19.14% |
 
-Against the shared Dump V1 input, mzarc writes a 14.46 MiB artifact, 46.99% of that input and 8.22% smaller than single-threaded xz. mzarc records the fastest single-threaded encode at 221.72 MiB/s. zstd decodes faster, while gzip records lower peak RSS.
+Against the shared Dump V1 input, mzarc writes a 14.46 MiB artifact, 46.99% of that input and 8.22% smaller than single-threaded xz. It records the fastest single-threaded encode at 214.86 MiB/s. zstd decodes faster, while gzip records lower peak RSS.
 
-The 19.14% figure describes the current mzML-to-Dump-V1-to-mzarc storage path. It does not mean mzarc can reconstruct the original XML document.
+On the original document, the exact archive restores every byte at 31.77% of the input, 2.62% larger than single-threaded xz; it encodes at 110.07 MiB/s and decodes at 492.00 MiB/s with 1.04 MiB peak RSS. The lossy archive is 36.75% smaller than the exact one. Its largest observed errors are 0.000001 Da in m/z and 0.000643 in `log1p` intensity, against a format-wide limit of 0.005415.
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/eneskemalergin/mzarc/main/benchmark/dump-summary.svg" width="900" alt="Artifact size, throughput, and peak RSS for the Dump V1 comparison" />
   <br /><em>Dump V1 comparison. Lower is better for size and RSS; higher is better for throughput.</em>
 </p>
 
-These are measured results from one file, one acquisition shape, and one host. The report records the commands, tool versions, validation boundaries, direct-child RSS, and separate original-mzML comparison.
+These are measured results from one file, one acquisition shape, and one host, taken under unrelated background load (load average 3.7 at the start, 7.3 at the end). The report records the commands, tool versions, validation boundaries, direct-child RSS, timing spread, the original-mzML and lossy comparisons, and `mzarc dump` ingest.
 
 ## Format and validation
 
