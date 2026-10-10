@@ -10,6 +10,7 @@ All notable changes to mzarc are documented here. The format follows [Keep a Cha
 
 - **mzML archives:**
   - `mzarc encode input.mzML` stores a complete mzML document. Exact mode restores it byte for byte; `--lossy` quantizes spectrum m/z (f64) and intensity arrays and keeps every other byte, rebuilding `encodedLength`, index offsets, `indexListOffset`, and `fileChecksum`. `mzarc decode` and `mzarc inspect` recognize these archives.
+  - `mzarc validate --mode=mzml-lossy` checks a lossy mzML round trip through Dump V1: every peak is either unchanged or carries the lossy m/z and intensity transform within its bound.
 - **mzML input:**
   - Adds `mzarc dump <input.mzML> -o <output.bin>`, a native mzML to Dump V1 converter built on the zmz library. Its output matches the Python reference converter byte for byte on the checked inputs, and a failed dump leaves an existing destination unchanged.
 

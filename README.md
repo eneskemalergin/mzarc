@@ -55,6 +55,15 @@ Archive an mzML document exactly or lossily, then restore it:
 ./zig-out/bin/mzarc decode input.mzarc -o restored.mzML
 ```
 
+Check a lossy mzML round trip peak by peak: each value must be unchanged or carry the documented lossy transform within its bound.
+
+```bash
+./zig-out/bin/mzarc decode input.lossy.mzarc -o restored.lossy.mzML
+./zig-out/bin/mzarc dump input.mzML -o input.bin
+./zig-out/bin/mzarc dump restored.lossy.mzML -o restored.lossy.bin
+./zig-out/bin/mzarc validate input.bin restored.lossy.bin --mode=mzml-lossy
+```
+
 Convert an mzML file to Dump V1, encode its retained spectra, and inspect the archive:
 
 ```bash
