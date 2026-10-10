@@ -15,6 +15,7 @@ All notable changes to mzarc are documented here. The format follows [Keep a Cha
 
 - **Performance:**
   - Decodes lossy archives 17% to 31% faster on the checked inputs by computing each intensity level once per block. Decoded output is unchanged.
+  - Encodes lossy archives 6% to 16% faster on the checked inputs by finding each block's intensity range with one `log1p`. Archives are unchanged.
 - **Checksums:**
   - Computes block checksums with wthecksum `crc32`, the author's own CRC-32 library. Stored checksums and the format are unchanged.
 - **Benchmarking:**

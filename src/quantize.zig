@@ -26,14 +26,17 @@ pub fn dequantizeMzValue(value: u64, scale_factor: u32) !f64 {
     return @as(f64, @floatFromInt(value)) / scale;
 }
 
+/// The largest `log1p` over positive finite values, as f32; zero when there is none.
 pub fn intensityLogMax(values: []const f32) f32 {
-    var max_log: f64 = 0.0;
+    // Zig 0.16.0's log1p is non-decreasing over every positive finite f32 (checked exhaustively
+    // in Experiment 41), so the largest log1p is log1p of the largest value.
+    var max_value: f32 = 0.0;
     for (values) |value| {
         if (value <= 0.0 or !std.math.isFinite(value)) continue;
-        const log_value = std.math.log1p(@as(f64, value));
-        if (log_value > max_log) max_log = log_value;
+        if (value > max_value) max_value = value;
     }
-    return @as(f32, @floatCast(max_log));
+    if (max_value == 0.0) return 0.0;
+    return @as(f32, @floatCast(std.math.log1p(@as(f64, max_value))));
 }
 
 pub fn quantizeIntensityValueScaled(value: f32, quant_levels: u16, log_max: f32) !u16 {
