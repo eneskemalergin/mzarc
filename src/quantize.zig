@@ -13,8 +13,8 @@ pub fn quantizeMzValue(value: f64, scale_factor: u32) !u64 {
     if (!std.math.isFinite(scaled)) return error.Overflow;
 
     const rounded = @round(scaled);
-    const max_value = @as(f64, @floatFromInt(std.math.maxInt(u64)));
-    if (rounded < 0.0 or rounded > max_value) return error.Overflow;
+    // maxInt(u64) rounds up to 2^64 as f64, so the bound is exclusive at 2^64.
+    if (rounded < 0.0 or rounded >= 0x1p64) return error.Overflow;
 
     return @as(u64, @intFromFloat(rounded));
 }

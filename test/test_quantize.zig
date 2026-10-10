@@ -25,6 +25,15 @@ test "[failure] - [m/z quantization]: rejects invalid inputs" {
     try std.testing.expectError(error.InvalidScaleFactor, quantize.dequantizeMzValue(1, 0));
 }
 
+test "[regression] - [m/z quantization]: rejects a value that rounds to 2^64" {
+    const scale_factor: u32 = 500_000;
+    const at_limit = 0x1p64 / @as(f64, @floatFromInt(scale_factor));
+    try std.testing.expectEqual(@as(f64, 0x1p64), at_limit * @as(f64, @floatFromInt(scale_factor)));
+    try std.testing.expectError(error.Overflow, quantize.quantizeMzValue(at_limit, scale_factor));
+
+    try std.testing.expectEqual(@as(u64, 1 << 63), try quantize.quantizeMzValue(at_limit / 2, scale_factor));
+}
+
 test "[property] - [m/z quantization]: preserves ordering" {
     const input = [_]f64{ 100.0, 100.000002, 100.000004, 101.5 };
     var encoded: [input.len]u64 = undefined;
