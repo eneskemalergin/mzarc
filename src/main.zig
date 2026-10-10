@@ -19,19 +19,19 @@ fn printStdout(io: std.Io, comptime fmt: []const u8, args: anytype) void {
     writer.interface.flush() catch return;
 }
 
+const usage =
+    "Usage:\n" ++
+    "  mzarc dump <input.mzML> -o <output.bin>\n" ++
+    "  mzarc dump-inspect <input.bin>\n" ++
+    "  mzarc encode <input.bin> -o <output.mzarc> [--lossy] [--intensity-quant <levels>] [--mz-rans-min-gain <pct>] [--intensity-rans-min-gain <pct>] [--verbose-blocks] [--verbose-timing]\n" ++
+    "  mzarc encode <input.mzML> -o <output.mzarc> [--lossy]\n" ++
+    "  mzarc decode <input.mzarc> -o <output.bin|output.mzML> [--verbose-timing]\n" ++
+    "  mzarc inspect <input.mzarc> [--json] [--blocks]\n" ++
+    "  mzarc validate <original.bin> <decoded.bin> --mode=lossless|lossy|mzml-lossy [--intensity-quant <levels>]\n" ++
+    "  mzarc validate-adversarial <dir>\n";
+
 fn printUsage() void {
-    std.debug.print(
-        "Usage:\n" ++
-            "  mzarc dump <input.mzML> -o <output.bin>\n" ++
-            "  mzarc dump-inspect <input.bin>\n" ++
-            "  mzarc encode <input.bin> -o <output.mzarc> [--lossy] [--intensity-quant <levels>] [--mz-rans-min-gain <pct>] [--intensity-rans-min-gain <pct>] [--verbose-blocks] [--verbose-timing]\n" ++
-            "  mzarc encode <input.mzML> -o <output.mzarc> [--lossy]\n" ++
-            "  mzarc decode <input.mzarc> -o <output.bin|output.mzML> [--verbose-timing]\n" ++
-            "  mzarc inspect <input.mzarc> [--json] [--blocks]\n" ++
-            "  mzarc validate <original.bin> <decoded.bin> --mode=lossless|lossy|mzml-lossy [--intensity-quant <levels>]\n" ++
-            "  mzarc validate-adversarial <dir>\n",
-        .{},
-    );
+    std.debug.print(usage, .{});
 }
 
 fn commandDumpInspect(io: std.Io, allocator: std.mem.Allocator, path: []const u8) !void {
@@ -69,15 +69,19 @@ fn commandDumpInspect(io: std.Io, allocator: std.mem.Allocator, path: []const u8
     const n = peak_counts.len;
     const median_twice: u64 = if (n == 0) 0 else if (n % 2 == 1) 2 * peak_counts[n / 2] else peak_counts[n / 2 - 1] + peak_counts[n / 2];
 
-    std.debug.print("file: {s}\n", .{path});
-    std.debug.print("spectra: {}\n", .{spectra.len});
-    std.debug.print("total peaks: {}\n", .{total_peaks});
-    std.debug.print("ms1 count: {}\n", .{ms1_count});
-    std.debug.print("ms2 count: {}\n", .{ms2_count});
-    std.debug.print("zero intensity peaks: {}\n", .{zero_intensity});
-    std.debug.print("min peaks per spectrum: {}\n", .{min_peaks});
-    std.debug.print("median peaks per spectrum: {}{s}\n", .{ median_twice / 2, if (median_twice % 2 == 1) ".5" else "" });
-    std.debug.print("max peaks per spectrum: {}\n", .{max_peaks});
+    var buffer: [4096]u8 = undefined;
+    var stdout = std.Io.File.stdout().writerStreaming(io, &buffer);
+    const out = &stdout.interface;
+    try out.print("file: {s}\n", .{path});
+    try out.print("spectra: {}\n", .{spectra.len});
+    try out.print("total peaks: {}\n", .{total_peaks});
+    try out.print("ms1 count: {}\n", .{ms1_count});
+    try out.print("ms2 count: {}\n", .{ms2_count});
+    try out.print("zero intensity peaks: {}\n", .{zero_intensity});
+    try out.print("min peaks per spectrum: {}\n", .{min_peaks});
+    try out.print("median peaks per spectrum: {}{s}\n", .{ median_twice / 2, if (median_twice % 2 == 1) ".5" else "" });
+    try out.print("max peaks per spectrum: {}\n", .{max_peaks});
+    try out.flush();
 }
 
 fn parseOutputPath(args: []const [:0]const u8) ![]const u8 {
@@ -147,7 +151,7 @@ fn commandEncode(io: std.Io, allocator: std.mem.Allocator, args: []const [:0]con
         .verbose_timing = hasFlag(args[3..], "--verbose-timing"),
     });
 
-    std.debug.print("encoded: {s} -> {s}\n", .{ input_path, output_path });
+    printStdout(io, "encoded: {s} -> {s}\n", .{ input_path, output_path });
 }
 
 /// Encodes a complete mzML document; the Dump V1 tuning options do not apply to it.
@@ -197,7 +201,7 @@ fn commandDecode(io: std.Io, allocator: std.mem.Allocator, args: []const [:0]con
     try codec.decodeToDumpFile(io, allocator, input_path, output_path, .{
         .verbose_timing = hasFlag(args[3..], "--verbose-timing"),
     });
-    std.debug.print("decoded: {s} -> {s}\n", .{ input_path, output_path });
+    printStdout(io, "decoded: {s} -> {s}\n", .{ input_path, output_path });
 }
 
 fn printInspectionJson(io: std.Io, path: []const u8, inspection: codec.Inspection) void {
@@ -218,14 +222,14 @@ fn printInspectionJson(io: std.Io, path: []const u8, inspection: codec.Inspectio
     }, .{ .whitespace = .indent_2 })});
 }
 
-fn printBlockTable(inspection: codec.Inspection) void {
-    std.debug.print("{s:>6}  {s:>5}  {s:>6}  {s:>8}  {s:>6}  {s:>9}  {s:>9}  {s:>9}\n", .{
+fn printBlockTable(out: *std.Io.Writer, inspection: codec.Inspection) !void {
+    try out.print("{s:>6}  {s:>5}  {s:>6}  {s:>8}  {s:>6}  {s:>9}  {s:>9}  {s:>9}\n", .{
         "idx", "level", "nspec", "npeaks", "mz_bw", "int_bw", "mz_bytes", "int_bytes",
     });
     for (inspection.blocks, 0..) |block_info, idx| {
         const h = block_info.header;
         const b = block_info.byte_breakdown;
-        std.debug.print("{:>6}  {:>5}  {:>6}  {:>8}  {:>6}  {:>9}  {:>9}  {:>9}\n", .{
+        try out.print("{:>6}  {:>5}  {:>6}  {:>8}  {:>6}  {:>9}  {:>9}  {:>9}\n", .{
             idx,
             h.ms_level,
             h.spectrum_count,
@@ -280,29 +284,33 @@ fn commandInspect(io: std.Io, allocator: std.mem.Allocator, args: []const [:0]co
         return;
     }
 
-    std.debug.print("file: {s}\n", .{input_path});
-    std.debug.print("version: {}.{}\n", .{ inspection.header.version_major, inspection.header.version_minor });
-    std.debug.print("spectra: {}\n", .{inspection.header.spectrum_count});
-    std.debug.print("blocks: {}\n", .{inspection.header.block_count});
-    std.debug.print("total peaks: {}\n", .{inspection.header.total_peaks});
-    std.debug.print("block size: {}\n", .{inspection.header.block_size});
-    std.debug.print("ms1 blocks: {}\n", .{inspection.ms1_block_count});
-    std.debug.print("ms2 blocks: {}\n", .{inspection.ms2_block_count});
-    std.debug.print("ms1 spectra: {}\n", .{inspection.ms1_spectra});
-    std.debug.print("ms2 spectra: {}\n", .{inspection.ms2_spectra});
+    var buffer: [4096]u8 = undefined;
+    var stdout = std.Io.File.stdout().writerStreaming(io, &buffer);
+    const out = &stdout.interface;
+    try out.print("file: {s}\n", .{input_path});
+    try out.print("version: {}.{}\n", .{ inspection.header.version_major, inspection.header.version_minor });
+    try out.print("spectra: {}\n", .{inspection.header.spectrum_count});
+    try out.print("blocks: {}\n", .{inspection.header.block_count});
+    try out.print("total peaks: {}\n", .{inspection.header.total_peaks});
+    try out.print("block size: {}\n", .{inspection.header.block_size});
+    try out.print("ms1 blocks: {}\n", .{inspection.ms1_block_count});
+    try out.print("ms2 blocks: {}\n", .{inspection.ms2_block_count});
+    try out.print("ms1 spectra: {}\n", .{inspection.ms1_spectra});
+    try out.print("ms2 spectra: {}\n", .{inspection.ms2_spectra});
     inline for (std.meta.fields(codec.FileByteBreakdown)) |field| {
         const label = comptime blk: {
             var name: [field.name.len]u8 = field.name[0..field.name.len].*;
             std.mem.replaceScalar(u8, &name, '_', ' ');
             break :blk name;
         };
-        std.debug.print(label ++ ": {}\n", .{@field(inspection.byte_breakdown, field.name)});
+        try out.print(label ++ ": {}\n", .{@field(inspection.byte_breakdown, field.name)});
     }
 
     if (show_blocks) {
-        std.debug.print("\n", .{});
-        printBlockTable(inspection);
+        try out.writeByte('\n');
+        try printBlockTable(out, inspection);
     }
+    try out.flush();
 }
 
 fn checkLosslessSpectra(
@@ -588,7 +596,7 @@ pub fn main(init: std.process.Init) !void {
     }
 
     if (args.len == 2 and (std.mem.eql(u8, args[1], "-h") or std.mem.eql(u8, args[1], "--help"))) {
-        printUsage();
+        printStdout(io, usage, .{});
         return;
     }
 
