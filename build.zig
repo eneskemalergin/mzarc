@@ -43,6 +43,7 @@ pub fn build(b: *std.Build) void {
         .root_source_file = b.path("src/block_common.zig"),
         .imports = &.{
             .{ .name = "binary_reader", .module = binary_reader_module },
+            .{ .name = "bitpack", .module = bitpack_module },
             .{ .name = "rans", .module = rans_module },
         },
     });

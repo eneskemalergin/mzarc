@@ -24,11 +24,7 @@ const MzPackedDeltas = struct {
     group_widths: []const u8,
 };
 
-const MzDomain = enum {
-    lossy_fixed,
-    lossless_f32,
-    lossless_f64,
-};
+const MzDomain = common.MzDomain;
 
 fn validateLosslessMz(value: f64) !void {
     if (!std.math.isFinite(value) or value < 0.0) return error.InvalidMz;
@@ -263,28 +259,27 @@ fn appendMzFirstPeakSplitSection(
     }
 }
 
-fn buildScanIdDeltas(allocator: Allocator, spectra: []const binary_reader.RawSpectrum) ![]u64 {
-    if (spectra.len == 0) return error.EmptyBlock;
-    const result = try allocator.alloc(u64, spectra.len);
-    result[0] = spectra[0].scan_id;
-    for (spectra[1..], 1..) |spectrum, idx| {
-        if (spectrum.scan_id < spectra[idx - 1].scan_id) return error.NonMonotonicScanIds;
-        result[idx] = spectrum.scan_id - spectra[idx - 1].scan_id;
+/// Appends a scan-id or retention-time column, given as u32 values (retention times as their f32
+/// bits): FOR-packed deltas when the values never decrease, else the raw values. Returns whether
+/// the column is delta-coded.
+fn appendU32Column(payload: *std.ArrayList(u8), tmp: Allocator, values: []const u32) !bool {
+    const deltas = try tmp.alloc(u64, values.len);
+    var previous: u32 = 0;
+    for (values, deltas) |value, *delta| {
+        if (value < previous) {
+            for (values) |raw| try common.appendIntLe(payload, tmp, u32, raw);
+            return false;
+        }
+        delta.* = value - previous;
+        previous = value;
     }
-    return result;
-}
-
-fn buildRtDeltas(allocator: Allocator, spectra: []const binary_reader.RawSpectrum) ![]u64 {
-    if (spectra.len == 0) return error.EmptyBlock;
-    const result = try allocator.alloc(u64, spectra.len);
-    result[0] = @as(u32, @bitCast(spectra[0].rt_seconds));
-    for (spectra[1..], 1..) |spectrum, idx| {
-        const cur_bits: u32 = @bitCast(spectrum.rt_seconds);
-        const prev_bits: u32 = @bitCast(spectra[idx - 1].rt_seconds);
-        if (cur_bits < prev_bits) return error.NonMonotonicRt;
-        result[idx] = cur_bits - prev_bits;
-    }
-    return result;
+    const pack_result = try bitpack.packForU64(tmp, deltas);
+    try payload.append(tmp, pack_result.bit_width);
+    try common.appendIntLe(payload, tmp, u64, pack_result.base);
+    if (pack_result.payload.len > std.math.maxInt(u32)) return error.BlockTooLarge;
+    try common.appendIntLe(payload, tmp, u32, @intCast(pack_result.payload.len));
+    try payload.appendSlice(tmp, pack_result.payload);
+    return true;
 }
 
 fn flattenIntensityLossyToU16(
@@ -437,45 +432,11 @@ pub fn encodeBlockDetailed(allocator: Allocator, scratch: Allocator, spectra: []
 
     var flags: u8 = 0;
 
-    {
-        const scan_id_deltas = buildScanIdDeltas(tmp, spectra) catch |err| blk: {
-            if (err == error.NonMonotonicScanIds) {
-                break :blk null;
-            }
-            return err;
-        };
-        if (scan_id_deltas) |deltas| {
-            flags |= common.flag_delta_scan_id;
-            const pack_result = try bitpack.packForU64(tmp, deltas);
-            try payload.append(tmp, pack_result.bit_width);
-            try common.appendIntLe(&payload, tmp, u64, pack_result.base);
-            if (pack_result.payload.len > std.math.maxInt(u32)) return error.BlockTooLarge;
-            try common.appendIntLe(&payload, tmp, u32, @intCast(pack_result.payload.len));
-            try payload.appendSlice(tmp, pack_result.payload);
-        } else {
-            for (spectra) |spectrum| try common.appendIntLe(&payload, tmp, u32, spectrum.scan_id);
-        }
-    }
-
-    {
-        const rt_deltas = buildRtDeltas(tmp, spectra) catch |err| blk: {
-            if (err == error.NonMonotonicRt) {
-                break :blk null;
-            }
-            return err;
-        };
-        if (rt_deltas) |deltas| {
-            flags |= common.flag_delta_rt;
-            const pack_result = try bitpack.packForU64(tmp, deltas);
-            try payload.append(tmp, pack_result.bit_width);
-            try common.appendIntLe(&payload, tmp, u64, pack_result.base);
-            if (pack_result.payload.len > std.math.maxInt(u32)) return error.BlockTooLarge;
-            try common.appendIntLe(&payload, tmp, u32, @intCast(pack_result.payload.len));
-            try payload.appendSlice(tmp, pack_result.payload);
-        } else {
-            for (spectra) |spectrum| try common.appendF32Le(&payload, tmp, spectrum.rt_seconds);
-        }
-    }
+    const column = try tmp.alloc(u32, spectra.len);
+    for (spectra, column) |spectrum, *value| value.* = spectrum.scan_id;
+    if (try appendU32Column(&payload, tmp, column)) flags |= common.flag_delta_scan_id;
+    for (spectra, column) |spectrum, *value| value.* = @bitCast(spectrum.rt_seconds);
+    if (try appendU32Column(&payload, tmp, column)) flags |= common.flag_delta_rt;
 
     for (spectra) |spectrum| try common.appendF64Le(&payload, tmp, spectrum.precursor_mz);
     for (spectra) |spectrum| {
@@ -526,30 +487,19 @@ pub fn encodeBlockDetailed(allocator: Allocator, scratch: Allocator, spectra: []
             else
                 try std.math.add(usize, 1 + 8 + 4 + encoded_exp.estimated_total_bytes, mantissa_bytes);
 
-            if (encoded_exp.encoded) |buf| {
-                stats.intensity_mode = .split_rans;
-                stats.intensity_rans_used = true;
-                stats.intensity_stored_bytes = try std.math.add(usize, 1 + 8 + 4 + buf.len, mantissa_bytes);
-                flags |= common.flag_split_exponent | common.flag_rans_intensity;
-                intensity_bit_width = packed_exp.bit_width;
-                try payload.append(tmp, packed_exp.bit_width);
-                try common.appendIntLe(&payload, tmp, u64, packed_exp.base);
-                if (buf.len > std.math.maxInt(u32)) return error.BlockTooLarge;
-                try common.appendIntLe(&payload, tmp, u32, @intCast(buf.len));
-                try payload.appendSlice(tmp, buf);
-                try appendIntensityMantissas(&payload, tmp, spectra, mantissa_bytes);
-            } else {
-                stats.intensity_mode = .split_plain;
-                stats.intensity_stored_bytes = split_plain_bytes;
-                flags |= common.flag_split_exponent;
-                intensity_bit_width = packed_exp.bit_width;
-                try payload.append(tmp, packed_exp.bit_width);
-                try common.appendIntLe(&payload, tmp, u64, packed_exp.base);
-                if (packed_exp.payload.len > std.math.maxInt(u32)) return error.BlockTooLarge;
-                try common.appendIntLe(&payload, tmp, u32, @intCast(packed_exp.payload.len));
-                try payload.appendSlice(tmp, packed_exp.payload);
-                try appendIntensityMantissas(&payload, tmp, spectra, mantissa_bytes);
-            }
+            const exp_stored = encoded_exp.encoded orelse packed_exp.payload;
+            stats.intensity_mode = if (encoded_exp.used()) .split_rans else .split_plain;
+            stats.intensity_rans_used = encoded_exp.used();
+            stats.intensity_stored_bytes = try std.math.add(usize, 1 + 8 + 4 + exp_stored.len, mantissa_bytes);
+            flags |= common.flag_split_exponent;
+            if (encoded_exp.used()) flags |= common.flag_rans_intensity;
+            intensity_bit_width = packed_exp.bit_width;
+            try payload.append(tmp, packed_exp.bit_width);
+            try common.appendIntLe(&payload, tmp, u64, packed_exp.base);
+            if (exp_stored.len > std.math.maxInt(u32)) return error.BlockTooLarge;
+            try common.appendIntLe(&payload, tmp, u32, @intCast(exp_stored.len));
+            try payload.appendSlice(tmp, exp_stored);
+            try appendIntensityMantissas(&payload, tmp, spectra, mantissa_bytes);
         } else {
             flags |= common.flag_lossless_intensity_raw;
             stats.intensity_mode = .raw_plain;

@@ -818,27 +818,6 @@ pub fn encodeDumpFile(io: std.Io, allocator: Allocator, input_path: []const u8, 
     }
 }
 
-fn skipMetadataSection(bytes: []const u8, offset: *usize, compressed: bool, spectrum_count: u16) !void {
-    if (!compressed) {
-        const section_len = try std.math.mul(usize, spectrum_count, @sizeOf(u32));
-        if (bytes.len - offset.* < section_len) return error.UnexpectedEndOfStream;
-        offset.* += section_len;
-        return;
-    }
-    if (bytes.len - offset.* < 13) return error.UnexpectedEndOfStream;
-    const bit_width = bytes[offset.*];
-    if (bit_width > 64) return error.InvalidBitWidth;
-    const packed_len = readIntLe(u32, bytes[offset.* + 9 .. offset.* + 13]);
-    const expected_len = try block.packedByteLen(bit_width, spectrum_count);
-    if (packed_len < expected_len) return error.UnexpectedEndOfStream;
-    if (packed_len != expected_len) {
-        return error.InvalidMetadataPayload;
-    }
-    const section_len = try std.math.add(usize, 13, packed_len);
-    if (bytes.len - offset.* < section_len) return error.UnexpectedEndOfStream;
-    offset.* += section_len;
-}
-
 fn appendBlockPeakCounts(
     allocator: Allocator,
     counts: *std.ArrayList(u32),
@@ -847,8 +826,8 @@ fn appendBlockPeakCounts(
 ) !void {
     const payload = block_bytes[block.header_len..];
     var offset: usize = 0;
-    try skipMetadataSection(payload, &offset, (block_header.flags & block.flag_delta_scan_id) != 0, block_header.spectrum_count);
-    try skipMetadataSection(payload, &offset, (block_header.flags & block.flag_delta_rt) != 0, block_header.spectrum_count);
+    offset += try block.u32ColumnLen(payload, offset, block_header.spectrum_count, (block_header.flags & block.flag_delta_scan_id) != 0);
+    offset += try block.u32ColumnLen(payload, offset, block_header.spectrum_count, (block_header.flags & block.flag_delta_rt) != 0);
     const precursor_len = try std.math.mul(usize, block_header.spectrum_count, @sizeOf(f64));
     if (payload.len - offset < precursor_len) return error.UnexpectedEndOfStream;
     offset += precursor_len;

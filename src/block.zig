@@ -19,6 +19,7 @@ pub const flag_rans_mz = common.flag_rans_mz;
 pub const flag_rans_intensity = common.flag_rans_intensity;
 pub const header_len = common.header_len;
 pub const packedByteLen = common.packedByteLen;
+pub const u32ColumnLen = common.u32ColumnLen;
 pub const MAX_BLOCK_SPECTRA = common.MAX_BLOCK_SPECTRA;
 pub const MAX_BLOCK_PEAKS = common.MAX_BLOCK_PEAKS;
 pub const logicalBlockBytes = common.logicalBlockBytes;
@@ -30,7 +31,7 @@ pub const blockNeedsFlush = common.blockNeedsFlush;
 pub const encodeBlockDetailed = encode.encodeBlockDetailed;
 pub const encodeBlock = encode.encodeBlock;
 
-pub const parseHeader = decode.parseHeader;
+pub const parseHeader = common.parseHeader;
 pub const verifyBlockChecksum = decode.verifyBlockChecksum;
 pub const decodeBlock = decode.decodeBlock;
 pub const decodeBlockWithScratch = decode.decodeBlockWithScratch;
