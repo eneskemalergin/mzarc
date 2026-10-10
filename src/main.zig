@@ -12,10 +12,6 @@ const source_document = @import("source_document");
 const DEFAULT_ENCODE_OPTIONS: block.EncodeOptions = .{};
 const LOSSY_MZ_HALF_STEP_DA: f64 = 0.5 / @as(f64, @floatFromInt(DEFAULT_ENCODE_OPTIONS.mz_scale_factor));
 
-fn writeStdout(io: std.Io, bytes: []const u8) void {
-    std.Io.File.stdout().writeStreamingAll(io, bytes) catch return;
-}
-
 fn printStdout(io: std.Io, comptime fmt: []const u8, args: anytype) void {
     var buf: [4096]u8 = undefined;
     var writer = std.Io.File.stdout().writerStreaming(io, &buf);
@@ -204,65 +200,22 @@ fn commandDecode(io: std.Io, allocator: std.mem.Allocator, args: []const [:0]con
     std.debug.print("decoded: {s} -> {s}\n", .{ input_path, output_path });
 }
 
-fn printInspectionJson(io: std.Io, allocator: std.mem.Allocator, path: []const u8, inspection: codec.Inspection) !void {
-    const bytes = inspection.byte_breakdown;
-    const json_str = try std.fmt.allocPrint(
-        allocator,
-        "{{\n" ++
-            "  \"file\": {f},\n" ++
-            "  \"version_major\": {},\n" ++
-            "  \"version_minor\": {},\n" ++
-            "  \"spectrum_count\": {},\n" ++
-            "  \"block_count\": {},\n" ++
-            "  \"total_peaks\": {},\n" ++
-            "  \"block_size\": {},\n" ++
-            "  \"ms1_block_count\": {},\n" ++
-            "  \"ms2_block_count\": {},\n" ++
-            "  \"ms1_spectra\": {},\n" ++
-            "  \"ms2_spectra\": {},\n" ++
-            "  \"byte_breakdown\": {{\n" ++
-            "    \"file_header_bytes\": {},\n" ++
-            "    \"global_order_bytes\": {},\n" ++
-            "    \"block_header_bytes\": {},\n" ++
-            "    \"scan_id_bytes\": {},\n" ++
-            "    \"rt_bytes\": {},\n" ++
-            "    \"precursor_bytes\": {},\n" ++
-            "    \"peak_count_bytes\": {},\n" ++
-            "    \"mz_metadata_bytes\": {},\n" ++
-            "    \"mz_payload_bytes\": {},\n" ++
-            "    \"intensity_metadata_bytes\": {},\n" ++
-            "    \"intensity_payload_bytes\": {},\n" ++
-            "    \"total_bytes\": {}\n" ++
-            "  }}\n" ++
-            "}}\n",
-        .{
-            std.json.fmt(path, .{}),
-            inspection.header.version_major,
-            inspection.header.version_minor,
-            inspection.header.spectrum_count,
-            inspection.header.block_count,
-            inspection.header.total_peaks,
-            inspection.header.block_size,
-            inspection.ms1_block_count,
-            inspection.ms2_block_count,
-            inspection.ms1_spectra,
-            inspection.ms2_spectra,
-            bytes.file_header_bytes,
-            bytes.global_order_bytes,
-            bytes.block_header_bytes,
-            bytes.scan_id_bytes,
-            bytes.rt_bytes,
-            bytes.precursor_bytes,
-            bytes.peak_count_bytes,
-            bytes.mz_metadata_bytes,
-            bytes.mz_payload_bytes,
-            bytes.intensity_metadata_bytes,
-            bytes.intensity_payload_bytes,
-            bytes.total_bytes,
-        },
-    );
-    defer allocator.free(json_str);
-    writeStdout(io, json_str);
+fn printInspectionJson(io: std.Io, path: []const u8, inspection: codec.Inspection) void {
+    const header = inspection.header;
+    printStdout(io, "{f}\n", .{std.json.fmt(.{
+        .file = path,
+        .version_major = header.version_major,
+        .version_minor = header.version_minor,
+        .spectrum_count = header.spectrum_count,
+        .block_count = header.block_count,
+        .total_peaks = header.total_peaks,
+        .block_size = header.block_size,
+        .ms1_block_count = inspection.ms1_block_count,
+        .ms2_block_count = inspection.ms2_block_count,
+        .ms1_spectra = inspection.ms1_spectra,
+        .ms2_spectra = inspection.ms2_spectra,
+        .byte_breakdown = inspection.byte_breakdown,
+    }, .{ .whitespace = .indent_2 })});
 }
 
 fn printBlockTable(inspection: codec.Inspection) void {
@@ -323,7 +276,7 @@ fn commandInspect(io: std.Io, allocator: std.mem.Allocator, args: []const [:0]co
     defer codec.freeInspection(allocator, inspection);
 
     if (json_output) {
-        try printInspectionJson(io, allocator, input_path, inspection);
+        printInspectionJson(io, input_path, inspection);
         return;
     }
 
@@ -337,18 +290,14 @@ fn commandInspect(io: std.Io, allocator: std.mem.Allocator, args: []const [:0]co
     std.debug.print("ms2 blocks: {}\n", .{inspection.ms2_block_count});
     std.debug.print("ms1 spectra: {}\n", .{inspection.ms1_spectra});
     std.debug.print("ms2 spectra: {}\n", .{inspection.ms2_spectra});
-    std.debug.print("file header bytes: {}\n", .{inspection.byte_breakdown.file_header_bytes});
-    std.debug.print("global order bytes: {}\n", .{inspection.byte_breakdown.global_order_bytes});
-    std.debug.print("block header bytes: {}\n", .{inspection.byte_breakdown.block_header_bytes});
-    std.debug.print("scan id bytes: {}\n", .{inspection.byte_breakdown.scan_id_bytes});
-    std.debug.print("rt bytes: {}\n", .{inspection.byte_breakdown.rt_bytes});
-    std.debug.print("precursor bytes: {}\n", .{inspection.byte_breakdown.precursor_bytes});
-    std.debug.print("peak count bytes: {}\n", .{inspection.byte_breakdown.peak_count_bytes});
-    std.debug.print("mz metadata bytes: {}\n", .{inspection.byte_breakdown.mz_metadata_bytes});
-    std.debug.print("mz payload bytes: {}\n", .{inspection.byte_breakdown.mz_payload_bytes});
-    std.debug.print("intensity metadata bytes: {}\n", .{inspection.byte_breakdown.intensity_metadata_bytes});
-    std.debug.print("intensity payload bytes: {}\n", .{inspection.byte_breakdown.intensity_payload_bytes});
-    std.debug.print("total bytes: {}\n", .{inspection.byte_breakdown.total_bytes});
+    inline for (std.meta.fields(codec.FileByteBreakdown)) |field| {
+        const label = comptime blk: {
+            var name: [field.name.len]u8 = field.name[0..field.name.len].*;
+            std.mem.replaceScalar(u8, &name, '_', ' ');
+            break :blk name;
+        };
+        std.debug.print(label ++ ": {}\n", .{@field(inspection.byte_breakdown, field.name)});
+    }
 
     if (show_blocks) {
         std.debug.print("\n", .{});
@@ -362,8 +311,6 @@ fn checkLosslessSpectra(
     dec: []const binary_reader.RawSpectrum,
     verbose: bool,
 ) bool {
-    var all_pass = true;
-
     if (orig.len != dec.len) {
         if (verbose) printStdout(io, "FAIL spectrum_count expected={} got={}\n", .{ orig.len, dec.len });
         return false;
@@ -409,45 +356,36 @@ fn checkLosslessSpectra(
     if (verbose) {
         if (scan_fail_idx) |si| {
             printStdout(io, "FAIL scan_id spectrum={} expected={} got={}\n", .{ si, orig[si].scan_id, dec[si].scan_id });
-            all_pass = false;
         } else printStdout(io, "PASS scan_id_exact\n", .{});
 
         if (rt_fail_idx) |si| {
             printStdout(io, "FAIL rt_seconds spectrum={} expected={e} got={e}\n", .{ si, orig[si].rt_seconds, dec[si].rt_seconds });
-            all_pass = false;
         } else printStdout(io, "PASS rt_seconds_exact\n", .{});
 
         if (ms_level_fail_idx) |si| {
             printStdout(io, "FAIL ms_level spectrum={} expected={} got={}\n", .{ si, orig[si].ms_level, dec[si].ms_level });
-            all_pass = false;
         } else printStdout(io, "PASS ms_level_exact\n", .{});
 
         if (precursor_fail_idx) |si| {
             printStdout(io, "FAIL precursor_mz spectrum={} expected={d} got={d}\n", .{ si, orig[si].precursor_mz, dec[si].precursor_mz });
-            all_pass = false;
         } else printStdout(io, "PASS precursor_mz_exact\n", .{});
 
         if (peak_count_fail_idx) |si| {
             printStdout(io, "FAIL peak_count spectrum={} expected={} got={}\n", .{ si, orig[si].mz.len, dec[si].mz.len });
-            all_pass = false;
         } else printStdout(io, "PASS peak_count_exact\n", .{});
 
         if (mz_fail) |f| {
             printStdout(io, "FAIL mz_round_trip spectrum={} peak={} expected={d} got={d}\n", .{ f.si, f.pi, f.exp, f.got });
-            all_pass = false;
         } else printStdout(io, "PASS mz_round_trip exact\n", .{});
 
         if (int_fail) |f| {
             printStdout(io, "FAIL intensity_round_trip spectrum={} peak={} expected={e} got={e}\n", .{ f.si, f.pi, f.exp, f.got });
-            all_pass = false;
         } else printStdout(io, "PASS intensity_round_trip exact\n", .{});
-    } else {
-        all_pass = scan_fail_idx == null and rt_fail_idx == null and ms_level_fail_idx == null and
-            precursor_fail_idx == null and peak_count_fail_idx == null and
-            mz_fail == null and int_fail == null;
     }
 
-    return all_pass;
+    return scan_fail_idx == null and rt_fail_idx == null and ms_level_fail_idx == null and
+        precursor_fail_idx == null and peak_count_fail_idx == null and
+        mz_fail == null and int_fail == null;
 }
 
 fn checkLossySpectra(
@@ -654,54 +592,35 @@ pub fn main(init: std.process.Init) !void {
         return;
     }
 
-    if (std.mem.eql(u8, args[1], "dump")) {
-        if (args.len != 5) {
-            printUsage();
-            return error.InvalidArguments;
-        }
-        const output_path = try parseOutputPath(args);
-        try requireDistinctOutput(io, args[2], output_path);
-        const summary = try mzml_dump.dump(io, init.gpa, args[2], output_path);
-        printStdout(io, "input: {s}\noutput: {s}\nspectra: {d}\ntotal peaks: {d}\nms1 count: {d}\nms2 count: {d}\noutput bytes: {d}\n", .{
-            args[2], output_path, summary.spectra, summary.peaks, summary.ms1, summary.ms2, summary.bytes,
-        });
-        return;
+    const Command = enum { dump, @"dump-inspect", encode, decode, inspect, validate, @"validate-adversarial" };
+    const command = std.meta.stringToEnum(Command, args[1]) orelse {
+        printUsage();
+        return error.InvalidArguments;
+    };
+    switch (command) {
+        .dump => {
+            if (args.len != 5) {
+                printUsage();
+                return error.InvalidArguments;
+            }
+            const output_path = try parseOutputPath(args);
+            try requireDistinctOutput(io, args[2], output_path);
+            const summary = try mzml_dump.dump(io, init.gpa, args[2], output_path);
+            printStdout(io, "input: {s}\noutput: {s}\nspectra: {d}\ntotal peaks: {d}\nms1 count: {d}\nms2 count: {d}\noutput bytes: {d}\n", .{
+                args[2], output_path, summary.spectra, summary.peaks, summary.ms1, summary.ms2, summary.bytes,
+            });
+        },
+        .@"dump-inspect" => {
+            if (args.len != 3) {
+                printUsage();
+                return error.InvalidArguments;
+            }
+            try commandDumpInspect(io, init.gpa, args[2]);
+        },
+        .encode => try commandEncode(io, init.gpa, args),
+        .decode => try commandDecode(io, init.gpa, args),
+        .inspect => try commandInspect(io, init.gpa, args),
+        .validate => try commandValidate(io, init.gpa, args),
+        .@"validate-adversarial" => try commandValidateAdversarial(io, init.gpa, args),
     }
-
-    if (std.mem.eql(u8, args[1], "dump-inspect")) {
-        if (args.len != 3) {
-            printUsage();
-            return error.InvalidArguments;
-        }
-        try commandDumpInspect(io, init.gpa, args[2]);
-        return;
-    }
-
-    if (std.mem.eql(u8, args[1], "encode")) {
-        try commandEncode(io, init.gpa, args);
-        return;
-    }
-
-    if (std.mem.eql(u8, args[1], "decode")) {
-        try commandDecode(io, init.gpa, args);
-        return;
-    }
-
-    if (std.mem.eql(u8, args[1], "inspect")) {
-        try commandInspect(io, init.gpa, args);
-        return;
-    }
-
-    if (std.mem.eql(u8, args[1], "validate")) {
-        try commandValidate(io, init.gpa, args);
-        return;
-    }
-
-    if (std.mem.eql(u8, args[1], "validate-adversarial")) {
-        try commandValidateAdversarial(io, init.gpa, args);
-        return;
-    }
-
-    printUsage();
-    return error.InvalidArguments;
 }
