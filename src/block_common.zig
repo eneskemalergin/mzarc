@@ -252,7 +252,7 @@ pub fn blockNeedsFlush(
         (spectrum_count != 0 and candidate_peaks > MAX_BLOCK_PEAKS);
 }
 
-pub fn combineU32(low: u16, high: u16) u32 {
+fn combineU32(low: u16, high: u16) u32 {
     return @as(u32, low) | (@as(u32, high) << 16);
 }
 
@@ -318,7 +318,7 @@ pub fn allMzExactlyF32(spectra: []const binary_reader.RawSpectrum) bool {
     return true;
 }
 
-pub fn shouldUseRans(encoded_len: usize, raw_len: usize, min_gain_percent: u8) bool {
+fn shouldUseRans(encoded_len: usize, raw_len: usize, min_gain_percent: u8) bool {
     if (raw_len == 0 or encoded_len >= raw_len) return false;
     const required = 100 - @min(@as(usize, min_gain_percent), 99);
     const left = std.math.mul(u64, encoded_len, 100) catch return false;

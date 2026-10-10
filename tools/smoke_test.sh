@@ -59,7 +59,7 @@ if [[ ! -f "$mzml_fixture" || ! -f "$mzml_expected" ]]; then
     exit 1
 fi
 
-scratch=$(mktemp -d "${TMPDIR:-/tmp}/mzarc-smoke.XXXXXX")
+scratch=$(mktemp -d "${TMPDIR:-/var/tmp}/mzarc-smoke.XXXXXX")
 cleanup() {
     rm -rf -- "$scratch"
 }
@@ -150,8 +150,43 @@ check_mzml_dump() {
     echo "PASS truncated mzML dump keeps destination"
 }
 
+# One spectrum of zero-valued peaks; $2 is the m/z width in bytes (8 for f64, 4 for f32).
+peak_limit_mzml() {
+    local peaks=$1 mz_width=$2 mz_term mz_text intensity_text
+    mz_term='MS:1000523" name="64-bit float'
+    if ((mz_width == 4)); then mz_term='MS:1000521" name="32-bit float'; fi
+    mz_text=$(head -c $((peaks * mz_width)) /dev/zero | base64 | tr -d '\n')
+    intensity_text=$(head -c $((peaks * 4)) /dev/zero | base64 | tr -d '\n')
+    printf '<?xml version="1.0" encoding="utf-8"?>\n<mzML xmlns="http://psi.hupo.org/ms/mzml" version="1.1.0"><run id="r"><spectrumList count="1"><spectrum index="0" id="scan=1" defaultArrayLength="%d"><cvParam cvRef="MS" accession="MS:1000511" name="ms level" value="1"/><binaryDataArrayList count="2"><binaryDataArray encodedLength="%d"><cvParam cvRef="MS" accession="%s"/><cvParam cvRef="MS" accession="MS:1000576" name="no compression"/><cvParam cvRef="MS" accession="MS:1000514" name="m/z array"/><binary>%s</binary></binaryDataArray><binaryDataArray encodedLength="%d"><cvParam cvRef="MS" accession="MS:1000521" name="32-bit float"/><cvParam cvRef="MS" accession="MS:1000576" name="no compression"/><cvParam cvRef="MS" accession="MS:1000515" name="intensity array"/><binary>%s</binary></binaryDataArray></binaryDataArrayList></spectrum></spectrumList></run></mzML>\n' \
+        "$peaks" "${#mz_text}" "$mz_term" "$mz_text" "${#intensity_text}" "$intensity_text"
+}
+
+check_mzml_dump_peak_limit() {
+    local limit=524288 width
+    peak_limit_mzml "$limit" 8 >"$scratch/limit.mzML"
+    run_quiet 'mzML dump at the peak limit' "$mzarc" dump "$scratch/limit.mzML" -o "$scratch/limit.bin"
+    if (($(wc -c <"$scratch/limit.bin") != 28 + 12 * limit)); then
+        echo "FAIL mzML dump at the peak limit size" >&2
+        return 1
+    fi
+    for width in 8 4; do
+        peak_limit_mzml $((limit + 1)) "$width" >"$scratch/over.mzML"
+        printf 'keep' >"$scratch/existing.bin"
+        if "$mzarc" dump "$scratch/over.mzML" -o "$scratch/existing.bin" >/dev/null 2>&1; then
+            echo "FAIL mzML dump accepted $((limit + 1)) peaks with $((width * 8))-bit m/z" >&2
+            return 1
+        fi
+        if [[ $(<"$scratch/existing.bin") != keep ]]; then
+            echo "FAIL over-limit mzML dump replaced its destination" >&2
+            return 1
+        fi
+    done
+    echo "PASS mzML dump rejects one peak over the limit"
+}
+
 run_quiet 'help' "$mzarc" --help
 check_mzml_dump
+check_mzml_dump_peak_limit
 run_quiet 'adversarial lossless round trips' "$mzarc" validate-adversarial "$adversarial"
 round_trip lossless
 round_trip lossy --lossy

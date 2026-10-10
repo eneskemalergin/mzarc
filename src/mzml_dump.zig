@@ -1,10 +1,16 @@
 //! Dump V1 from mzML on zmz: the same records as tools/mzml_dump.py, without Python.
-//! Spectra in source order; per record a 28-byte header (scan id, retention time in seconds
-//! as f32, MS level, precursor m/z, peak count), then m/z as f64 and intensity as f32, sorted
-//! by m/z (stable) when the source is not.
+//! Spectra in source order; peaks sorted by m/z (stable) when the source is not.
+//! `binary_reader.writeRecord` owns the record bytes.
 
 const std = @import("std");
 const mzml = @import("zmz").mzml;
+const binary_reader = @import("binary_reader");
+const block = @import("block");
+
+// One record above the format's peak limit cannot be encoded, so its arrays are never read whole.
+// An f64 array of that many values takes 4 MiB; its Base64 text, with line breaks, stays under 8 MiB.
+const MAX_PEAKS = block.MAX_BLOCK_PEAKS;
+const MAX_ARRAY_BYTES = MAX_PEAKS * @sizeOf(f64);
 
 pub const Summary = struct {
     spectra: usize = 0,
@@ -34,12 +40,17 @@ pub fn dump(io: std.Io, allocator: std.mem.Allocator, input_path: []const u8, ou
     var input = input_file.reader(io, &input_buffer);
     var reader = try mzml.StreamReader.init(allocator, &input.interface, .{
         .array_selector = .{ .select = selectArray, .select_record = selectRecord },
+        .limits = .{ .binary_text_bytes = 2 * MAX_ARRAY_BYTES },
     });
     defer reader.deinit();
     errdefer if (reader.diagnostic()) |report| std.debug.print("{s}: {f}\n", .{ input_path, report });
     const header = try reader.readHeader();
     // Numpress decodes to f64; like pyteomics, values return to their declared precision.
-    var decoded = mzml.DecodedArrays.init(allocator, .{ .numpress_precision = .declared });
+    var decoded = mzml.DecodedArrays.init(allocator, .{
+        .array_bytes = MAX_ARRAY_BYTES,
+        .record_array_bytes = 2 * MAX_ARRAY_BYTES,
+        .numpress_precision = .declared,
+    });
     defer decoded.deinit();
 
     // A failed dump leaves an existing destination unchanged, as encode and decode do.
@@ -65,26 +76,28 @@ pub fn dump(io: std.Io, allocator: std.mem.Allocator, input_path: []const u8, ou
             const array = decoded.get(position).?;
             const is_mz = array.role == .mz;
             switch (array.values) {
-                inline else => |values| for (values) |value| {
-                    const wide: f64 = if (@typeInfo(@TypeOf(value)) == .float) @floatCast(value) else @floatFromInt(value);
-                    if (is_mz) try mz.append(allocator, wide) else try intensity.append(allocator, @floatCast(wide));
+                inline else => |values| {
+                    const held = if (is_mz) mz.items.len else intensity.items.len;
+                    if (values.len > MAX_PEAKS - held) return error.BlockResourceLimit;
+                    for (values) |value| {
+                        const wide: f64 = if (@typeInfo(@TypeOf(value)) == .float) @floatCast(value) else @floatFromInt(value);
+                        if (is_mz) try mz.append(allocator, wide) else try intensity.append(allocator, @floatCast(wide));
+                    }
                 },
             }
         }
-        if (mz.items.len != intensity.items.len) return error.ArrayLengthMismatch;
+        if (mz.items.len != intensity.items.len) return error.MismatchedPeakArrays;
 
         const ms_level = try record.msLevel(header.groups) orelse 0;
-        const precursor_mz: f64 = if (ms_level > 1) precursorMz(record, header.groups) else 0;
-        try out.writeInt(u32, try scanId(record), .little);
-        try out.writeInt(u32, @bitCast(@as(f32, @floatCast(try retentionSeconds(record, header.groups)))), .little);
-        try out.writeByte(std.math.cast(u8, ms_level) orelse return error.MsLevelOutOfRange);
-        try out.splatByteAll(0, 3);
-        try out.writeInt(u64, @bitCast(precursor_mz), .little);
-        try out.writeInt(u32, std.math.cast(u32, mz.items.len) orelse return error.TooManyPeaks, .little);
-        try out.splatByteAll(0, 4);
         try sortByMz(allocator, &order, mz.items, intensity.items);
-        for (mz.items) |value| try out.writeInt(u64, @bitCast(value), .little);
-        for (intensity.items) |value| try out.writeInt(u32, @bitCast(value), .little);
+        try binary_reader.writeRecord(out, .{
+            .scan_id = try scanId(record),
+            .rt_seconds = @floatCast(try retentionSeconds(record, header.groups)),
+            .ms_level = std.math.cast(u8, ms_level) orelse return error.MsLevelOutOfRange,
+            .precursor_mz = if (ms_level > 1) precursorMz(record, header.groups) else 0,
+            .mz = mz.items,
+            .intensity = intensity.items,
+        });
 
         summary.bytes += 28 + 12 * mz.items.len;
         summary.spectra += 1;
