@@ -56,9 +56,6 @@ pub fn freeSpectra(allocator: Allocator, spectra: []RawSpectrum) void {
 }
 
 pub fn writeDumpAlloc(allocator: Allocator, spectra: []const RawSpectrum) ![]u8 {
-    var bytes: std.ArrayList(u8) = .empty;
-    errdefer bytes.deinit(allocator);
-
     var total_len: usize = 0;
     for (spectra) |spectrum| {
         if (spectrum.mz.len != spectrum.intensity.len) return error.MismatchedPeakArrays;
@@ -67,21 +64,37 @@ pub fn writeDumpAlloc(allocator: Allocator, spectra: []const RawSpectrum) ![]u8 
         total_len = try std.math.add(usize, total_len, try std.math.mul(usize, spectrum.mz.len, @sizeOf(f64)));
         total_len = try std.math.add(usize, total_len, try std.math.mul(usize, spectrum.intensity.len, @sizeOf(f32)));
     }
-    try bytes.ensureTotalCapacityPrecise(allocator, total_len);
+    var out: std.Io.Writer.Allocating = try .initCapacity(allocator, total_len);
+    errdefer out.deinit();
+    for (spectra) |spectrum| try writeRecord(&out.writer, spectrum);
+    return out.toOwnedSlice();
+}
 
-    for (spectra) |spectrum| {
-        try appendIntLe(&bytes, allocator, u32, spectrum.scan_id);
-        try appendIntLe(&bytes, allocator, u32, @bitCast(spectrum.rt_seconds));
-        try bytes.append(allocator, spectrum.ms_level);
-        try bytes.appendSlice(allocator, &pad_after_ms_level);
-        try appendIntLe(&bytes, allocator, u64, @bitCast(spectrum.precursor_mz));
-        try appendIntLe(&bytes, allocator, u32, @intCast(spectrum.mz.len));
-        try bytes.appendSlice(allocator, &pad_after_peak_count);
-        try appendFloatsLe(&bytes, allocator, f64, spectrum.mz);
-        try appendFloatsLe(&bytes, allocator, f32, spectrum.intensity);
-    }
+/// Writes one complete Dump V1 record: the 28-byte header, then m/z as f64 and intensity as f32.
+pub fn writeRecord(out: *std.Io.Writer, spectrum: RawSpectrum) !void {
+    const header = try recordHeader(spectrum);
+    try out.writeAll(&header);
+    try writeFloatsLe(out, f64, spectrum.mz);
+    try writeFloatsLe(out, f32, spectrum.intensity);
+}
 
-    return bytes.toOwnedSlice(allocator);
+/// The only encoder of the record header; rejects mismatched arrays and counts above u32.
+fn recordHeader(spectrum: RawSpectrum) ![record_header_len]u8 {
+    if (spectrum.mz.len != spectrum.intensity.len) return error.MismatchedPeakArrays;
+    const peak_count = std.math.cast(u32, spectrum.mz.len) orelse return error.Overflow;
+    var header: [record_header_len]u8 = @splat(0);
+    std.mem.writeInt(u32, header[0..4], spectrum.scan_id, .little);
+    std.mem.writeInt(u32, header[4..8], @bitCast(spectrum.rt_seconds), .little);
+    header[8] = spectrum.ms_level;
+    std.mem.writeInt(u64, header[12..20], @bitCast(spectrum.precursor_mz), .little);
+    std.mem.writeInt(u32, header[20..24], peak_count, .little);
+    return header;
+}
+
+fn writeFloatsLe(out: *std.Io.Writer, comptime T: type, values: []const T) !void {
+    if (builtin.cpu.arch.endian() == .little) return out.writeAll(std.mem.sliceAsBytes(values));
+    const Int = std.meta.Int(.unsigned, @bitSizeOf(T));
+    for (values) |value| try out.writeInt(Int, @bitCast(value), .little);
 }
 
 pub fn parseDump(bytes: []const u8, allocator: Allocator) ![]RawSpectrum {
@@ -263,6 +276,10 @@ pub fn recordLen(peak_count: u32) !u64 {
     return checkedAddU64(record_header_len, try checkedMulU64(peak_count, @sizeOf(f64) + @sizeOf(f32)));
 }
 
+fn readIntLe(comptime T: type, bytes: []const u8) T {
+    return std.mem.readInt(T, bytes[0..@sizeOf(T)], .little);
+}
+
 fn floatBytesLe(scratch: Allocator, comptime T: type, values: []const T) ![]const u8 {
     if (builtin.cpu.arch.endian() == .little) return std.mem.sliceAsBytes(values);
 
@@ -316,39 +333,10 @@ fn writeVectorsAll(file: std.Io.File, io: std.Io, vectors: *const [3][]const u8,
 
 /// Write one spectrum at its final Dump V1 offset. `scratch` is block-scoped.
 pub fn writeSpectrumAt(scratch: Allocator, io: std.Io, file: std.Io.File, spectrum: RawSpectrum, offset: u64) !void {
-    if (spectrum.mz.len != spectrum.intensity.len) return error.MismatchedPeakArrays;
-    if (spectrum.mz.len > std.math.maxInt(u32)) return error.Overflow;
-
-    var header: [record_header_len]u8 = @splat(0);
-    std.mem.writeInt(u32, header[0..4], spectrum.scan_id, .little);
-    std.mem.writeInt(u32, header[4..8], @bitCast(spectrum.rt_seconds), .little);
-    header[8] = spectrum.ms_level;
-    std.mem.writeInt(u64, header[12..20], @bitCast(spectrum.precursor_mz), .little);
-    std.mem.writeInt(u32, header[20..24], @intCast(spectrum.mz.len), .little);
+    const header = try recordHeader(spectrum);
     const mz_bytes = try floatBytesLe(scratch, f64, spectrum.mz);
     const intensity_bytes = try floatBytesLe(scratch, f32, spectrum.intensity);
     try writeVectorsAll(file, io, &.{ &header, mz_bytes, intensity_bytes }, offset);
-}
-
-fn appendIntLe(list: *std.ArrayList(u8), allocator: Allocator, comptime T: type, value: T) !void {
-    var buffer: [@sizeOf(T)]u8 = undefined;
-    std.mem.writeInt(T, &buffer, value, .little);
-    try list.appendSlice(allocator, &buffer);
-}
-
-fn readIntLe(comptime T: type, bytes: []const u8) T {
-    return std.mem.readInt(T, bytes[0..@sizeOf(T)], .little);
-}
-
-fn appendFloatsLe(list: *std.ArrayList(u8), allocator: Allocator, comptime T: type, values: []const T) !void {
-    if (builtin.cpu.arch.endian() == .little) {
-        try list.appendSlice(allocator, std.mem.sliceAsBytes(values));
-        return;
-    }
-    const Int = std.meta.Int(.unsigned, @bitSizeOf(T));
-    for (values) |value| {
-        try appendIntLe(list, allocator, Int, @bitCast(value));
-    }
 }
 
 fn readFloatsLe(comptime T: type, dst: []T, src: []const u8) void {

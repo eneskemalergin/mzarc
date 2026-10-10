@@ -1,10 +1,10 @@
 //! Dump V1 from mzML on zmz: the same records as tools/mzml_dump.py, without Python.
-//! Spectra in source order; per record a 28-byte header (scan id, retention time in seconds
-//! as f32, MS level, precursor m/z, peak count), then m/z as f64 and intensity as f32, sorted
-//! by m/z (stable) when the source is not.
+//! Spectra in source order; peaks sorted by m/z (stable) when the source is not.
+//! `binary_reader.writeRecord` owns the record bytes.
 
 const std = @import("std");
 const mzml = @import("zmz").mzml;
+const binary_reader = @import("binary_reader");
 
 pub const Summary = struct {
     spectra: usize = 0,
@@ -71,20 +71,18 @@ pub fn dump(io: std.Io, allocator: std.mem.Allocator, input_path: []const u8, ou
                 },
             }
         }
-        if (mz.items.len != intensity.items.len) return error.ArrayLengthMismatch;
+        if (mz.items.len != intensity.items.len) return error.MismatchedPeakArrays;
 
         const ms_level = try record.msLevel(header.groups) orelse 0;
-        const precursor_mz: f64 = if (ms_level > 1) precursorMz(record, header.groups) else 0;
-        try out.writeInt(u32, try scanId(record), .little);
-        try out.writeInt(u32, @bitCast(@as(f32, @floatCast(try retentionSeconds(record, header.groups)))), .little);
-        try out.writeByte(std.math.cast(u8, ms_level) orelse return error.MsLevelOutOfRange);
-        try out.splatByteAll(0, 3);
-        try out.writeInt(u64, @bitCast(precursor_mz), .little);
-        try out.writeInt(u32, std.math.cast(u32, mz.items.len) orelse return error.TooManyPeaks, .little);
-        try out.splatByteAll(0, 4);
         try sortByMz(allocator, &order, mz.items, intensity.items);
-        for (mz.items) |value| try out.writeInt(u64, @bitCast(value), .little);
-        for (intensity.items) |value| try out.writeInt(u32, @bitCast(value), .little);
+        try binary_reader.writeRecord(out, .{
+            .scan_id = try scanId(record),
+            .rt_seconds = @floatCast(try retentionSeconds(record, header.groups)),
+            .ms_level = std.math.cast(u8, ms_level) orelse return error.MsLevelOutOfRange,
+            .precursor_mz = if (ms_level > 1) precursorMz(record, header.groups) else 0,
+            .mz = mz.items,
+            .intensity = intensity.items,
+        });
 
         summary.bytes += 28 + 12 * mz.items.len;
         summary.spectra += 1;
