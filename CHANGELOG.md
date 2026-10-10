@@ -24,6 +24,14 @@ All notable changes to mzarc are documented here. The format follows [Keep a Cha
   - Creates the Dump V1 input with `mzarc dump` instead of Python, and records the zmz commit in the report.
   - Uses `zig` and `zebrac` from `PATH` and reads local data from `~/Github/data/mzml` or `MZARC_DATA`.
 
+### Fixed
+
+- **Lossy m/z:**
+  - Rejects an m/z value whose quantized code rounds to 2^64 instead of crashing during lossy encode.
+- **CLI:**
+  - `mzarc dump-inspect` prints the mean of the two middle peak counts as the median for an even spectrum count.
+  - `mzarc inspect --json` escapes the file path, so a path with a quote or backslash still gives valid JSON.
+
 ### Removed
 
 - **Repository:**
