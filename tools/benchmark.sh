@@ -234,8 +234,11 @@ if [[ "$input" == "$(realpath -m "$data_root")/examples/"* && "$sanity" != true 
     exit 1
 fi
 source_display=$input
+data_root_real=$(realpath -m "$data_root")
 if [[ "$input" == "$repo_root/"* ]]; then
     source_display=${input#"$repo_root/"}
+elif [[ "$input" == "$data_root_real/"* ]]; then
+    source_display="<data root>/${input#"$data_root_real/"}"
 fi
 
 if [[ -z "$output_dir" ]]; then
@@ -297,6 +300,10 @@ if [[ -z "$mzarc_version" || "$mzarc_version" != "$changelog_version" ]]; then
     exit 1
 fi
 zig_version=$("$zig" version)
+mzarc_commit=$(git -C "$repo_root" rev-parse --short HEAD)
+if [[ -n $(git -C "$repo_root" status --porcelain --untracked-files=no) ]]; then
+    mzarc_commit+=" (dirty)"
+fi
 if [[ "$zig_version" != 0.16.0 ]]; then
     echo "error: Zig 0.16.0 is required; $zig reports $zig_version" >&2
     exit 1
@@ -329,7 +336,7 @@ measurement_word='measurements'
 if ((samples == 1)); then
     measurement_word='measurement'
 fi
-readonly mzarc_version changelog_version zig_version zmz_version
+readonly mzarc_version changelog_version zig_version zmz_version mzarc_commit
 readonly zebrac_version zebrac_json_version gzip_version pigz_version zstd_version
 readonly xz_version mscompress_version jq_version gnuplot_version measurement_word
 
@@ -884,7 +891,7 @@ write_comparison 'Original mzML round trip' 'original mzML' "$mzml_bytes" "$rows
     echo
     echo '## Tool versions'
     echo
-    echo "- mzarc: \`v$mzarc_version\`"
+    echo "- mzarc: \`v$mzarc_version\` at \`$mzarc_commit\`"
     echo "- Build: Zig \`$zig_version\`; stripped ReleaseFast; single-threaded"
     echo "- Ingest: \`mzarc dump\` on zmz \`$zmz_version\`"
     echo "- Measurement: \`$zebrac_version\`"
