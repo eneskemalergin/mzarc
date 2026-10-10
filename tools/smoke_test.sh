@@ -17,6 +17,8 @@ repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 fixture="$repo_root/test/fixtures/frozen.bin"
 mzarc="$repo_root/zig-out/bin/mzarc"
 adversarial="$repo_root/test/adversarial"
+mzml_fixture="$repo_root/test/fixtures/small.mzML"
+mzml_expected="$repo_root/test/fixtures/small.bin"
 
 while (($#)); do
     case "$1" in
@@ -50,6 +52,10 @@ if [[ ! -f "$fixture" ]]; then
 fi
 if [[ ! -d "$adversarial" ]]; then
     echo "error: adversarial corpus not found: $adversarial" >&2
+    exit 1
+fi
+if [[ ! -f "$mzml_fixture" || ! -f "$mzml_expected" ]]; then
+    echo "error: mzML fixture not found: $mzml_fixture" >&2
     exit 1
 fi
 
@@ -122,7 +128,30 @@ round_trip() {
     fi
 }
 
+check_mzml_dump() {
+    run_quiet 'mzML dump' "$mzarc" dump "$mzml_fixture" -o "$scratch/small.bin"
+    if ! cmp -s "$mzml_expected" "$scratch/small.bin"; then
+        echo "FAIL mzML dump bytes" >&2
+        return 1
+    fi
+    echo "PASS mzML dump bytes"
+
+    # Byte 4000 is inside the second spectrum, after the dump has started writing.
+    head -c 4000 "$mzml_fixture" >"$scratch/truncated.mzML"
+    printf 'keep' >"$scratch/existing.bin"
+    if "$mzarc" dump "$scratch/truncated.mzML" -o "$scratch/existing.bin" >/dev/null 2>&1; then
+        echo "FAIL truncated mzML dump accepted" >&2
+        return 1
+    fi
+    if [[ $(<"$scratch/existing.bin") != keep ]]; then
+        echo "FAIL failed mzML dump replaced its destination" >&2
+        return 1
+    fi
+    echo "PASS truncated mzML dump keeps destination"
+}
+
 run_quiet 'help' "$mzarc" --help
+check_mzml_dump
 run_quiet 'adversarial lossless round trips' "$mzarc" validate-adversarial "$adversarial"
 round_trip lossless
 round_trip lossy --lossy
