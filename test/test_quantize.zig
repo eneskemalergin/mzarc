@@ -71,3 +71,37 @@ test "[failure] - [intensity quantization]: rejects invalid parameters" {
     try std.testing.expectError(error.InvalidIntensity, quantize.dequantizeIntensityValueScaled(1, 4096, std.math.nan(f32)));
     try std.testing.expectError(error.InvalidIntensity, quantize.dequantizeIntensityValueScaled(1, 4096, -1.0));
 }
+
+// Independent oracle: the per-value definition of the block maximum that the encoder used before Experiment 41.
+fn logMaxPerValue(values: []const f32) f32 {
+    var max_log: f64 = 0.0;
+    for (values) |value| {
+        if (value <= 0.0 or !std.math.isFinite(value)) continue;
+        max_log = @max(max_log, std.math.log1p(@as(f64, value)));
+    }
+    return @as(f32, @floatCast(max_log));
+}
+
+test "[property] - [intensity log maximum]: equals the per-value maximum bit for bit" {
+    const edges = [_]f32{
+        0.0,                               -0.0,
+        -1.0,                              std.math.nan(f32),
+        std.math.inf(f32),                 -std.math.inf(f32),
+        std.math.floatTrueMin(f32),        std.math.floatMin(f32),
+        std.math.floatMax(f32),            1.0,
+        std.math.nextAfter(f32, 1.0, 2.0), 1e7,
+    };
+    for (edges) |a| for (edges) |b| {
+        const pair = [_]f32{ a, b };
+        try std.testing.expectEqual(@as(u32, @bitCast(logMaxPerValue(&pair))), @as(u32, @bitCast(quantize.intensityLogMax(&pair))));
+    };
+    try std.testing.expectEqual(@as(f32, 0.0), quantize.intensityLogMax(&.{}));
+
+    var prng = std.Random.DefaultPrng.init(std.testing.random_seed);
+    const random = prng.random();
+    var values: [512]f32 = undefined;
+    for (0..200) |_| {
+        for (&values) |*value| value.* = @bitCast(random.int(u32));
+        try std.testing.expectEqual(@as(u32, @bitCast(logMaxPerValue(&values))), @as(u32, @bitCast(quantize.intensityLogMax(&values))));
+    }
+}
