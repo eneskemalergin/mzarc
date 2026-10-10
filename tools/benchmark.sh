@@ -14,14 +14,18 @@ Options:
   --sanity        Label parser-example output as a sanity check.
   --check         Run the focused local benchmark checks.
   -h, --help      Show this help.
+
+Environment:
+  MZARC_DATA      Local data root (default: ~/Github/data/mzml).
 EOF
 }
 
 repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+data_root=${MZARC_DATA:-$HOME/Github/data/mzml}
 
 run_checks() {
     local self="$repo_root/tools/benchmark.sh"
-    local tiny="$repo_root/data/examples/tiny.pwiz.1.1.mzML"
+    local tiny="$data_root/examples/tiny.pwiz.1.1.mzML"
     local output report_text rows real_cmp
     benchmark_check_root=$(mktemp -d "${TMPDIR:-/tmp}/mzarc-benchmark-check.XXXXXX")
     trap 'rm -rf -- "${benchmark_check_root:-}"' EXIT
@@ -104,8 +108,10 @@ EOF
     [[ ! -e "$benchmark_check_root/malformed/report.md" ]] || \
         fail 'malformed zebrac result produced a report'
 
+    # The fake cmp gets its own PATH entry; the fake zebrac above must not shadow the real one.
     real_cmp=$(command -v cmp) || fail 'cmp is unavailable'
-    cat >"$benchmark_check_root/fake/cmp" <<EOF
+    mkdir "$benchmark_check_root/fake-cmp"
+    cat >"$benchmark_check_root/fake-cmp/cmp" <<EOF
 #!/usr/bin/env bash
 if [[ \$# -eq 2 && \$1 == */source.bin && \$2 == */dump-gzip/source ]]; then
     echo 'injected byte mismatch' >&2
@@ -113,9 +119,9 @@ if [[ \$# -eq 2 && \$1 == */source.bin && \$2 == */dump-gzip/source ]]; then
 fi
 exec "$real_cmp" "\$@"
 EOF
-    chmod +x "$benchmark_check_root/fake/cmp"
+    chmod +x "$benchmark_check_root/fake-cmp/cmp"
     expect_failure 'failed peer validation' 'injected byte mismatch' \
-        env PATH="$benchmark_check_root/fake:$PATH" \
+        env PATH="$benchmark_check_root/fake-cmp:$PATH" \
         bash "$self" --sanity --samples 1 \
         --output "$benchmark_check_root/validation" "$tiny"
     [[ ! -e "$benchmark_check_root/validation/report.md" ]] || \
@@ -222,7 +228,7 @@ if [[ ! -f "$input" ]]; then
 fi
 input=$(realpath "$input")
 readonly source_name=${input##*/}
-if [[ "$input" == "$repo_root/data/examples/"* && "$sanity" != true ]]; then
+if [[ "$input" == "$(realpath -m "$data_root")/examples/"* && "$sanity" != true ]]; then
     echo 'error: parser examples are sanity inputs, not benchmark inputs' >&2
     echo 'rerun with --sanity to check harness wiring' >&2
     exit 1
@@ -243,9 +249,10 @@ if [[ -e "$output_dir" ]]; then
 fi
 
 readonly python="$repo_root/.venv/bin/python"
-readonly zig="$repo_root/zig-0.16.0/zig"
+zig=$(command -v zig || true)
+readonly zig
 readonly mzarc="$repo_root/zig-out/bin/mzarc"
-zebrac="$repo_root/tools/zebrac"
+zebrac=$(command -v zebrac || true)
 mscompress="$repo_root/tools/bin/mscompress-msz"
 if [[ ${MZARC_BENCH_CHECKING:-} == true ]]; then
     zebrac="${MZARC_BENCH_ZEBRAC:-$zebrac}"
@@ -254,8 +261,8 @@ fi
 readonly zebrac mscompress
 
 for path in "$python" "$zig" "$zebrac" "$mscompress"; do
-    if [[ ! -x "$path" ]]; then
-        echo "error: required executable not found: $path" >&2
+    if [[ -z "$path" || ! -x "$path" ]]; then
+        echo "error: required executable not found: ${path:-zig or zebrac on PATH}" >&2
         if [[ "$path" == "$mscompress" ]]; then
             echo "run: bash tools/build_mscompress.sh" >&2
         fi
@@ -291,6 +298,10 @@ if [[ -z "$mzarc_version" || "$mzarc_version" != "$changelog_version" ]]; then
     exit 1
 fi
 zig_version=$("$zig" version)
+if [[ "$zig_version" != 0.16.0 ]]; then
+    echo "error: Zig 0.16.0 is required; $zig reports $zig_version" >&2
+    exit 1
+fi
 python_version=$("$python" --version 2>&1)
 python_version=${python_version#Python }
 pyteomics_version=$("$python" -c 'import importlib.metadata; print(importlib.metadata.version("pyteomics"))')
@@ -331,7 +342,6 @@ echo "building stripped ReleaseFast mzarc"
 cd "$repo_root"
 "$zig" build --release=fast \
     --cache-dir "$repo_root/.zig-cache" \
-    --global-cache-dir "$scratch/zig-global" \
     --summary all
 
 echo "creating one Dump V1 input"
