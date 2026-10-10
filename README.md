@@ -27,17 +27,17 @@
 
 ## What mzarc does
 
-`mzarc` is a research codec for mass spectrometry spectra retained from mzML. It combines spectrum-aware transforms with entropy coding, keeps the CLI natively single-threaded, and processes one active block at a time.
-
-The current input path is intentionally split:
+`mzarc` is a research codec for mass spectrometry data. It keeps the CLI natively single-threaded and reads mzML through [zmz](https://github.com/eneskemalergin/zmz), a Zig mzML library. It has two archive paths:
 
 ```text
-mzML -> mzarc dump -> Dump V1 -> Zig codec -> .mzarc
+mzML -> mzarc encode -> .mzarc -> mzarc decode -> mzML
+mzML -> mzarc dump -> Dump V1 -> mzarc encode -> .mzarc -> mzarc decode -> Dump V1
 ```
 
-`mzarc dump` reads mzML through [zmz](https://github.com/eneskemalergin/zmz), a Zig mzML library, and writes Dump V1. Zig owns Dump V1 validation, compression, decompression, and the performance-sensitive transforms. A lossless mzarc round trip preserves the fields retained by Dump V1; it does not reproduce the original mzML document.
+- **mzML documents.** Exact mode restores the source file byte for byte. Lossy mode quantizes spectrum m/z (f64) and intensity arrays and changes nothing else: metadata, identifiers, other arrays, chromatograms, and XML text stay as they were, and decode rebuilds `encodedLength`, the index offsets, and `fileChecksum` for the new byte positions. On the 75.55 MiB reference file, exact mode writes 31.77% of the source and lossy mode 20.10%.
+- **Dump V1 spectra.** Spectrum-aware transforms and entropy coding compress the fields Dump V1 retains, one active block at a time, with a lossless mode and a controlled lossy intensity mode.
 
-The CLI also provides a controlled lossy intensity mode. The `.mzarc` 1.0 format remains under development, so neither mode is use-ready yet.
+The `.mzarc` 1.0 format remains under development, so no mode is use-ready yet.
 
 ## Quick start
 
@@ -47,7 +47,15 @@ mzarc uses Zig 0.16.0 from `PATH`. The build reads zmz from a checkout beside th
 zig build --release=fast
 ```
 
-Convert an mzML file, encode its retained spectra, and inspect the archive:
+Archive an mzML document exactly or lossily, then restore it:
+
+```bash
+./zig-out/bin/mzarc encode input.mzML -o input.mzarc
+./zig-out/bin/mzarc encode input.mzML -o input.lossy.mzarc --lossy
+./zig-out/bin/mzarc decode input.mzarc -o restored.mzML
+```
+
+Convert an mzML file to Dump V1, encode its retained spectra, and inspect the archive:
 
 ```bash
 ./zig-out/bin/mzarc dump input.mzML -o input.bin
