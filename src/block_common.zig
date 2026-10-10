@@ -2,6 +2,7 @@
 
 const std = @import("std");
 const binary_reader = @import("binary_reader");
+const bitpack = @import("bitpack");
 const rans = @import("rans");
 
 pub const Allocator = std.mem.Allocator;
@@ -18,6 +19,19 @@ pub const EncodeOptions = struct {
     mz_rans_min_gain_percent: u8 = 5,
     intensity_rans_min_gain_percent: u8 = 12,
     verbose_blocks: bool = false,
+};
+
+/// How a block stores m/z: fixed-point codes (lossy) or the exact f32 or f64 bit patterns.
+pub const MzDomain = enum {
+    lossy_fixed,
+    lossless_f32,
+    lossless_f64,
+
+    pub fn fromFlags(flags: u8) MzDomain {
+        if ((flags & flag_lossless_mz_f32) != 0) return .lossless_f32;
+        if ((flags & flag_lossless_mz_f64) != 0) return .lossless_f64;
+        return .lossy_fixed;
+    }
 };
 
 pub const IntensityEncodingMode = enum {
@@ -294,10 +308,65 @@ pub fn readF64Le(bytes: []const u8) f64 {
     return @bitCast(readIntLe(u64, bytes));
 }
 
-pub fn packedByteLen(bit_width: u8, count: usize) !usize {
-    if (bit_width == 0 or count == 0) return 0;
-    const bits = try std.math.mul(usize, bit_width, count);
-    return (try std.math.add(usize, bits, 7)) / 8;
+pub const packedByteLen = bitpack.packedByteLen;
+
+/// Bytes of a delta-coded u32 column header: bit width, FOR base, packed length.
+pub const column_header_len = 1 + 8 + 4;
+
+/// The stored length of a scan-id or retention-time column at `offset`, checked against `payload`.
+/// A delta column is FOR-packed deltas behind a 13-byte header; a raw column is `count` u32 values.
+pub fn u32ColumnLen(payload: []const u8, offset: usize, count: usize, delta: bool) !usize {
+    if (!delta) {
+        const len = try std.math.mul(usize, count, @sizeOf(u32));
+        if (payload.len - offset < len) return error.UnexpectedEndOfStream;
+        return len;
+    }
+    if (payload.len - offset < column_header_len) return error.UnexpectedEndOfStream;
+    const bit_width = payload[offset];
+    if (bit_width > 64) return error.InvalidBitWidth;
+    const pack_len = readIntLe(u32, payload[offset + 9 ..][0..4]);
+    const expected_len = try packedByteLen(bit_width, count);
+    if (pack_len < expected_len) return error.UnexpectedEndOfStream;
+    if (pack_len != expected_len) return error.InvalidMetadataPayload;
+    const len = column_header_len + @as(usize, pack_len);
+    if (payload.len - offset < len) return error.UnexpectedEndOfStream;
+    return len;
+}
+
+/// A block whose header passed the resource checks and whose length matches its header.
+pub const ParsedBlock = struct {
+    header: BlockHeader,
+    payload: []const u8,
+};
+
+pub fn parseHeader(bytes: []const u8) !BlockHeader {
+    if (bytes.len < header_len) return error.UnexpectedEndOfStream;
+    return .{
+        .spectrum_count = readIntLe(u16, bytes[0..2]),
+        .ms_level = bytes[2],
+        .flags = bytes[3],
+        .total_peaks = readIntLe(u32, bytes[4..8]),
+        .mz_scale_factor = readIntLe(u32, bytes[8..12]),
+        .intensity_quant = readIntLe(u16, bytes[12..14]),
+        .intensity_log_scale_lo = readIntLe(u16, bytes[14..16]),
+        .mz_bit_width = bytes[16],
+        .intensity_bit_width = bytes[17],
+        .intensity_log_scale_hi = readIntLe(u16, bytes[18..20]),
+        .rt_min = readF32Le(bytes[20..24]),
+        .rt_max = readF32Le(bytes[24..28]),
+        .payload_bytes = readIntLe(u32, bytes[28..32]),
+        .decompressed_bytes = readIntLe(u32, bytes[32..36]),
+        .checksum = readIntLe(u32, bytes[36..40]),
+    };
+}
+
+pub fn parseBlock(block_bytes: []const u8) !ParsedBlock {
+    const header = try parseHeader(block_bytes);
+    try validateBlockHeaderResources(header);
+    const block_end = try std.math.add(usize, header_len, header.payload_bytes);
+    if (block_bytes.len < block_end) return error.UnexpectedEndOfStream;
+    if (block_bytes.len != block_end) return error.TrailingBlockData;
+    return .{ .header = header, .payload = block_bytes[header_len..block_end] };
 }
 
 pub fn totalPeakCount(spectra: []const binary_reader.RawSpectrum) !usize {

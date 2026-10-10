@@ -159,15 +159,7 @@ pub fn readBinaryDump(io: std.Io, path: []const u8, allocator: Allocator) ![]Raw
     return parseDump(bytes, allocator);
 }
 
-fn checkedAddU64(a: u64, b: u64) !u64 {
-    return std.math.add(u64, a, b);
-}
-
-fn checkedMulU64(a: u64, b: u64) !u64 {
-    return std.math.mul(u64, a, b);
-}
-
-fn readExactAt(file: std.Io.File, io: std.Io, bytes: []u8, offset: u64) !void {
+pub fn readExactAt(file: std.Io.File, io: std.Io, bytes: []u8, offset: u64) !void {
     if (try file.readPositionalAll(io, bytes, offset) != bytes.len) return error.UnexpectedEndOfStream;
 }
 
@@ -195,9 +187,9 @@ pub fn scanFile(
         try readExactAt(file, io, &header, offset);
         try validateRecordPadding(&header);
         const peak_count = readIntLe(u32, header[20..24]);
-        const payload_bytes = try checkedMulU64(peak_count, @sizeOf(f64) + @sizeOf(f32));
-        const payload_offset = try checkedAddU64(offset, record_header_len);
-        const next_offset = try checkedAddU64(payload_offset, payload_bytes);
+        const payload_bytes = try std.math.mul(u64, peak_count, @sizeOf(f64) + @sizeOf(f32));
+        const payload_offset = try std.math.add(u64, offset, record_header_len);
+        const next_offset = try std.math.add(u64, payload_offset, payload_bytes);
         if (next_offset > file_size) return error.UnexpectedEndOfStream;
 
         const ms_level = header[8];
@@ -206,7 +198,7 @@ pub fn scanFile(
             2 => ms2_count += 1,
             else => has_unsupported_ms_level = true,
         }
-        total_peaks = try checkedAddU64(total_peaks, peak_count);
+        total_peaks = try std.math.add(u64, total_peaks, peak_count);
         try entries.append(allocator, .{
             .payload_offset = payload_offset,
             .precursor_bits = readIntLe(u64, header[12..20]),
@@ -273,7 +265,7 @@ pub fn readSpectrumAt(
 
 /// Return the serialized Dump V1 length for one spectrum.
 pub fn recordLen(peak_count: u32) !u64 {
-    return checkedAddU64(record_header_len, try checkedMulU64(peak_count, @sizeOf(f64) + @sizeOf(f32)));
+    return std.math.add(u64, record_header_len, try std.math.mul(u64, peak_count, @sizeOf(f64) + @sizeOf(f32)));
 }
 
 fn readIntLe(comptime T: type, bytes: []const u8) T {
@@ -315,7 +307,7 @@ fn writeVectorsAll(file: std.Io.File, io: std.Io, vectors: *const [3][]const u8,
 
         var remaining = try file.writePositional(io, active[0..active_len], file_offset);
         if (remaining == 0) return error.WriteZero;
-        file_offset = try checkedAddU64(file_offset, remaining);
+        file_offset = try std.math.add(u64, file_offset, remaining);
         while (remaining != 0) {
             const available = vectors[vector_index].len - vector_offset;
             if (remaining < available) {

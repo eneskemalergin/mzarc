@@ -21,7 +21,7 @@ const codec_zlib: u16 = 1;
 const profile_exact: u16 = 0;
 const profile_lossy_1: u16 = 1;
 
-pub const mz_scale: u32 = 500_000;
+const mz_scale: u32 = 500_000;
 pub const intensity_levels: u16 = 16_384;
 
 // Limits: one array's decoded values, the raw span held before an array, parameter groups kept
@@ -478,6 +478,13 @@ fn orderU64(key: u64, item: u64) std.math.Order {
     return std.math.order(key, item);
 }
 
+fn sha1Hex(sha: *mzml.sha1.Sha1) [40]u8 {
+    const digest = sha.finalResult();
+    var hex: [40]u8 = undefined;
+    _ = std.fmt.bufPrint(&hex, "{x}", .{&digest}) catch unreachable;
+    return hex;
+}
+
 fn verifySourceChecksum(io: std.Io, file: std.Io.File, prefix_len: u64, hex: []const u8) !void {
     var sha: mzml.sha1.Sha1 = .{};
     var buffer: [64 * 1024]u8 = undefined;
@@ -489,10 +496,7 @@ fn verifySourceChecksum(io: std.Io, file: std.Io.File, prefix_len: u64, hex: []c
         sha.update(buffer[0..want]);
         offset += want;
     }
-    const digest = sha.finalResult();
-    var expected: [40]u8 = undefined;
-    _ = std.fmt.bufPrint(&expected, "{x}", .{&digest}) catch unreachable;
-    if (!std.ascii.eqlIgnoreCase(&expected, hex)) return error.SourceChecksumMismatch;
+    if (!std.ascii.eqlIgnoreCase(&sha1Hex(&sha), hex)) return error.SourceChecksumMismatch;
 }
 
 pub fn encodeLossy(io: std.Io, allocator: Allocator, input_path: []const u8, output_path: []const u8) !Summary {
@@ -935,12 +939,7 @@ fn decodeRecords(allocator: Allocator, stream: *StreamReader, output: *Output) !
                 try output.digits(positions.items[ordinal]);
             },
             .index_list_offset => try output.digits(index_list orelse return error.InvalidRecord),
-            .file_checksum => {
-                const digest = output.sha.finalResult();
-                var hex: [40]u8 = undefined;
-                _ = std.fmt.bufPrint(&hex, "{x}", .{&digest}) catch unreachable;
-                try output.write(&hex);
-            },
+            .file_checksum => try output.write(&sha1Hex(&output.sha)),
         }
     }
 }

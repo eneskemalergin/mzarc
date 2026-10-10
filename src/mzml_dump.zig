@@ -99,7 +99,7 @@ pub fn dump(io: std.Io, allocator: std.mem.Allocator, input_path: []const u8, ou
             .intensity = intensity.items,
         });
 
-        summary.bytes += 28 + 12 * mz.items.len;
+        summary.bytes += try binary_reader.recordLen(@intCast(mz.items.len));
         summary.spectra += 1;
         summary.peaks += mz.items.len;
         if (ms_level == 1) summary.ms1 += 1;
