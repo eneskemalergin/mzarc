@@ -23,12 +23,32 @@ EOF
 repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 data_root=${MZARC_DATA:-$HOME/Github/data/mzml}
 
+# Removes a scratch tree this script created without a recursive delete: plain files at most
+# three levels deep, then the emptied directories. rmdir refuses anything left unexpected.
+remove_scratch() {
+    local root=$1 entry
+    if [[ -z "$root" || ! -d "$root" ]]; then
+        return 0
+    fi
+    for entry in "$root"/*/*/* "$root"/*/* "$root"/*; do
+        if [[ -f "$entry" || -L "$entry" ]]; then
+            rm -f -- "$entry"
+        fi
+    done
+    for entry in "$root"/*/*/ "$root"/*/; do
+        if [[ -d "$entry" ]]; then
+            rmdir -- "$entry"
+        fi
+    done
+    rmdir -- "$root"
+}
+
 run_checks() {
     local self="$repo_root/tools/benchmark.sh"
     local tiny="$data_root/examples/tiny.pwiz.1.1.mzML"
     local output report_text rows real_cmp
     benchmark_check_root=$(mktemp -d "${TMPDIR:-/var/tmp}/mzarc-benchmark-check.XXXXXX")
-    trap 'rm -rf -- "${benchmark_check_root:-}"' EXIT
+    trap 'remove_scratch "${benchmark_check_root:-}"' EXIT
 
     unset MZARC_BENCH_CHECKING MZARC_BENCH_ZEBRAC MZARC_BENCH_MSCOMPRESS
 
@@ -341,10 +361,7 @@ readonly zebrac_version zebrac_json_version gzip_version pigz_version zstd_versi
 readonly xz_version mscompress_version jq_version gnuplot_version measurement_word
 
 scratch=$(mktemp -d "${TMPDIR:-/var/tmp}/mzarc-benchmark.XXXXXX")
-cleanup() {
-    rm -rf -- "$scratch"
-}
-trap cleanup EXIT
+trap 'remove_scratch "$scratch"' EXIT
 
 mkdir -p "$output_dir/zebrac"
 cp "$input" "$scratch/source.mzML"
