@@ -1132,7 +1132,7 @@ write_comparison 'Lossy archives' 'its input' '' "$rows_lossy" '' '' ''
     echo '| --- | ---: | ---: | ---: | ---: |'
     awk -F $'\t' '{ printf "| %s | %s | %s | %s | %s |\n", $1, $5, $2, $3, $4 }' "$lossy_errors"
     echo
-    echo 'The mzML profile keeps an array exact when the profile cannot hold it: 32-bit m/z, unsupported compression, negative or non-finite intensity. Errors are measured over the transformed values.'
+    echo 'The mzML profile keeps an array exact when the profile cannot hold it: 32-bit m/z, unsupported compression, negative or non-finite intensity. A transformed f64 m/z array whose values are all f32 decodes to its source values exactly. Errors are measured over the values that changed.'
     echo
     echo '## Validation boundaries'
     echo

@@ -93,16 +93,16 @@ The [reference report](https://github.com/eneskemalergin/mzarc/blob/main/benchma
 | Dump V1 retained fields             | 30.78 MiB |                    40.74% |
 | mzarc lossless archive of Dump V1   | 14.46 MiB |                    19.14% |
 
-Against the shared Dump V1 input, mzarc writes a 14.46 MiB artifact, 46.99% of that input and 8.22% smaller than single-threaded xz. It records the fastest single-threaded encode at 214.86 MiB/s. zstd decodes faster, while gzip records lower peak RSS.
+Against the shared Dump V1 input, mzarc writes a 14.46 MiB artifact, 46.99% of that input and 8.22% smaller than single-threaded xz. It records the fastest single-threaded encode at 230.06 MiB/s. zstd decodes faster, while gzip records lower peak RSS.
 
-On the original document, the exact archive restores every byte at 31.77% of the input, 2.62% larger than single-threaded xz; it encodes at 110.07 MiB/s and decodes at 492.00 MiB/s with 1.04 MiB peak RSS. The lossy archive is 36.75% smaller than the exact one. Its largest observed errors are 0.000001 Da in m/z and 0.000643 in `log1p` intensity, against a format-wide limit of 0.005415.
+On the original document, the exact archive restores every byte at 31.77% of the input, 2.62% larger than single-threaded xz; it encodes at 111.08 MiB/s and decodes at 501.07 MiB/s with at most 1.30 MiB peak RSS. The lossy archive is 36.75% smaller than the exact one. This file's m/z arrays hold f32 values, so they come back exact; the largest intensity error is 0.000643 in `log1p`, against a format-wide limit of 0.005415.
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/eneskemalergin/mzarc/main/benchmark/dump-summary.svg" width="900" alt="Artifact size, throughput, and peak RSS for the Dump V1 comparison" />
   <br /><em>Dump V1 comparison. Lower is better for size and RSS; higher is better for throughput.</em>
 </p>
 
-These are measured results from one file, one acquisition shape, and one host, taken under unrelated background load (load average 3.7 at the start, 7.3 at the end). The report records the commands, tool versions, validation boundaries, direct-child RSS, timing spread, the original-mzML and lossy comparisons, and `mzarc dump` ingest.
+These are measured results from one file, one acquisition shape, and one host, taken under unrelated background load (load average 4.5 at the start, 9.3 at the end). The report records the commands, tool versions, validation boundaries, direct-child RSS, timing spread, the original-mzML and lossy comparisons, and `mzarc dump` ingest.
 
 ## Format and validation
 
