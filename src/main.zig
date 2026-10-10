@@ -190,7 +190,7 @@ fn printInspectionJson(io: std.Io, allocator: std.mem.Allocator, path: []const u
     const json_str = try std.fmt.allocPrint(
         allocator,
         "{{\n" ++
-            "  \"file\": \"{s}\",\n" ++
+            "  \"file\": {f},\n" ++
             "  \"version_major\": {},\n" ++
             "  \"version_minor\": {},\n" ++
             "  \"spectrum_count\": {},\n" ++
@@ -217,7 +217,7 @@ fn printInspectionJson(io: std.Io, allocator: std.mem.Allocator, path: []const u
             "  }}\n" ++
             "}}\n",
         .{
-            path,
+            std.json.fmt(path, .{}),
             inspection.header.version_major,
             inspection.header.version_minor,
             inspection.header.spectrum_count,

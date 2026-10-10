@@ -231,11 +231,32 @@ check_mzml_archives() {
     echo "PASS mzML encode rejects Dump V1 options"
 }
 
+check_inspect_json_path() {
+    local quoted="$scratch/a\"b.mzarc" output escaped
+    escaped=${quoted//\"/\\\"}
+    run_quiet 'inspect json fixture encode' "$mzarc" encode "$fixture" -o "$quoted"
+    output=$("$mzarc" inspect "$quoted" --json 2>&1)
+    if [[ $output != *"\"file\": \"$escaped\""* ]]; then
+        printf '%s\n' "$output" >&2
+        echo "FAIL inspect json escapes the path" >&2
+        return 1
+    fi
+    run_quiet 'inspect json mzML encode' "$mzarc" encode "$mzml_fixture" -o "$quoted"
+    output=$("$mzarc" inspect "$quoted" --json 2>&1)
+    if [[ $output != *"\"file\":\"$escaped\""* ]]; then
+        printf '%s\n' "$output" >&2
+        echo "FAIL inspect json escapes the mzML archive path" >&2
+        return 1
+    fi
+    echo "PASS inspect json escapes the path"
+}
+
 run_quiet 'help' "$mzarc" --help
 check_dump_inspect_median
 check_mzml_dump
 check_mzml_dump_peak_limit
 check_mzml_archives
+check_inspect_json_path
 run_quiet 'adversarial lossless round trips' "$mzarc" validate-adversarial "$adversarial"
 round_trip lossless
 round_trip lossy --lossy
