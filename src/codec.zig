@@ -600,10 +600,6 @@ const ArchiveFileIndex = struct {
     }
 };
 
-fn readExactAt(file: std.Io.File, io: std.Io, bytes: []u8, offset: u64) !void {
-    if (try file.readPositionalAll(io, bytes, offset) != bytes.len) return error.UnexpectedEndOfStream;
-}
-
 fn levelBlockCount(entries: []const binary_reader.DumpEntry, level: u8, block_size: usize) !usize {
     var block_count: usize = 0;
     var spectrum_count: usize = 0;
@@ -792,7 +788,7 @@ fn readArchiveOrder(
 
     const raw = try allocator.alloc(u8, order_len);
     defer allocator.free(raw);
-    try readExactAt(input, io, raw, header_len);
+    try binary_reader.readExactAt(input, io, raw, header_len);
     try decodeOrderTable(allocator, raw, order);
     return order;
 }
@@ -800,7 +796,7 @@ fn readArchiveOrder(
 fn scanArchiveFile(allocator: Allocator, io: std.Io, input: std.Io.File) !ArchiveFileIndex {
     const file_size = (try input.stat(io)).size;
     var header_bytes: [header_len]u8 = undefined;
-    try readExactAt(input, io, &header_bytes, 0);
+    try binary_reader.readExactAt(input, io, &header_bytes, 0);
     const header = try parseHeader(&header_bytes);
 
     const order_len = if ((header.flags & flag_has_global_order) != 0)
@@ -825,7 +821,7 @@ fn scanArchiveFile(allocator: Allocator, io: std.Io, input: std.Io.File) !Archiv
     for (0..header.block_count) |_| {
         if (offset > file_size or file_size - offset < block.header_len) return error.UnexpectedEndOfStream;
         var block_header_bytes: [block.header_len]u8 = undefined;
-        try readExactAt(input, io, &block_header_bytes, offset);
+        try binary_reader.readExactAt(input, io, &block_header_bytes, offset);
         const block_header = try block.parseHeader(&block_header_bytes);
         try validateBlockForFile(header, block_header);
         const total_bytes = try std.math.add(u64, block.header_len, block_header.payload_bytes);
@@ -833,7 +829,7 @@ fn scanArchiveFile(allocator: Allocator, io: std.Io, input: std.Io.File) !Archiv
         if (total_bytes > std.math.maxInt(usize)) return error.Overflow;
 
         const bytes = try scan_arena.allocator().alloc(u8, @intCast(total_bytes));
-        try readExactAt(input, io, bytes, offset);
+        try binary_reader.readExactAt(input, io, bytes, offset);
         try block.verifyBlockChecksum(bytes);
         _ = try block.inspectBlockByteBreakdown(bytes);
         try tally.add(block_header);
@@ -888,7 +884,7 @@ pub fn decodeToDumpFile(io: std.Io, allocator: Allocator, input_path: []const u8
     for (index.blocks) |entry| {
         if (entry.total_bytes > std.math.maxInt(usize)) return error.Overflow;
         const block_bytes = try block_arena.allocator().alloc(u8, @intCast(entry.total_bytes));
-        try readExactAt(input, io, block_bytes, entry.offset);
+        try binary_reader.readExactAt(input, io, block_bytes, entry.offset);
         const decoded = try block.decodeBlockWithScratch(
             block_arena.allocator(),
             block_arena.allocator(),
