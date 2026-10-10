@@ -1,6 +1,8 @@
 # Local tools
 
-`mzml_dump.py` creates the one Dump V1 input used by the dump comparison. `benchmark.sh` measures that dump and the original mzML as separate inputs.
+`benchmark.sh` creates one Dump V1 input with `mzarc dump`, then measures that dump and the original mzML as separate inputs. It needs `zig` 0.16.0 and `zebrac` 0.6.2 on `PATH` and the zmz checkout at `../zmz`, whose commit the report records.
+
+`mzml_dump.py` is the Python reference converter. It is the oracle for `mzarc dump` until the native converter has replaced it everywhere, and it needs the `.venv` environment that `uv sync` creates. The benchmark no longer uses it.
 
 The generic compressors come from `PATH`. The mass-spectrometry MScompress CLI must come from `tools/bin/mscompress-msz`; the command named `mscompress` on some Linux systems is an unrelated Microsoft compression utility.
 
@@ -17,25 +19,25 @@ MScompress 1.0.16 does not include a project-level license file in its tagged so
 Run the local comparison with:
 
 ```bash
-bash tools/benchmark.sh data/PXD075509/15HCD_1.mzML
+bash tools/benchmark.sh ~/Github/data/mzml/PXD075509/15HCD_1.mzML
 ```
 
-Run `bash tools/benchmark.sh --check` after changing the runner. It uses the tiny parser fixture and temporary fault injection to check argument rejection, output ownership, missing tools, failed validation, malformed zebrac results, and one complete sanity report. It does not retain a benchmark run or enter CI.
+Run `bash tools/benchmark.sh --check` after changing the runner. It uses the tiny parser example from the local data root and temporary fault injection to check argument rejection, output ownership, missing tools, failed validation, malformed zebrac results, and one complete sanity report. It does not retain a benchmark run or enter CI.
 
 The reference report uses five measured samples after one warmup. Parallel rows use four workers and are marked `[P]`. Use `--help` for the output, worker, and sample controls.
 
 Each operation runs as one direct zebrac command. The runner requires the reported command arguments, sampling configuration, result count, failure count, wall-time unit, RSS unit, and summary sample counts to match the request. It does not use shell wrappers or zebrac's multi-command comparison display.
 
-The tracked zebrac binary is Linux-only and requires access to `perf_event_open`. The runner has no macOS or permission-denied fallback and does not substitute another measurement source.
+zebrac is Linux-only and requires access to `perf_event_open`. The runner has no macOS or permission-denied fallback and does not substitute another measurement source.
 
-Files under `data/examples/` are parser sanity inputs. They require `--sanity`, which labels the report as a wiring check and omits figures. Their measurements are not benchmark results.
+Files under `examples/` in the local data root (`~/Github/data/mzml`, or `MZARC_DATA`) are parser sanity inputs. They require `--sanity`, which labels the report as a wiring check and omits figures. Their measurements are not benchmark results.
 
 The benchmark report contains two input sections:
 
 - one Dump V1 input compressed by mzarc, gzip, pigz, zstd, and xz;
 - the original mzML compressed by gzip, pigz, zstd, xz, and MScompress.
 
-Generic compressors must reproduce the exact input bytes. MScompress must reproduce the fields retained by Dump V1; it may rewrite the mzML document representation.
+Generic compressors must reproduce the exact input bytes. MScompress must reproduce the fields retained by Dump V1, checked by running `mzarc dump` on its decoded mzML; it may rewrite the mzML document representation.
 
 Each percentage column names its denominator. Compare methods within a section, not across the Dump V1 and original mzML sections. Each section keeps the complete results in separate artifact, encode, and decode tables. The report also records the source shape, measurement method, validation boundaries, limits, and tool versions. If `gnuplot` is available, it adds one comparison figure for each input. Each figure title names the source file and comparison-input size. Artifact percentages are labeled directly. The Dump V1 figure highlights mzarc and labels its throughput and RSS without repeating every table value. Plotting does not use Python.
 

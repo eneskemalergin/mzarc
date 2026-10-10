@@ -4,6 +4,24 @@
 
 All notable changes to mzarc are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project follows [Semantic Versioning](https://semver.org/). Each version starts with a short release summary, followed by user-visible changes grouped by area.
 
+## [Unreleased]
+
+### Added
+
+- **mzML input:**
+  - Adds `mzarc dump <input.mzML> -o <output.bin>`, a native mzML to Dump V1 converter built on the zmz library. Its output matches the Python reference converter byte for byte on the checked inputs, and a failed dump leaves an existing destination unchanged.
+
+### Changed
+
+- **Benchmarking:**
+  - Creates the Dump V1 input with `mzarc dump` instead of Python, and records the zmz commit in the report.
+  - Uses `zig` and `zebrac` from `PATH` and reads local data from `~/Github/data/mzml` or `MZARC_DATA`.
+
+### Removed
+
+- **Repository:**
+  - Removes the tracked zebrac binary; install zebrac 0.6.2 on `PATH` instead.
+
 ## [0.3.0] - 2026-08-13
 
 This codec-focused release comes before native mzML I/O. It makes lossless m/z bit exact, caps file and block work so memory stays bounded, strengthens malformed-input checks, and trims the Zig source package. Format 1.0 remains a development format until it is declared use-ready.
