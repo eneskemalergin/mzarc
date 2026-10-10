@@ -34,7 +34,7 @@ mzML -> mzarc encode -> .mzarc -> mzarc decode -> mzML
 mzML -> mzarc dump -> Dump V1 -> mzarc encode -> .mzarc -> mzarc decode -> Dump V1
 ```
 
-- **mzML documents.** Exact mode restores the source file byte for byte. Lossy mode quantizes spectrum m/z (f64) and intensity arrays and changes nothing else: metadata, identifiers, other arrays, chromatograms, and XML text stay as they were, and decode rebuilds `encodedLength`, the index offsets, and `fileChecksum` for the new byte positions. On the 75.55 MiB reference file, exact mode writes 31.77% of the source and lossy mode 20.10%.
+- **mzML documents.** Exact mode restores the source file byte for byte. Lossy mode quantizes spectrum m/z (f64) and intensity arrays and changes nothing else: metadata, identifiers, other arrays, chromatograms, and XML text stay as they were, and decode rebuilds `encodedLength`, the index offsets, and `fileChecksum` for the new byte positions. The decoded document carries no marker of the lossy step; only the archive records it, so keep or label lossy outputs yourself. On the 75.55 MiB reference file, exact mode writes 31.77% of the source and lossy mode 20.10%.
 - **Dump V1 spectra.** Spectrum-aware transforms and entropy coding compress the fields Dump V1 retains, one active block at a time, with a lossless mode and a controlled lossy intensity mode.
 
 The `.mzarc` 1.0 format remains under development, so no mode is use-ready yet.
