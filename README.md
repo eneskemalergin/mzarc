@@ -74,7 +74,7 @@ The [reference report](https://github.com/eneskemalergin/mzarc/blob/main/benchma
 | Dump V1 retained fields | 30.78 MiB |                    40.74% |
 | mzarc lossless          | 14.46 MiB |                    19.14% |
 
-Against the shared Dump V1 input, mzarc writes a 14.46 MiB artifact, 46.99% of that input and 8.22% smaller than single-threaded xz. mzarc records the fastest single-threaded encode at 226.51 MiB/s. zstd decodes faster, while gzip records lower peak RSS.
+Against the shared Dump V1 input, mzarc writes a 14.46 MiB artifact, 46.99% of that input and 8.22% smaller than single-threaded xz. mzarc records the fastest single-threaded encode at 221.72 MiB/s. zstd decodes faster, while gzip records lower peak RSS.
 
 The 19.14% figure describes the current mzML-to-Dump-V1-to-mzarc storage path. It does not mean mzarc can reconstruct the original XML document.
 
