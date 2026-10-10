@@ -74,7 +74,7 @@ The [reference report](https://github.com/eneskemalergin/mzarc/blob/main/benchma
 | Dump V1 retained fields | 30.78 MiB |                    40.74% |
 | mzarc lossless          | 14.46 MiB |                    19.14% |
 
-Against the shared Dump V1 input, mzarc writes a 14.46 MiB artifact, 46.99% of that input and 8.23% smaller than single-threaded xz. mzarc records the fastest single-threaded encode at 206.22 MiB/s. zstd decodes faster, while gzip records lower peak RSS.
+Against the shared Dump V1 input, mzarc writes a 14.46 MiB artifact, 46.99% of that input and 8.22% smaller than single-threaded xz. mzarc records the fastest single-threaded encode at 226.51 MiB/s. zstd decodes faster, while gzip records lower peak RSS.
 
 The 19.14% figure describes the current mzML-to-Dump-V1-to-mzarc storage path. It does not mean mzarc can reconstruct the original XML document.
 
@@ -89,7 +89,7 @@ These are measured results from one file, one acquisition shape, and one host. T
 
 Format 1.0 defines Dump V1, its numeric transforms, every stored field, and the reader rejection rules. The codec is single-threaded, preserves global scan order, and leaves an existing destination unchanged when encode or decode fails. It accepts at most 500,000 spectra and 500,000 blocks. Each block is limited to 128 spectra and 524,288 peaks, with derived payload limits checked before proportional allocation or read. These limits keep the measured 64-bit process below the 64 MiB release ceiling; final supported-host confirmation is still pending.
 
-Lossless mode returns every accepted Dump V1 field with the same bits, including each supported f64 m/z value. Lossy m/z uses a nominal half-step of 0.000001 Da at the default scale, plus normal f64 operation rounding. The validator recomputes that transform and requires the decoded f64 bits to match. Intensity error is checked in `log1p` space; its format-wide limit depends on `--intensity-quant` and is about 0.5431% on `1 + intensity` at the default 16,384 levels. A custom validation level must match the value used for encoding.
+Lossless mode returns every accepted Dump V1 field with the same bits, including each supported f64 m/z value. Lossy m/z uses a nominal half-step of 0.000001 Da at the default scale, plus normal f64 operation rounding. The validator recomputes that transform and requires the decoded f64 bits to match. Intensity error is checked in `log1p` space; its format-wide limit depends on `--intensity-quant` and is about 0.5430% on `1 + intensity` at the default 16,384 levels. A custom validation level must match the value used for encoding.
 
 Format 1.0 is not use-ready yet. Development archives may need regeneration, and compatibility with earlier development layouts is not promised.
 
