@@ -16,6 +16,7 @@ const Primitive = @FieldType(mzml.model.Encoding, "primitive");
 const Pipeline = @FieldType(mzml.model.Encoding, "pipeline");
 
 pub const flag_source_document: u32 = 1 << 4;
+const mzml_namespace = "http://psi.hupo.org/ms/mzml";
 const codec_zlib: u16 = 1;
 const profile_exact: u16 = 0;
 const profile_lossy_1: u16 = 1;
@@ -398,7 +399,8 @@ fn codeArray(allocator: Allocator, kind: Kind, values: mzml.arrays.Values) !?Cod
                 },
                 else => return null,
             }
-            for (narrow) |value| if (!std.math.isFinite(value)) return null;
+            // Level 0 decodes to zero, so a negative value would lose its sign; such arrays stay raw.
+            for (narrow) |value| if (!std.math.isFinite(value) or value < 0) return null;
             const log_max = quantize.intensityLogMax(narrow);
             const codes = try allocator.alloc(u16, narrow.len);
             errdefer allocator.free(codes);
@@ -462,6 +464,16 @@ fn eligible(in_spectrum: bool, terms: Terms, length: ?usize) ?Kind {
     };
 }
 
+/// Lossy records splice ASCII digits and Base64 into source bytes, so the source must use an
+/// ASCII-compatible encoding. UTF-16 shows itself in the first bytes: a byte-order mark, or a zero
+/// byte beside the document's first `<`.
+fn requireAsciiCompatible(io: std.Io, file: std.Io.File) !void {
+    var head: [2]u8 = undefined;
+    if (try file.readPositionalAll(io, &head, 0) < head.len) return;
+    if ((head[0] == 0xFE and head[1] == 0xFF) or (head[0] == 0xFF and head[1] == 0xFE) or
+        head[0] == 0 or head[1] == 0) return error.UnsupportedEncoding;
+}
+
 fn orderU64(key: u64, item: u64) std.math.Order {
     return std.math.order(key, item);
 }
@@ -490,6 +502,7 @@ pub fn encodeLossy(io: std.Io, allocator: Allocator, input_path: []const u8, out
     const source_file = try cwd.openFile(io, input_path, .{});
     defer source_file.close(io);
     const source_len = try source_file.length(io);
+    try requireAsciiCompatible(io, source_file);
     var input_buffer: [64 * 1024]u8 = undefined;
     var input = events_file.reader(io, &input_buffer);
 
@@ -519,7 +532,15 @@ pub fn encodeLossy(io: std.Io, allocator: Allocator, input_path: []const u8, out
         .start_element => |start| {
             const local = start.name.expanded.local;
             const span: Span = .{ .start = event.span.start, .end = event.span.end };
-            if (std.mem.eql(u8, local, "spectrum") or std.mem.eql(u8, local, "chromatogram")) {
+            if (std.mem.eql(u8, local, "mzML")) {
+                // Drafts before 1.0 use their own namespace, array terms, and index layouts; lossy
+                // mode supports the mzML 1.x namespace only.
+                const namespace = start.name.expanded.namespace_uri orelse return error.UnsupportedVersion;
+                if (!std.mem.eql(u8, namespace, mzml_namespace)) return error.UnsupportedVersion;
+                if (start.attribute(null, "version")) |version| {
+                    if (std.mem.startsWith(u8, version.value, "0.")) return error.UnsupportedVersion;
+                }
+            } else if (std.mem.eql(u8, local, "spectrum") or std.mem.eql(u8, local, "chromatogram")) {
                 try encoder.rawTo(span.start);
                 try encoder.tag(.mark);
                 if (encoder.positions.items.len == max_positions) return error.TooManyRecords;
