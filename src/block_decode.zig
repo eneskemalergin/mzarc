@@ -600,12 +600,21 @@ pub fn decodeBlockWithScratch(allocator: Allocator, scratch: Allocator, block_by
         offset += intensity_payload_len;
 
         const intensity_log_scale = common.decodeIntensityLogScale(header);
+        // Every peak at one level decodes to the same value, so expm1 runs once per level used.
+        // An all-ones slot is unset: it is a NaN, which dequantization never returns.
+        const unset_level: u32 = 0xFFFF_FFFF;
+        const levels = try tmp.alloc(u32, @as(usize, header.intensity_quant) + 1);
+        @memset(levels, unset_level);
         var intensity_index: usize = 0;
         for (spectra) |spectrum| {
             for (spectrum.intensity) |*intensity| {
                 const value = unpacked[intensity_index];
                 if (value > header.intensity_quant) return error.IntensityOverflow;
-                intensity.* = try quantize.dequantizeIntensityValueScaled(@intCast(value), header.intensity_quant, intensity_log_scale);
+                const slot = &levels[@intCast(value)];
+                if (slot.* == unset_level) {
+                    slot.* = @bitCast(try quantize.dequantizeIntensityValueScaled(@intCast(value), header.intensity_quant, intensity_log_scale));
+                }
+                intensity.* = @bitCast(slot.*);
                 intensity_index += 1;
             }
         }
