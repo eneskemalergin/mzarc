@@ -93,7 +93,7 @@ Lossless mode returns every accepted Dump V1 field with the same bits, including
 
 Format 1.0 is not use-ready yet. Development archives may need regeneration, and compatibility with earlier development layouts is not promised.
 
-CRC-32/ISO-HDLC uses runtime-selected PCLMUL on supported x86-64 processors and a portable fallback on other targets. CI verifies Debug and ReleaseFast behavior on Ubuntu and macOS. Windows and aarch64 are not supported claims.
+Block checksums use CRC-32/ISO-HDLC from wthecksum `crc32`, a separate Zig library by the same author. It selects PCLMUL or VEX PCLMUL at run time on x86-64 and keeps a portable path for other processors. CI verifies Debug and ReleaseFast behavior on Ubuntu and macOS. Windows and aarch64 are not supported claims.
 
 ## Development
 
@@ -123,7 +123,7 @@ benchmark/   Reference report, baseline row, and summary figures
 
 Real-data inputs live outside the repository; the benchmark reads them from `~/Github/data/mzml` unless `MZARC_DATA` names another root.
 
-The Zig source package contains the binary build, its tests, licenses, and release notes. The Python reference converter, benchmarks, peer binaries, and local development files remain repository-only.
+The Zig source package contains the binary build, its tests, the license, and release notes. The Python reference converter, benchmarks, peer binaries, and local development files remain repository-only.
 
 ## Roadmap
 
@@ -161,7 +161,7 @@ Concurrency remains outside the current product scope.
 
 **mzarc is licensed under the MIT License.** See [LICENSE](LICENSE) for the full terms.
 
-**mzarc stands on the shoulders of giants.** I am building the codec in Zig, but rewriting an idea does not erase where it came from. The list below distinguishes design references from adapted code and records the logic mzarc uses from each. The full bibliography, external dependencies, and benchmark peers remain in [References](#references).
+**mzarc stands on the shoulders of giants.** I am building the codec in Zig, but rewriting an idea does not erase where it came from. The list below records the design references and the logic mzarc uses from each. The full bibliography, external dependencies, and benchmark peers remain in [References](#references).
 
 - **[rANS and `ryg_rans`](https://github.com/rygorous/ryg_rans)**
   - **Relationship:** Design reference, not vendored code.
@@ -169,13 +169,6 @@ Concurrency remains outside the current product scope.
   - **Terms:** [`ryg_rans` is released into the public domain](https://github.com/rygorous/ryg_rans/blob/master/LICENSE).
   - **Logic used:** The reverse-order encoder, state update, and byte-renormalization model behind order-0 rANS.
   - **How it is used:** `src/rans.zig` implements a local 32-bit rANS codec with 12-bit frequency precision, its own normalized frequency table and wire layout, and mzarc-specific validation.
-- **[`crc32fast` 1.5.0](https://github.com/srijs/rust-crc32fast/tree/v1.5.0)**
-  - **Relationship:** Adapted code.
-  - **Credit:** Sam Rijs, Alex Crichton, and contributors.
-  - **License:** Upstream offers MIT or Apache-2.0. mzarc uses the MIT option and retains the full notice in [LICENSES/crc32fast-MIT.txt](LICENSES/crc32fast-MIT.txt).
-  - **Logic used:** The x86-64 PCLMUL folding schedule and polynomial constants.
-  - **How it is used:** `src/crc32.zig` adapts that path to Zig and selects it at runtime on supported x86-64 processors. The local slicing-by-8 implementation remains the portable fallback.
-  - **Integration:** No upstream crate or binary is linked or vendored.
 
 ---
 

@@ -13,6 +13,8 @@ All notable changes to mzarc are documented here. The format follows [Keep a Cha
 
 ### Changed
 
+- **Checksums:**
+  - Computes block checksums with wthecksum `crc32`, the author's own CRC-32 library. Stored checksums and the format are unchanged.
 - **Benchmarking:**
   - Creates the Dump V1 input with `mzarc dump` instead of Python, and records the zmz commit in the report.
   - Uses `zig` and `zebrac` from `PATH` and reads local data from `~/Github/data/mzml` or `MZARC_DATA`.
@@ -21,6 +23,7 @@ All notable changes to mzarc are documented here. The format follows [Keep a Cha
 
 - **Repository:**
   - Removes the tracked zebrac binary; install zebrac 0.6.2 on `PATH` instead.
+  - Removes the CRC code adapted from `crc32fast` and its license notice.
 
 ## [0.3.0] - 2026-08-13
 

@@ -38,9 +38,7 @@ pub fn build(b: *std.Build) void {
     const rans_module = b.createModule(.{
         .root_source_file = b.path("src/rans.zig"),
     });
-    const crc32_module = b.createModule(.{
-        .root_source_file = b.path("src/crc32.zig"),
-    });
+    const crc32_module = b.dependency("crc32", .{ .target = target, .optimize = optimize }).module("crc32");
     const block_common_module = b.createModule(.{
         .root_source_file = b.path("src/block_common.zig"),
         .imports = &.{
@@ -117,8 +115,6 @@ pub fn build(b: *std.Build) void {
         "test/test_quantize.zig",
         "test/test_bitpack.zig",
         "test/test_rans.zig",
-        "test/test_crc32.zig",
-        "src/crc32.zig",
         "test/test_block.zig",
         "test/test_codec.zig",
     };

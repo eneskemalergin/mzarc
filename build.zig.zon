@@ -3,6 +3,9 @@
     .version = "0.3.0",
     .fingerprint = 0x23a58e985cd2488f,
     .minimum_zig_version = "0.16.0",
-    .dependencies = .{ .zmz = .{ .path = "../zmz" } },
-    .paths = .{ "build.zig", "build.zig.zon", "src", "test", "tools/smoke_test.sh", "LICENSE", "LICENSES", "README.md", "CHANGELOG.md" },
+    .dependencies = .{
+        .zmz = .{ .path = "../zmz" },
+        .crc32 = .{ .path = "../../../wthecksum/crc32" },
+    },
+    .paths = .{ "build.zig", "build.zig.zon", "src", "test", "tools/smoke_test.sh", "LICENSE", "README.md", "CHANGELOG.md" },
 }
