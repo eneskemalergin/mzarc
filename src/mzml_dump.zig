@@ -1,4 +1,4 @@
-//! Dump V1 from mzML on zmz: the same records as tools/mzml_dump.py, without Python.
+//! Dump V1 from mzML on zmz, byte for byte the records the former Python converter wrote.
 //! Spectra in source order; peaks sorted by m/z (stable) when the source is not.
 //! `binary_reader.writeRecord` owns the record bytes.
 
@@ -45,7 +45,7 @@ pub fn dump(io: std.Io, allocator: std.mem.Allocator, input_path: []const u8, ou
     defer reader.deinit();
     errdefer if (reader.diagnostic()) |report| std.debug.print("{s}: {f}\n", .{ input_path, report });
     const header = try reader.readHeader();
-    // Numpress decodes to f64; like pyteomics, values return to their declared precision.
+    // Numpress decodes to f64; as the former Pyteomics converter did, values return to their declared precision.
     var decoded = mzml.DecodedArrays.init(allocator, .{
         .array_bytes = MAX_ARRAY_BYTES,
         .record_array_bytes = 2 * MAX_ARRAY_BYTES,

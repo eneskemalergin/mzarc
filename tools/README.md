@@ -2,8 +2,6 @@
 
 `benchmark.sh` creates one Dump V1 input with `mzarc dump`, then measures that dump and the original mzML as separate inputs. It needs `zig` 0.16.0 and `zebrac` 0.6.2 on `PATH` and the zmz checkout at `../zmz`, whose commit the report records.
 
-`mzml_dump.py` is the Python reference converter. It is the oracle for `mzarc dump` until the native converter has replaced it everywhere, and it needs the `.venv` environment that `uv sync` creates. The benchmark no longer uses it.
-
 The generic compressors come from `PATH`. The mass-spectrometry MScompress CLI must come from `tools/bin/mscompress-msz`; the command named `mscompress` on some Linux systems is an unrelated Microsoft compression utility.
 
 Build the native MScompress 1.0.16 CLI with:

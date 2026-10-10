@@ -29,6 +29,8 @@ All notable changes to mzarc are documented here. The format follows [Keep a Cha
   - Removes the CRC code adapted from `crc32fast` and its license notice.
 - **CLI:**
   - Removes the benchmark-only `benchmark-rans-core` command.
+- **Python:**
+  - Removes the Python mzML converter, its `uv` environment, and its Dependabot group; `mzarc dump` replaces the converter.
 
 ## [0.3.0] - 2026-08-13
 

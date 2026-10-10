@@ -123,7 +123,7 @@ benchmark/   Reference report, baseline row, and summary figures
 
 Real-data inputs live outside the repository; the benchmark reads them from `~/Github/data/mzml` unless `MZARC_DATA` names another root.
 
-The Zig source package contains the binary build, its tests, the license, and release notes. The Python reference converter, benchmarks, peer binaries, and local development files remain repository-only.
+The Zig source package contains the binary build, its tests, the license, and release notes. Benchmarks, peer binaries, and local development files remain repository-only.
 
 ## Roadmap
 
@@ -152,7 +152,6 @@ Concurrency remains outside the current product scope.
 - [PXD075509](https://www.ebi.ac.uk/pride/archive/projects/PXD075509), the current reference dataset.
 - [Zig](https://ziglang.org), the language used for the codec, CLI, and tests.
 - [zmz](https://github.com/eneskemalergin/zmz), the Zig mzML library behind `mzarc dump`.
-- [Pyteomics](https://github.com/levitsky/pyteomics), used by the reference converter `tools/mzml_dump.py`.
 - [zebrac](https://github.com/eneskemalergin/zebrac), the Linux measurement tool used by the reference report.
 
 ---

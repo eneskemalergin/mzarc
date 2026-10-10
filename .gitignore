@@ -12,12 +12,6 @@ zig-pkg/
 *.swp
 *~
 
-# Python
-.venv/
-__pycache__/
-*.pyc
-*.pyo
-
 # Locally built peer tools
 /tools/bin/
 

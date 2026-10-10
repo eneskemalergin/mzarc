@@ -55,7 +55,7 @@ max peaks per spectrum: 2339
 - an ID without `scan=` (falls back to the index) and an ID whose first `scan=` has no digits;
 - an empty spectrum and a chromatogram, which the dump skips.
 
-`small.bin` is the expected 220-byte Dump V1. It was produced on 2026-10-10 by `tools/mzml_dump.py` (Pyteomics 5.0.1), independently of the Zig converter, and stays the frozen expectation after the Python converter is removed. `tools/smoke_test.sh` compares `mzarc dump` output with it byte for byte, and checks that a dump of the fixture cut at byte 4,000 fails without replacing an existing destination.
+`small.bin` is the expected 220-byte Dump V1. It was produced on 2026-10-10 by the former Python converter (`tools/mzml_dump.py` with Pyteomics 5.0.1, removed in v0.4.0), independently of the Zig converter, and stays the frozen expectation now that the converter is gone. `tools/smoke_test.sh` compares `mzarc dump` output with it byte for byte, and checks that a dump of the fixture cut at byte 4,000 fails without replacing an existing destination.
 
 ## Adversarial corpus (test/adversarial/)
 
