@@ -29,6 +29,7 @@ All notable changes to mzarc are documented here. The format follows [Keep a Cha
 - **Lossy m/z:**
   - Rejects an m/z value whose quantized code rounds to 2^64 instead of crashing during lossy encode.
 - **CLI:**
+  - `mzarc encode`, `decode`, and `dump` refuse an output path that names the input file, including through a symbolic link, instead of replacing the input with their output.
   - `mzarc dump-inspect` prints the mean of the two middle peak counts as the median for an even spectrum count.
   - `mzarc inspect --json` escapes the file path, so a path with a quote or backslash still gives valid JSON.
 

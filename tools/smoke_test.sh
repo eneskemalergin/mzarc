@@ -253,12 +253,41 @@ check_inspect_json_path() {
     echo "PASS inspect json escapes the path"
 }
 
+check_output_is_input() {
+    local copy="$scratch/same.mzML" archive="$scratch/same.mzarc" link="$scratch/same-link.mzML"
+    cp "$mzml_fixture" "$copy"
+    ln -s "$copy" "$link"
+    "$mzarc" encode "$mzml_fixture" -o "$archive" >/dev/null
+    cp "$archive" "$scratch/same-before.mzarc"
+    local -a cases=(
+        "encode|$copy|$copy|--lossy"
+        "encode|$copy|$scratch/./same.mzML|"
+        "encode|$copy|$link|"
+        "dump|$copy|$copy|"
+        "decode|$archive|$archive|"
+    )
+    local entry command input output flag
+    for entry in "${cases[@]}"; do
+        IFS='|' read -r command input output flag <<<"$entry"
+        if "$mzarc" "$command" "$input" -o "$output" ${flag:+"$flag"} >/dev/null 2>&1; then
+            echo "FAIL $command accepted its input as the output: $output" >&2
+            return 1
+        fi
+    done
+    if ! cmp -s "$mzml_fixture" "$copy" || ! cmp -s "$scratch/same-before.mzarc" "$archive"; then
+        echo "FAIL a refused same-path command changed its input" >&2
+        return 1
+    fi
+    echo "PASS commands refuse an output that is the input"
+}
+
 run_quiet 'help' "$mzarc" --help
 check_dump_inspect_median
 check_mzml_dump
 check_mzml_dump_peak_limit
 check_mzml_archives
 check_inspect_json_path
+check_output_is_input
 run_quiet 'adversarial lossless round trips' "$mzarc" validate-adversarial "$adversarial"
 round_trip lossless
 round_trip lossy --lossy

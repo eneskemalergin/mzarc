@@ -96,6 +96,23 @@ fn parseOutputPath(args: []const [:0]const u8) ![]const u8 {
     return error.InvalidArguments;
 }
 
+/// Refuses an output that names the input file, because the finished output would replace it.
+/// Paths are compared after resolving symbolic links; a missing output cannot be the input.
+fn requireDistinctOutput(io: std.Io, input_path: []const u8, output_path: []const u8) !void {
+    const cwd = std.Io.Dir.cwd();
+    var input_buffer: [std.fs.max_path_bytes]u8 = undefined;
+    var output_buffer: [std.fs.max_path_bytes]u8 = undefined;
+    const input_len = try cwd.realPathFile(io, input_path, &input_buffer);
+    const output_len = cwd.realPathFile(io, output_path, &output_buffer) catch |err| switch (err) {
+        error.FileNotFound => return,
+        else => return err,
+    };
+    if (std.mem.eql(u8, input_buffer[0..input_len], output_buffer[0..output_len])) {
+        std.debug.print("error: output {s} is the input file\n", .{output_path});
+        return error.OutputIsInput;
+    }
+}
+
 fn hasFlag(args: []const [:0]const u8, flag: []const u8) bool {
     for (args) |arg| {
         if (std.mem.eql(u8, arg, flag)) return true;
@@ -117,6 +134,7 @@ fn commandEncode(io: std.Io, allocator: std.mem.Allocator, args: []const [:0]con
 
     const input_path = args[2];
     const output_path = try parseOutputPath(args[3..]);
+    try requireDistinctOutput(io, input_path, output_path);
     if (std.ascii.endsWithIgnoreCase(input_path, ".mzml")) return encodeSourceDocument(io, allocator, input_path, output_path, args[3..]);
     const intensity_quant = try parseOptionalInt(u16, args[3..], "--intensity-quant");
     const mz_rans_min_gain = try parseOptionalInt(u8, args[3..], "--mz-rans-min-gain");
@@ -173,6 +191,7 @@ fn commandDecode(io: std.Io, allocator: std.mem.Allocator, args: []const [:0]con
 
     const input_path = args[2];
     const output_path = try parseOutputPath(args[3..]);
+    try requireDistinctOutput(io, input_path, output_path);
     if (isSourceDocumentFile(io, input_path)) {
         const summary = try source_document.decode(io, allocator, input_path, output_path);
         printStdout(io, "decoded: {s} -> {s}\nmode: {s}\noutput bytes: {d}\n", .{ input_path, output_path, @tagName(summary.mode), summary.output_bytes });
@@ -633,6 +652,7 @@ pub fn main(init: std.process.Init) !void {
             return error.InvalidArguments;
         }
         const output_path = try parseOutputPath(args);
+        try requireDistinctOutput(io, args[2], output_path);
         const summary = try mzml_dump.dump(io, init.gpa, args[2], output_path);
         printStdout(io, "input: {s}\noutput: {s}\nspectra: {d}\ntotal peaks: {d}\nms1 count: {d}\nms2 count: {d}\noutput bytes: {d}\n", .{
             args[2], output_path, summary.spectra, summary.peaks, summary.ms1, summary.ms2, summary.bytes,
