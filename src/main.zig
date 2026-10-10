@@ -66,7 +66,7 @@ fn commandDumpInspect(io: std.Io, allocator: std.mem.Allocator, path: []const u8
         }
     }
 
-    std.mem.sort(u64, peak_counts, {}, std.sort.asc(u64));
+    std.sort.pdq(u64, peak_counts, {}, std.sort.asc(u64));
     const median_peaks: u64 = if (spectra.len > 0) peak_counts[spectra.len / 2] else 0;
 
     std.debug.print("file: {s}\n", .{path});

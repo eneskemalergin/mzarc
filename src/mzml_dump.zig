@@ -147,11 +147,14 @@ fn sortByMz(allocator: std.mem.Allocator, order: *std.ArrayList(u32), mz: []f64,
     if (sorted) return;
     order.clearRetainingCapacity();
     for (0..mz.len) |i| try order.append(allocator, @intCast(i));
-    std.sort.block(u32, order.items, mz, struct {
+    // Ties fall back to source position, so this unstable sort yields the stable order.
+    std.sort.pdq(u32, order.items, mz, struct {
         fn lessThan(values: []f64, a: u32, b: u32) bool {
             const x = values[a];
             const y = values[b];
-            return x < y or (!std.math.isNan(x) and std.math.isNan(y));
+            if (x < y or (!std.math.isNan(x) and std.math.isNan(y))) return true;
+            if (y < x or (!std.math.isNan(y) and std.math.isNan(x))) return false;
+            return a < b;
         }
     }.lessThan);
     const mz_copy = try allocator.dupe(f64, mz);
