@@ -30,12 +30,13 @@ zebrac is Linux-only and requires access to `perf_event_open`. The runner has no
 
 Files under `examples/` in the local data root (`~/Github/data/mzml`, or `MZARC_DATA`) are parser sanity inputs. They require `--sanity`, which labels the report as a wiring check and omits figures. Their measurements are not benchmark results.
 
-The benchmark report contains four sections:
+The benchmark report contains five sections:
 
 - one Dump V1 input compressed by mzarc, gzip, pigz, zstd, and xz;
 - the original mzML compressed by mzarc's exact document archive, gzip, pigz, zstd, xz, and MScompress;
 - both mzarc lossy profiles, with the largest errors `mzarc validate` observed;
-- `mzarc dump` ingest from the original mzML.
+- `mzarc dump` ingest from the original mzML;
+- `mzarc validate`, `dump-inspect`, and `inspect` on the validated Dump V1 round trip, with their wall time and peak RSS.
 
 mzarc's lossless and exact archives and the generic compressors must reproduce the exact input bytes. MScompress must reproduce the fields retained by Dump V1, checked by running `mzarc dump` on its decoded mzML; it may rewrite the mzML document representation. The lossy rows must pass `mzarc validate --mode=lossy` or `--mode=mzml-lossy`.
 
@@ -43,4 +44,4 @@ Each percentage column names its denominator. Compare methods within a section, 
 
 The runner reads the mzarc release version from `build.zig.zon` and requires it to match the latest released entry in `CHANGELOG.md`. It queries every other tool directly. Report numbers come from the generated dump, artifacts, and zebrac summaries; the Markdown tables are aligned after generation.
 
-Each ignored run directory retains the report, one zebrac JSON file per operation under `zebrac/`, the TSV rows (`dump.tsv`, `mzml.tsv`, `lossy.tsv`, `lossy-errors.tsv`, `ingest.tsv`), and the figures. The accepted `benchmark/` directory tracks the report, those five TSV files, and the two SVG summaries, but not the zebrac JSON.
+Each ignored run directory retains the report, one zebrac JSON file per operation under `zebrac/`, the TSV rows (`dump.tsv`, `mzml.tsv`, `lossy.tsv`, `lossy-errors.tsv`, `ingest.tsv`, `commands.tsv`), and the figures. The accepted `benchmark/` directory tracks the report, those six TSV files, and the two SVG summaries, but not the zebrac JSON.
