@@ -34,26 +34,27 @@ fn printUsage() void {
     std.debug.print(usage, .{});
 }
 
+/// Reads the dump one record at a time; only the peak counts (4 bytes per spectrum, at most
+/// `codec.MAX_FILE_SPECTRA` of them) stay for the median.
 fn commandDumpInspect(io: std.Io, allocator: std.mem.Allocator, path: []const u8) !void {
-    const spectra = try binary_reader.readBinaryDump(io, path, allocator);
-    defer binary_reader.freeSpectra(allocator, spectra);
+    const file = try std.Io.Dir.cwd().openFile(io, path, .{});
+    defer file.close(io);
+    var read_buffer: [64 * 1024]u8 = undefined;
+    var records = binary_reader.RecordReader.init(io, file, &read_buffer, block.MAX_BLOCK_PEAKS);
+    defer records.deinit(allocator);
 
     var total_peaks: u64 = 0;
     var ms1_count: u64 = 0;
     var ms2_count: u64 = 0;
     var zero_intensity: u64 = 0;
-    var min_peaks: u64 = if (spectra.len > 0) std.math.maxInt(u64) else 0;
-    var max_peaks: u64 = 0;
 
-    const peak_counts = try allocator.alloc(u64, spectra.len);
-    defer allocator.free(peak_counts);
+    var peak_counts: std.ArrayList(u32) = .empty;
+    defer peak_counts.deinit(allocator);
 
-    for (spectra, 0..) |spectrum, i| {
-        const n: u64 = spectrum.mz.len;
-        total_peaks = try std.math.add(u64, total_peaks, n);
-        peak_counts[i] = n;
-        if (n < min_peaks) min_peaks = n;
-        if (n > max_peaks) max_peaks = n;
+    while (try records.next(allocator)) |spectrum| {
+        if (peak_counts.items.len == codec.MAX_FILE_SPECTRA) return error.FileResourceLimit;
+        try peak_counts.append(allocator, @intCast(spectrum.mz.len));
+        total_peaks = try std.math.add(u64, total_peaks, spectrum.mz.len);
         switch (spectrum.ms_level) {
             1 => ms1_count += 1,
             2 => ms2_count += 1,
@@ -64,16 +65,19 @@ fn commandDumpInspect(io: std.Io, allocator: std.mem.Allocator, path: []const u8
         }
     }
 
-    std.sort.pdq(u64, peak_counts, {}, std.sort.asc(u64));
+    std.sort.pdq(u32, peak_counts.items, {}, std.sort.asc(u32));
     // Twice the median keeps it exact: an even count averages the two middle values.
-    const n = peak_counts.len;
-    const median_twice: u64 = if (n == 0) 0 else if (n % 2 == 1) 2 * peak_counts[n / 2] else peak_counts[n / 2 - 1] + peak_counts[n / 2];
+    const counts = peak_counts.items;
+    const n = counts.len;
+    const min_peaks: u64 = if (n == 0) 0 else counts[0];
+    const max_peaks: u64 = if (n == 0) 0 else counts[n - 1];
+    const median_twice: u64 = if (n == 0) 0 else if (n % 2 == 1) 2 * @as(u64, counts[n / 2]) else @as(u64, counts[n / 2 - 1]) + counts[n / 2];
 
     var buffer: [4096]u8 = undefined;
     var stdout = std.Io.File.stdout().writerStreaming(io, &buffer);
     const out = &stdout.interface;
     try out.print("file: {s}\n", .{path});
-    try out.print("spectra: {}\n", .{spectra.len});
+    try out.print("spectra: {}\n", .{n});
     try out.print("total peaks: {}\n", .{total_peaks});
     try out.print("ms1 count: {}\n", .{ms1_count});
     try out.print("ms2 count: {}\n", .{ms2_count});
@@ -204,7 +208,7 @@ fn commandDecode(io: std.Io, allocator: std.mem.Allocator, args: []const [:0]con
     printStdout(io, "decoded: {s} -> {s}\n", .{ input_path, output_path });
 }
 
-fn printInspectionJson(io: std.Io, path: []const u8, inspection: codec.Inspection) void {
+fn printInspectionJson(io: std.Io, path: []const u8, inspection: codec.Summary) void {
     const header = inspection.header;
     printStdout(io, "{f}\n", .{std.json.fmt(.{
         .file = path,
@@ -222,22 +226,20 @@ fn printInspectionJson(io: std.Io, path: []const u8, inspection: codec.Inspectio
     }, .{ .whitespace = .indent_2 })});
 }
 
-fn printBlockTable(out: *std.Io.Writer, inspection: codec.Inspection) !void {
+fn printBlockTable(out: *std.Io.Writer, rows: []const codec.BlockRow) !void {
     try out.print("{s:>6}  {s:>5}  {s:>6}  {s:>8}  {s:>6}  {s:>9}  {s:>9}  {s:>9}\n", .{
         "idx", "level", "nspec", "npeaks", "mz_bw", "int_bw", "mz_bytes", "int_bytes",
     });
-    for (inspection.blocks, 0..) |block_info, idx| {
-        const h = block_info.header;
-        const b = block_info.byte_breakdown;
+    for (rows, 0..) |row, idx| {
         try out.print("{:>6}  {:>5}  {:>6}  {:>8}  {:>6}  {:>9}  {:>9}  {:>9}\n", .{
             idx,
-            h.ms_level,
-            h.spectrum_count,
-            h.total_peaks,
-            h.mz_bit_width,
-            h.intensity_bit_width,
-            b.mz_payload_bytes,
-            b.intensity_payload_bytes,
+            row.ms_level,
+            row.spectrum_count,
+            row.total_peaks,
+            row.mz_bit_width,
+            row.intensity_bit_width,
+            row.mz_payload_bytes,
+            row.intensity_payload_bytes,
         });
     }
 }
@@ -276,8 +278,9 @@ fn commandInspect(io: std.Io, allocator: std.mem.Allocator, args: []const [:0]co
         return;
     }
 
-    const inspection = try codec.inspectFileAlloc(io, allocator, input_path);
-    defer codec.freeInspection(allocator, inspection);
+    var rows: std.ArrayList(codec.BlockRow) = .empty;
+    defer rows.deinit(allocator);
+    const inspection = try codec.inspectFile(io, allocator, input_path, if (show_blocks and !json_output) &rows else null);
 
     if (json_output) {
         printInspectionJson(io, input_path, inspection);
@@ -308,204 +311,234 @@ fn commandInspect(io: std.Io, allocator: std.mem.Allocator, args: []const [:0]co
 
     if (show_blocks) {
         try out.writeByte('\n');
-        try printBlockTable(out, inspection);
+        try printBlockTable(out, rows.items);
     }
     try out.flush();
 }
 
-fn checkLosslessSpectra(
-    io: std.Io,
-    orig: []const binary_reader.RawSpectrum,
-    dec: []const binary_reader.RawSpectrum,
-    verbose: bool,
-) bool {
-    if (orig.len != dec.len) {
-        if (verbose) printStdout(io, "FAIL spectrum_count expected={} got={}\n", .{ orig.len, dec.len });
+fn Mismatch(comptime T: type) type {
+    return struct { spectrum: usize, expected: T, got: T };
+}
+
+fn PeakMismatch(comptime T: type) type {
+    return struct { spectrum: usize, peak: usize, expected: T, got: T };
+}
+
+/// Prints the spectrum-count line and reports whether both sides hold the same count.
+fn checkSpectrumCount(io: std.Io, expected: usize, got: usize, verbose: bool) bool {
+    if (expected != got) {
+        if (verbose) printStdout(io, "FAIL spectrum_count expected={} got={}\n", .{ expected, got });
         return false;
     }
-    if (verbose) printStdout(io, "PASS spectrum_count {}\n", .{orig.len});
+    if (verbose) printStdout(io, "PASS spectrum_count {}\n", .{expected});
+    return true;
+}
 
-    var scan_fail_idx: ?usize = null;
-    var rt_fail_idx: ?usize = null;
-    var ms_level_fail_idx: ?usize = null;
-    var precursor_fail_idx: ?usize = null;
-    var peak_count_fail_idx: ?usize = null;
-    var mz_fail: ?struct { si: usize, pi: usize, exp: f64, got: f64 } = null;
-    var int_fail: ?struct { si: usize, pi: usize, exp: f32, got: f32 } = null;
+/// The lossless comparison, fed one spectrum pair at a time. It keeps the first failure of each
+/// field, so the report needs no spectrum held.
+const LosslessCheck = struct {
+    index: usize = 0,
+    scan_id: ?Mismatch(u32) = null,
+    rt_seconds: ?Mismatch(f32) = null,
+    ms_level: ?Mismatch(u8) = null,
+    precursor_mz: ?Mismatch(f64) = null,
+    peak_count: ?Mismatch(usize) = null,
+    mz: ?PeakMismatch(f64) = null,
+    intensity: ?PeakMismatch(f32) = null,
 
-    for (orig, dec, 0..) |o, d, si| {
-        if (scan_fail_idx == null and o.scan_id != d.scan_id) scan_fail_idx = si;
-        if (rt_fail_idx == null and @as(u32, @bitCast(o.rt_seconds)) != @as(u32, @bitCast(d.rt_seconds))) rt_fail_idx = si;
-        if (ms_level_fail_idx == null and o.ms_level != d.ms_level) ms_level_fail_idx = si;
-        if (precursor_fail_idx == null and @as(u64, @bitCast(o.precursor_mz)) != @as(u64, @bitCast(d.precursor_mz))) precursor_fail_idx = si;
-        if (peak_count_fail_idx == null and (o.mz.len != d.mz.len or o.intensity.len != d.intensity.len or o.mz.len != o.intensity.len))
-            peak_count_fail_idx = si;
-
-        if (peak_count_fail_idx == null) {
-            if (mz_fail == null) {
-                for (o.mz, d.mz, 0..) |om, dm, pi| {
-                    if (@as(u64, @bitCast(om)) != @as(u64, @bitCast(dm))) {
-                        mz_fail = .{ .si = si, .pi = pi, .exp = om, .got = dm };
-                        break;
-                    }
+    fn add(self: *LosslessCheck, o: binary_reader.RawSpectrum, d: binary_reader.RawSpectrum) void {
+        const si = self.index;
+        self.index += 1;
+        if (self.scan_id == null and o.scan_id != d.scan_id) {
+            self.scan_id = .{ .spectrum = si, .expected = o.scan_id, .got = d.scan_id };
+        }
+        if (self.rt_seconds == null and @as(u32, @bitCast(o.rt_seconds)) != @as(u32, @bitCast(d.rt_seconds))) {
+            self.rt_seconds = .{ .spectrum = si, .expected = o.rt_seconds, .got = d.rt_seconds };
+        }
+        if (self.ms_level == null and o.ms_level != d.ms_level) {
+            self.ms_level = .{ .spectrum = si, .expected = o.ms_level, .got = d.ms_level };
+        }
+        if (self.precursor_mz == null and @as(u64, @bitCast(o.precursor_mz)) != @as(u64, @bitCast(d.precursor_mz))) {
+            self.precursor_mz = .{ .spectrum = si, .expected = o.precursor_mz, .got = d.precursor_mz };
+        }
+        if (self.peak_count == null and (o.mz.len != d.mz.len or o.intensity.len != d.intensity.len or o.mz.len != o.intensity.len)) {
+            self.peak_count = .{ .spectrum = si, .expected = o.mz.len, .got = d.mz.len };
+        }
+        // Peak values are compared only while every spectrum so far had matching counts.
+        if (self.peak_count != null) return;
+        if (self.mz == null) {
+            for (o.mz, d.mz, 0..) |om, dm, pi| {
+                if (@as(u64, @bitCast(om)) != @as(u64, @bitCast(dm))) {
+                    self.mz = .{ .spectrum = si, .peak = pi, .expected = om, .got = dm };
+                    break;
                 }
             }
-            if (int_fail == null) {
-                for (o.intensity, d.intensity, 0..) |oi, di, pi| {
-                    if (@as(u32, @bitCast(oi)) != @as(u32, @bitCast(di))) {
-                        int_fail = .{ .si = si, .pi = pi, .exp = oi, .got = di };
-                        break;
-                    }
+        }
+        if (self.intensity == null) {
+            for (o.intensity, d.intensity, 0..) |oi, di, pi| {
+                if (@as(u32, @bitCast(oi)) != @as(u32, @bitCast(di))) {
+                    self.intensity = .{ .spectrum = si, .peak = pi, .expected = oi, .got = di };
+                    break;
                 }
             }
         }
     }
 
-    if (verbose) {
-        if (scan_fail_idx) |si| {
-            printStdout(io, "FAIL scan_id spectrum={} expected={} got={}\n", .{ si, orig[si].scan_id, dec[si].scan_id });
+    fn passed(self: LosslessCheck) bool {
+        return self.scan_id == null and self.rt_seconds == null and self.ms_level == null and
+            self.precursor_mz == null and self.peak_count == null and self.mz == null and
+            self.intensity == null;
+    }
+
+    fn print(self: LosslessCheck, io: std.Io) void {
+        if (self.scan_id) |f| {
+            printStdout(io, "FAIL scan_id spectrum={} expected={} got={}\n", .{ f.spectrum, f.expected, f.got });
         } else printStdout(io, "PASS scan_id_exact\n", .{});
 
-        if (rt_fail_idx) |si| {
-            printStdout(io, "FAIL rt_seconds spectrum={} expected={e} got={e}\n", .{ si, orig[si].rt_seconds, dec[si].rt_seconds });
+        if (self.rt_seconds) |f| {
+            printStdout(io, "FAIL rt_seconds spectrum={} expected={e} got={e}\n", .{ f.spectrum, f.expected, f.got });
         } else printStdout(io, "PASS rt_seconds_exact\n", .{});
 
-        if (ms_level_fail_idx) |si| {
-            printStdout(io, "FAIL ms_level spectrum={} expected={} got={}\n", .{ si, orig[si].ms_level, dec[si].ms_level });
+        if (self.ms_level) |f| {
+            printStdout(io, "FAIL ms_level spectrum={} expected={} got={}\n", .{ f.spectrum, f.expected, f.got });
         } else printStdout(io, "PASS ms_level_exact\n", .{});
 
-        if (precursor_fail_idx) |si| {
-            printStdout(io, "FAIL precursor_mz spectrum={} expected={d} got={d}\n", .{ si, orig[si].precursor_mz, dec[si].precursor_mz });
+        if (self.precursor_mz) |f| {
+            printStdout(io, "FAIL precursor_mz spectrum={} expected={d} got={d}\n", .{ f.spectrum, f.expected, f.got });
         } else printStdout(io, "PASS precursor_mz_exact\n", .{});
 
-        if (peak_count_fail_idx) |si| {
-            printStdout(io, "FAIL peak_count spectrum={} expected={} got={}\n", .{ si, orig[si].mz.len, dec[si].mz.len });
+        if (self.peak_count) |f| {
+            printStdout(io, "FAIL peak_count spectrum={} expected={} got={}\n", .{ f.spectrum, f.expected, f.got });
         } else printStdout(io, "PASS peak_count_exact\n", .{});
 
-        if (mz_fail) |f| {
-            printStdout(io, "FAIL mz_round_trip spectrum={} peak={} expected={d} got={d}\n", .{ f.si, f.pi, f.exp, f.got });
+        if (self.mz) |f| {
+            printStdout(io, "FAIL mz_round_trip spectrum={} peak={} expected={d} got={d}\n", .{ f.spectrum, f.peak, f.expected, f.got });
         } else printStdout(io, "PASS mz_round_trip exact\n", .{});
 
-        if (int_fail) |f| {
-            printStdout(io, "FAIL intensity_round_trip spectrum={} peak={} expected={e} got={e}\n", .{ f.si, f.pi, f.exp, f.got });
+        if (self.intensity) |f| {
+            printStdout(io, "FAIL intensity_round_trip spectrum={} peak={} expected={e} got={e}\n", .{ f.spectrum, f.peak, f.expected, f.got });
         } else printStdout(io, "PASS intensity_round_trip exact\n", .{});
     }
+};
 
-    return scan_fail_idx == null and rt_fail_idx == null and ms_level_fail_idx == null and
-        precursor_fail_idx == null and peak_count_fail_idx == null and
-        mz_fail == null and int_fail == null;
-}
-
-fn checkLossySpectra(
-    io: std.Io,
-    orig: []const binary_reader.RawSpectrum,
-    dec: []const binary_reader.RawSpectrum,
-    intensity_quant: u16,
-    // mzML lossy archives keep some arrays exact, so a bit-identical peak value also passes.
+/// The lossy comparison, fed one spectrum pair at a time.
+const LossyCheck = struct {
+    /// mzML lossy archives keep some arrays exact, so a bit-identical peak value also passes.
     exact_allowed: bool,
-    verbose: bool,
-) bool {
-    var all_pass = true;
+    index: usize = 0,
+    metadata_fail: ?usize = null,
+    peak_count_mismatch: bool = false,
+    numeric_domain_mismatch: bool = false,
+    mz_quantization_mismatch: bool = false,
+    mz_max: f64 = 0.0,
+    intensity_log_max: f64 = 0.0,
 
-    if (orig.len != dec.len) {
-        if (verbose) printStdout(io, "FAIL spectrum_count expected={} got={}\n", .{ orig.len, dec.len });
-        return false;
-    }
-    if (verbose) printStdout(io, "PASS spectrum_count {}\n", .{orig.len});
-
-    var meta_fail: bool = false;
-    for (orig, dec, 0..) |o, d, si| {
-        if (o.scan_id != d.scan_id or o.ms_level != d.ms_level or
+    fn add(self: *LossyCheck, o: binary_reader.RawSpectrum, d: binary_reader.RawSpectrum) void {
+        const si = self.index;
+        self.index += 1;
+        if (self.metadata_fail == null and (o.scan_id != d.scan_id or o.ms_level != d.ms_level or
             @as(u32, @bitCast(o.rt_seconds)) != @as(u32, @bitCast(d.rt_seconds)) or
-            @as(u64, @bitCast(o.precursor_mz)) != @as(u64, @bitCast(d.precursor_mz)))
+            @as(u64, @bitCast(o.precursor_mz)) != @as(u64, @bitCast(d.precursor_mz))))
         {
-            if (verbose) printStdout(io, "FAIL metadata_exact spectrum={}\n", .{si});
-            meta_fail = true;
-            all_pass = false;
-            break;
+            self.metadata_fail = si;
         }
-    }
-    if (!meta_fail and verbose) printStdout(io, "PASS metadata_exact\n", .{});
-
-    var peak_count_mismatch = false;
-    var numeric_domain_mismatch = false;
-    var mz_quantization_mismatch = false;
-    var mz_max: f64 = 0.0;
-    var intensity_log_max: f64 = 0.0;
-    for (orig, dec) |o, d| {
+        // The first peak-count mismatch ends the peak checks; the report fails on it alone.
+        if (self.peak_count_mismatch) return;
         if (o.mz.len != d.mz.len or o.intensity.len != d.intensity.len or o.mz.len != o.intensity.len) {
-            peak_count_mismatch = true;
-            break;
+            self.peak_count_mismatch = true;
+            return;
         }
-        for (o.mz, d.mz, o.intensity, d.intensity) |om, dm, oi, di| {
-            const mz_exact = exact_allowed and @as(u64, @bitCast(om)) == @as(u64, @bitCast(dm));
-            if (!mz_exact) {
-                if (!std.math.isFinite(dm) or dm < 0.0) {
-                    numeric_domain_mismatch = true;
-                    continue;
-                }
-                const quantized_mz = quantize.quantizeMzValue(om, DEFAULT_ENCODE_OPTIONS.mz_scale_factor) catch {
-                    numeric_domain_mismatch = true;
-                    continue;
-                };
-                const expected_mz = quantize.dequantizeMzValue(quantized_mz, DEFAULT_ENCODE_OPTIONS.mz_scale_factor) catch unreachable;
-                if (@as(u64, @bitCast(dm)) != @as(u64, @bitCast(expected_mz))) mz_quantization_mismatch = true;
-                mz_max = @max(mz_max, @abs(om - dm));
-            }
+        for (o.mz, d.mz, o.intensity, d.intensity) |om, dm, oi, di| self.addPeak(om, dm, oi, di);
+    }
 
-            if (exact_allowed and @as(u32, @bitCast(oi)) == @as(u32, @bitCast(di))) continue;
-            if (!std.math.isFinite(oi) or !std.math.isFinite(di)) {
-                numeric_domain_mismatch = true;
-                continue;
+    fn addPeak(self: *LossyCheck, om: f64, dm: f64, oi: f32, di: f32) void {
+        const mz_exact = self.exact_allowed and @as(u64, @bitCast(om)) == @as(u64, @bitCast(dm));
+        if (!mz_exact) {
+            if (!std.math.isFinite(dm) or dm < 0.0) {
+                self.numeric_domain_mismatch = true;
+                return;
             }
-            if (oi <= 0.0) {
-                if (@as(u32, @bitCast(di)) != 0) numeric_domain_mismatch = true;
-                continue;
-            }
-            if (di <= 0.0) {
-                numeric_domain_mismatch = true;
-                continue;
-            }
-            const original_log = std.math.log1p(@as(f64, oi));
-            const decoded_log = std.math.log1p(@as(f64, di));
-            intensity_log_max = @max(intensity_log_max, @abs(original_log - decoded_log));
+            const quantized_mz = quantize.quantizeMzValue(om, DEFAULT_ENCODE_OPTIONS.mz_scale_factor) catch {
+                self.numeric_domain_mismatch = true;
+                return;
+            };
+            const expected_mz = quantize.dequantizeMzValue(quantized_mz, DEFAULT_ENCODE_OPTIONS.mz_scale_factor) catch unreachable;
+            if (@as(u64, @bitCast(dm)) != @as(u64, @bitCast(expected_mz))) self.mz_quantization_mismatch = true;
+            self.mz_max = @max(self.mz_max, @abs(om - dm));
         }
+
+        if (self.exact_allowed and @as(u32, @bitCast(oi)) == @as(u32, @bitCast(di))) return;
+        if (!std.math.isFinite(oi) or !std.math.isFinite(di)) {
+            self.numeric_domain_mismatch = true;
+            return;
+        }
+        if (oi <= 0.0) {
+            if (@as(u32, @bitCast(di)) != 0) self.numeric_domain_mismatch = true;
+            return;
+        }
+        if (di <= 0.0) {
+            self.numeric_domain_mismatch = true;
+            return;
+        }
+        const original_log = std.math.log1p(@as(f64, oi));
+        const decoded_log = std.math.log1p(@as(f64, di));
+        self.intensity_log_max = @max(self.intensity_log_max, @abs(original_log - decoded_log));
     }
 
-    if (peak_count_mismatch) {
-        if (verbose) printStdout(io, "FAIL peak_count_mismatch\n", .{});
-        return false;
+    fn report(self: LossyCheck, io: std.Io, intensity_quant: u16) bool {
+        var all_pass = true;
+        if (self.metadata_fail) |si| {
+            printStdout(io, "FAIL metadata_exact spectrum={}\n", .{si});
+            all_pass = false;
+        } else printStdout(io, "PASS metadata_exact\n", .{});
+
+        if (self.peak_count_mismatch) {
+            printStdout(io, "FAIL peak_count_mismatch\n", .{});
+            return false;
+        }
+
+        if (self.numeric_domain_mismatch) {
+            printStdout(io, "FAIL numeric_domain\n", .{});
+            return false;
+        } else printStdout(io, "PASS numeric_domain\n", .{});
+
+        if (self.mz_quantization_mismatch) {
+            printStdout(io, "FAIL mz_quantized_values\n", .{});
+            all_pass = false;
+        } else printStdout(io, "PASS mz_quantized_values exact\n", .{});
+        printStdout(io, "PASS mz_max_observed_error {d:.12} Da (nominal half-step {d:.9} Da plus f64 rounding)\n", .{ self.mz_max, LOSSY_MZ_HALF_STEP_DA });
+
+        const max_log = std.math.log1p(@as(f64, std.math.floatMax(f32)));
+        const stored_max: f32 = @floatCast(max_log);
+        const quant: f64 = @floatFromInt(intensity_quant);
+        const intensity_log_limit = @max(@as(f64, stored_max) / quant, @abs(max_log - @as(f64, stored_max))) + 1.0 / 8_388_608.0;
+        if (self.intensity_log_max <= intensity_log_limit) {
+            printStdout(io, "PASS intensity_log1p_max_error {d:.9} <= {d:.9} (format-wide, Q={})\n", .{ self.intensity_log_max, intensity_log_limit, intensity_quant });
+        } else {
+            printStdout(io, "FAIL intensity_log1p_max_error {d:.9} > {d:.9} (format-wide, Q={})\n", .{ self.intensity_log_max, intensity_log_limit, intensity_quant });
+            all_pass = false;
+        }
+        return all_pass;
     }
+};
 
-    if (numeric_domain_mismatch) {
-        if (verbose) printStdout(io, "FAIL numeric_domain\n", .{});
-        return false;
-    } else if (verbose) printStdout(io, "PASS numeric_domain\n", .{});
-
-    if (mz_quantization_mismatch) {
-        if (verbose) printStdout(io, "FAIL mz_quantized_values\n", .{});
-        all_pass = false;
-    } else if (verbose) {
-        printStdout(io, "PASS mz_quantized_values exact\n", .{});
+/// Feeds every record pair to `check`. The counts already matched, so a side that ends early
+/// or late changed while it was read.
+fn compareRecords(
+    allocator: std.mem.Allocator,
+    orig: *binary_reader.RecordReader,
+    dec: *binary_reader.RecordReader,
+    check: anytype,
+) !void {
+    while (try orig.next(allocator)) |o| {
+        const d = (try dec.next(allocator)) orelse return error.UnexpectedEndOfStream;
+        check.add(o, d);
     }
-    if (verbose) printStdout(io, "PASS mz_max_observed_error {d:.12} Da (nominal half-step {d:.9} Da plus f64 rounding)\n", .{ mz_max, LOSSY_MZ_HALF_STEP_DA });
-
-    const max_log = std.math.log1p(@as(f64, std.math.floatMax(f32)));
-    const stored_max: f32 = @floatCast(max_log);
-    const quant: f64 = @floatFromInt(intensity_quant);
-    const intensity_log_limit = @max(@as(f64, stored_max) / quant, @abs(max_log - @as(f64, stored_max))) + 1.0 / 8_388_608.0;
-    const int_pass = intensity_log_max <= intensity_log_limit;
-    if (verbose) {
-        if (int_pass)
-            printStdout(io, "PASS intensity_log1p_max_error {d:.9} <= {d:.9} (format-wide, Q={})\n", .{ intensity_log_max, intensity_log_limit, intensity_quant })
-        else
-            printStdout(io, "FAIL intensity_log1p_max_error {d:.9} > {d:.9} (format-wide, Q={})\n", .{ intensity_log_max, intensity_log_limit, intensity_quant });
-    }
-    if (!int_pass) all_pass = false;
-
-    return all_pass;
+    if (try dec.next(allocator) != null) return error.TrailingData;
 }
 
+/// Compares two dumps record by record; both are checked whole for structure first, so a
+/// malformed dump prints nothing. Holds one record of each side at a time.
 fn commandValidate(io: std.Io, allocator: std.mem.Allocator, args: []const [:0]const u8) !void {
     if (args.len != 5 and args.len != 7) return error.InvalidArguments;
     const orig_path = args[2];
@@ -525,15 +558,32 @@ fn commandValidate(io: std.Io, allocator: std.mem.Allocator, args: []const [:0]c
         if (intensity_quant == 0) return error.InvalidQuantFactor;
     }
 
-    const orig = try binary_reader.readBinaryDump(io, orig_path, allocator);
-    defer binary_reader.freeSpectra(allocator, orig);
-    const dec = try binary_reader.readBinaryDump(io, dec_path, allocator);
-    defer binary_reader.freeSpectra(allocator, dec);
+    const cwd = std.Io.Dir.cwd();
+    const orig_file = try cwd.openFile(io, orig_path, .{});
+    defer orig_file.close(io);
+    const orig_count = try binary_reader.countRecords(io, orig_file, codec.MAX_FILE_SPECTRA, block.MAX_BLOCK_PEAKS);
+    const dec_file = try cwd.openFile(io, dec_path, .{});
+    defer dec_file.close(io);
+    const dec_count = try binary_reader.countRecords(io, dec_file, codec.MAX_FILE_SPECTRA, block.MAX_BLOCK_PEAKS);
+    if (!checkSpectrumCount(io, orig_count, dec_count, true)) return error.ValidationFailed;
 
-    const all_pass = if (lossless_mode)
-        checkLosslessSpectra(io, orig, dec, true)
-    else
-        checkLossySpectra(io, orig, dec, intensity_quant, mzml_lossy_mode, true);
+    var orig_buffer: [64 * 1024]u8 = undefined;
+    var orig = binary_reader.RecordReader.init(io, orig_file, &orig_buffer, block.MAX_BLOCK_PEAKS);
+    defer orig.deinit(allocator);
+    var dec_buffer: [64 * 1024]u8 = undefined;
+    var dec = binary_reader.RecordReader.init(io, dec_file, &dec_buffer, block.MAX_BLOCK_PEAKS);
+    defer dec.deinit(allocator);
+
+    const all_pass = if (lossless_mode) blk: {
+        var check: LosslessCheck = .{};
+        try compareRecords(allocator, &orig, &dec, &check);
+        check.print(io);
+        break :blk check.passed();
+    } else blk: {
+        var check: LossyCheck = .{ .exact_allowed = mzml_lossy_mode };
+        try compareRecords(allocator, &orig, &dec, &check);
+        break :blk check.report(io, intensity_quant);
+    };
 
     if (!all_pass) return error.ValidationFailed;
 }
@@ -575,7 +625,10 @@ fn commandValidateAdversarial(io: std.Io, allocator: std.mem.Allocator, args: []
         };
         defer binary_reader.freeSpectra(allocator, decoded);
 
-        if (checkLosslessSpectra(io, orig, decoded, false)) {
+        var check: LosslessCheck = .{};
+        const same_count = checkSpectrumCount(io, orig.len, decoded.len, false);
+        if (same_count) for (orig, decoded) |o, d| check.add(o, d);
+        if (same_count and check.passed()) {
             printStdout(io, "PASS {s}\n", .{entry.name});
         } else {
             printStdout(io, "FAIL {s}\n", .{entry.name});

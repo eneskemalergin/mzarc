@@ -38,6 +38,9 @@ All notable changes to mzarc are documented here. The format follows [Keep a Cha
   - `mzarc encode`, `decode`, and `dump` refuse an output path that names the input file, including through a symbolic link, instead of replacing the input with their output.
   - `mzarc dump-inspect` prints the mean of the two middle peak counts as the median for an even spectrum count.
   - `mzarc inspect --json` escapes the file path, so a path with a quote or backslash still gives valid JSON.
+- **Memory:**
+  - `mzarc validate` and `mzarc dump-inspect` read Dump V1 files one record at a time instead of loading them whole. On a 322 MB DIA dump, peak memory falls from 1.15 GiB and 740 MiB to about 2 MiB, with the same output. Both reject a record above 524,288 peaks or a file above 500,000 records, the limits the codec accepts.
+  - `mzarc inspect` checks an archive one block at a time instead of loading it whole: about 14 MiB instead of 156 MiB on a 151 MB DIA archive, with the same output.
 
 ### Removed
 

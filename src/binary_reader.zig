@@ -226,20 +226,12 @@ fn readExact(reader: *std.Io.File.Reader, bytes: []u8) !void {
     };
 }
 
-fn readFloatSlice(
-    scratch: Allocator,
-    comptime T: type,
-    reader: *std.Io.File.Reader,
-    values: []T,
-) !void {
-    if (builtin.cpu.arch.endian() == .little) {
-        try readExact(reader, std.mem.sliceAsBytes(values));
-        return;
-    }
-
-    const bytes = try scratch.alloc(u8, try std.math.mul(usize, values.len, @sizeOf(T)));
-    try readExact(reader, bytes);
-    readFloatsLe(T, values, bytes);
+/// Reads little-endian floats straight into `values`, swapping in place on big-endian hosts.
+fn readFloatsInto(reader: *std.Io.File.Reader, comptime T: type, values: []T) !void {
+    try readExact(reader, std.mem.sliceAsBytes(values));
+    if (builtin.cpu.arch.endian() == .little) return;
+    const Int = std.meta.Int(.unsigned, @bitSizeOf(T));
+    for (values) |*value| value.* = @bitCast(@byteSwap(@as(Int, @bitCast(value.*))));
 }
 
 /// Returned peak slices belong to `scratch`, which must outlive the active block.
@@ -251,8 +243,8 @@ pub fn readSpectrumAt(
     try reader.seekTo(entry.payload_offset);
     const mz = try scratch.alloc(f64, entry.peak_count);
     const intensity = try scratch.alloc(f32, entry.peak_count);
-    try readFloatSlice(scratch, f64, reader, mz);
-    try readFloatSlice(scratch, f32, reader, intensity);
+    try readFloatsInto(reader, f64, mz);
+    try readFloatsInto(reader, f32, intensity);
     return .{
         .scan_id = entry.scan_id,
         .rt_seconds = @bitCast(entry.rt_bits),
@@ -267,6 +259,71 @@ pub fn readSpectrumAt(
 pub fn recordLen(peak_count: u32) !u64 {
     return std.math.add(u64, record_header_len, try std.math.mul(u64, peak_count, @sizeOf(f64) + @sizeOf(f32)));
 }
+
+/// Walks every record header of `file` and returns the record count, reading no payload.
+/// Rejects truncation, nonzero reserved bytes, more than `max_records` records, and a record
+/// with more than `max_peaks` peaks.
+pub fn countRecords(io: std.Io, file: std.Io.File, max_records: usize, max_peaks: usize) !usize {
+    const file_size = (try file.stat(io)).size;
+    var count: usize = 0;
+    var offset: u64 = 0;
+    while (offset < file_size) {
+        if (count == max_records) return error.FileResourceLimit;
+        if (file_size - offset < record_header_len) return error.UnexpectedEndOfStream;
+        var header: [record_header_len]u8 = undefined;
+        try readExactAt(file, io, &header, offset);
+        try validateRecordPadding(&header);
+        const peak_count = readIntLe(u32, header[20..24]);
+        if (peak_count > max_peaks) return error.BlockResourceLimit;
+        offset = try std.math.add(u64, offset, try recordLen(peak_count));
+        if (offset > file_size) return error.UnexpectedEndOfStream;
+        count += 1;
+    }
+    return count;
+}
+
+/// Reads records in file order through a caller-owned buffer. A returned spectrum borrows the
+/// reader's peak arrays until the next call; `max_peaks` bounds them.
+pub const RecordReader = struct {
+    file_reader: std.Io.File.Reader,
+    max_peaks: usize,
+    mz: std.ArrayList(f64) = .empty,
+    intensity: std.ArrayList(f32) = .empty,
+
+    pub fn init(io: std.Io, file: std.Io.File, buffer: []u8, max_peaks: usize) RecordReader {
+        return .{ .file_reader = file.reader(io, buffer), .max_peaks = max_peaks };
+    }
+
+    pub fn deinit(self: *RecordReader, allocator: Allocator) void {
+        self.mz.deinit(allocator);
+        self.intensity.deinit(allocator);
+    }
+
+    /// The next record, or null at the exact end of the file.
+    pub fn next(self: *RecordReader, allocator: Allocator) !?RawSpectrum {
+        _ = self.file_reader.interface.peekByte() catch |err| switch (err) {
+            error.EndOfStream => return null,
+            error.ReadFailed => return self.file_reader.err orelse error.InputOutput,
+        };
+        var header: [record_header_len]u8 = undefined;
+        try readExact(&self.file_reader, &header);
+        try validateRecordPadding(&header);
+        const peak_count = readIntLe(u32, header[20..24]);
+        if (peak_count > self.max_peaks) return error.BlockResourceLimit;
+        try self.mz.resize(allocator, peak_count);
+        try self.intensity.resize(allocator, peak_count);
+        try readFloatsInto(&self.file_reader, f64, self.mz.items);
+        try readFloatsInto(&self.file_reader, f32, self.intensity.items);
+        return .{
+            .scan_id = readIntLe(u32, header[0..4]),
+            .rt_seconds = @bitCast(readIntLe(u32, header[4..8])),
+            .ms_level = header[8],
+            .precursor_mz = @bitCast(readIntLe(u64, header[12..20])),
+            .mz = self.mz.items,
+            .intensity = self.intensity.items,
+        };
+    }
+};
 
 fn readIntLe(comptime T: type, bytes: []const u8) T {
     return std.mem.readInt(T, bytes[0..@sizeOf(T)], .little);

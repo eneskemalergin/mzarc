@@ -1392,3 +1392,60 @@ test "[edge] - [.mzarc writer]: emits a valid empty archive" {
 
     try std.testing.expectEqual(@as(usize, 0), decoded.len);
 }
+
+/// Inspects `bytes` from memory and from a file and requires the same result or the same error.
+fn expectFileInspectionMatches(tmp: *std.testing.TmpDir, bytes: []const u8) !void {
+    try tmp.dir.writeFile(std.testing.io, .{ .sub_path = "inspect.mzarc", .data = bytes });
+    const path = try tmpPath(std.testing.allocator, tmp, "inspect.mzarc");
+    defer std.testing.allocator.free(path);
+    var rows: std.ArrayList(codec.BlockRow) = .empty;
+    defer rows.deinit(std.testing.allocator);
+    const from_file = codec.inspectFile(std.testing.io, std.testing.allocator, path, &rows);
+
+    const from_memory = codec.inspectAlloc(std.testing.allocator, bytes) catch |err| {
+        try std.testing.expectError(err, from_file);
+        return;
+    };
+    defer codec.freeInspection(std.testing.allocator, from_memory);
+    const summary = try from_file;
+    try std.testing.expectEqualDeep(from_memory.header, summary.header);
+    try std.testing.expectEqual(from_memory.ms1_block_count, summary.ms1_block_count);
+    try std.testing.expectEqual(from_memory.ms2_block_count, summary.ms2_block_count);
+    try std.testing.expectEqual(from_memory.ms1_spectra, summary.ms1_spectra);
+    try std.testing.expectEqual(from_memory.ms2_spectra, summary.ms2_spectra);
+    try std.testing.expectEqualDeep(from_memory.byte_breakdown, summary.byte_breakdown);
+    try std.testing.expectEqual(from_memory.blocks.len, rows.items.len);
+    for (from_memory.blocks, rows.items) |info, row| {
+        try std.testing.expectEqual(info.header.ms_level, row.ms_level);
+        try std.testing.expectEqual(info.header.spectrum_count, row.spectrum_count);
+        try std.testing.expectEqual(info.header.total_peaks, row.total_peaks);
+        try std.testing.expectEqual(info.header.mz_bit_width, row.mz_bit_width);
+        try std.testing.expectEqual(info.header.intensity_bit_width, row.intensity_bit_width);
+        try std.testing.expectEqual(info.byte_breakdown.mz_payload_bytes, row.mz_payload_bytes);
+        try std.testing.expectEqual(info.byte_breakdown.intensity_payload_bytes, row.intensity_payload_bytes);
+    }
+}
+
+test "[property] - [.mzarc inspector]: file inspection agrees with memory inspection on damaged archives" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    for (0..KNOWN_MZARC.len + 1) |len| try expectFileInspectionMatches(&tmp, KNOWN_MZARC[0..len]);
+    var flipped = KNOWN_MZARC;
+    for (0..flipped.len) |index| {
+        flipped[index] ^= 0x41;
+        try expectFileInspectionMatches(&tmp, &flipped);
+        flipped[index] ^= 0x41;
+    }
+
+    var corpus = try makePseudoRandomCorpus(std.testing.allocator, 0x1d5e_c7ed, 97, 33);
+    defer corpus.deinit();
+    for ([_]block.EncodeOptions{ .{ .mode = .lossless }, .{ .mode = .lossy } }) |block_options| {
+        const encoded = try codec.encodeFileAlloc(std.testing.io, std.testing.allocator, corpus.spectra, .{
+            .block_options = block_options,
+            .block_size = 7,
+        });
+        defer std.testing.allocator.free(encoded);
+        try expectFileInspectionMatches(&tmp, encoded);
+    }
+}
