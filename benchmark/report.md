@@ -7,26 +7,26 @@ This report measures one mzML file three ways: lossless compression of its Dump 
 ## Key findings
 
 - **Dump V1:** `mzarc lossless` writes 14.46 MiB (46.99% of the input), 8.22% smaller than the smallest byte-exact peer, `xz -6 -T1` (15.76 MiB).
-  Encode: 230.06 MiB/s, rank 2 of 8 rows; the fastest single-threaded peer is `zstd -3 --single-thread` at 131.49 MiB/s and the fastest peer overall is `zstd -3 -T4 [P]` at 373.69 MiB/s. Decode: 161.65 MiB/s, rank 6 of 8; the fastest is `zstd -3 --single-thread` at 441.85 MiB/s. Peak RSS: 8.98 MiB encode and 6.79 MiB decode; the lowest peers are `gzip -6` (1.90 MiB) and `gzip -6` (1.66 MiB).
+  Encode: 217.96 MiB/s, rank 2 of 8 rows; the fastest single-threaded peer is `zstd -3 --single-thread` at 108.97 MiB/s and the fastest peer overall is `zstd -3 -T4 [P]` at 256.84 MiB/s. Decode: 154.74 MiB/s, rank 6 of 8; the fastest is `zstd -3 --single-thread` at 370.46 MiB/s. Peak RSS: 8.72 MiB encode and 6.80 MiB decode; the lowest peers are `gzip -6` (1.90 MiB) and `gzip -6` (1.61 MiB).
 - **Original mzML:** `mzarc exact` writes 24.00 MiB (31.77% of the input), 2.62% larger than the smallest byte-exact peer, `xz -6 -T1` (23.39 MiB). `MScompress -t4 [P]` writes 21.62 MiB but is validated as Dump V1 exact.
-  Encode: 111.08 MiB/s, rank 6 of 10 rows; the fastest single-threaded peer is `zstd -3 --single-thread` at 329.26 MiB/s and the fastest peer overall is `zstd -3 -T4 [P]` at 874.18 MiB/s. Decode: 501.07 MiB/s, rank 3 of 10; the fastest is `zstd -3 --single-thread` at 897.31 MiB/s. Peak RSS: 1.30 MiB encode and 1.00 MiB decode; the lowest peers are `gzip -6` (1.86 MiB) and `gzip -6` (1.62 MiB).
+  Encode: 93.09 MiB/s, rank 6 of 10 rows; the fastest single-threaded peer is `zstd -3 --single-thread` at 266.82 MiB/s and the fastest peer overall is `zstd -3 -T4 [P]` at 665.50 MiB/s. Decode: 422.28 MiB/s, rank 3 of 10; the fastest is `zstd -3 -T4 [P]` at 747.70 MiB/s. Peak RSS: 1.02 MiB encode and 1.27 MiB decode; the lowest peers are `gzip -6` (1.86 MiB) and `gzip -6` (1.65 MiB).
 - **Lossy:** the mzML lossy archive is 20.10% of the original document, 36.75% smaller than the exact archive; the Dump V1 lossy archive is 41.14% of its input, 12.45% smaller than the lossless archive. Largest observed errors: m/z 0.000000000000 Da and log1p intensity 0.000642643 (mzML), m/z 0.000001000000 Da and log1p intensity 0.000644625 (Dump V1), against a format-wide log1p limit of 0.005415332.
 
 ## Run context
 
 - Source: `<data root>/PXD075509/15HCD_1.mzML`
 - Source shape: 9001 spectra; 2668458 peaks; 917 MS1 and 8084 MS2 spectra
-- Measured: 2026-10-10T12:18:21-07:00
-- Host: AMD Ryzen 9 3950X 16-Core Processor; Linux 7.2.8-200.fc44.x86_64 x86_64 GNU/Linux
+- Measured: 2026-11-03T14:00:11-07:00
+- Host: AMD Ryzen 9 3950X 16-Core Processor; Linux 7.2.14-200.fc44.x86_64 x86_64 GNU/Linux
 - CPU frequency governor: schedutil
-- Load average (1, 5, 15 min): 4.51 5.17 4.86 before the build, 9.29 6.34 5.28 after the last measurement
+- Load average (1, 5, 15 min): 17.21 23.34 20.13 before the build, 20.88 20.09 20.38 after the last measurement
 - mzarc build: stripped ReleaseFast, single-threaded
 - Sampling: 5 measurements per operation after one warmup
 - Parallel rows: 4 workers, marked `[P]`; direction-specific behavior remains in the tables
 - Execution: each operation is measured independently; files are reused after untimed validation and one warmup
 - Timing: median wall time with its interquartile range (IQR); throughput is uncompressed input bytes divided by the median
 - Peak RSS: median zebrac direct-child RSS
-- Spread: 7 of 40 operations have an IQR above 5% of their median (largest: `zstd -3 -T4 [P]` encode 17.7%, `xz -6 -T4 [P]` encode 14.8%, `pigz -6 -p4 [P]` encode 11.2%); compare those timings only after a repeat run
+- Spread: 31 of 40 operations have an IQR above 5% of their median (largest: `zstd -3 --single-thread` encode 64.7%, `zstd -3 -T4 [P]` encode 64.5%, `xz -6 -T4 [P]` decode 41.5%); compare those timings only after a repeat run
 
 ## Input size context
 
@@ -47,7 +47,17 @@ Converting the original mzML to Dump V1 with `mzarc dump`. Its output is checked
 
 | Step         | Output bytes | Median (ms) | IQR (ms) | mzML MiB/s | Peak RSS (MiB) |
 | ------------ | -----------: | ----------: | -------: | ---------: | -------------: |
-| `mzarc dump` |     32273524 |     440.170 |    7.848 |     171.64 |           1.25 |
+| `mzarc dump` |     32273524 |     445.086 |   17.559 |     169.75 |           1.02 |
+
+## Inspection and validation
+
+The commands that check and describe the lossless Dump V1 round trip, on the files the Dump V1 comparison validated: `validate` compares the input dump with its decoded copy (input bytes count both), `dump-inspect` reads the input dump, and `inspect` checks every block of the lossless archive. Each reads one record or one block at a time.
+
+| Command                          | Input bytes | Median (ms) | IQR (ms) | Input MiB/s | Peak RSS (MiB) |
+| -------------------------------- | ----------: | ----------: | -------: | ----------: | -------------: |
+| `mzarc validate --mode=lossless` |    64547048 |      28.634 |    0.633 |     2149.75 |           0.90 |
+| `mzarc dump-inspect`             |    32273524 |       6.899 |    0.940 |     4461.19 |           0.90 |
+| `mzarc inspect`                  |    15165670 |      73.503 |   11.629 |      196.77 |           6.43 |
 
 ## Dump V1 round trip
 
@@ -62,7 +72,7 @@ Comparison input: Dump V1, 30.78 MiB (32273524 bytes).
 | mzarc lossless          | single / single           | byte exact |       15165670 |             46.99% |
 | gzip -6                 | single / single           | byte exact |       20780851 |             64.39% |
 | pigz -6 -p1             | single / single           | byte exact |       20707631 |             64.16% |
-| pigz -6 -p4 [P]         | fixed-4 / fixed-4 helpers | byte exact |       20707625 |             64.16% |
+| pigz -6 -p4 [P]         | fixed-4 / fixed-4 helpers | byte exact |       20707626 |             64.16% |
 | zstd -3 --single-thread | single / single           | byte exact |       18710563 |             57.97% |
 | zstd -3 -T4 [P]         | fixed-4 / single          | byte exact |       18659882 |             57.82% |
 | xz -6 -T1               | single / single           | byte exact |       16524524 |             51.20% |
@@ -72,27 +82,27 @@ Comparison input: Dump V1, 30.78 MiB (32273524 bytes).
 
 | Method                  | Median (ms) | IQR (ms) | IQR / median |  MiB/s | Peak RSS (MiB) |
 | ----------------------- | ----------: | -------: | -----------: | -----: | -------------: |
-| mzarc lossless          |     133.786 |    1.918 |         1.4% | 230.06 |           8.98 |
-| gzip -6                 |    1581.670 |   17.546 |         1.1% |  19.46 |           1.90 |
-| pigz -6 -p1             |    1337.952 |    6.722 |         0.5% |  23.00 |           2.90 |
-| pigz -6 -p4 [P]         |     349.361 |    9.732 |         2.8% |  88.10 |           4.92 |
-| zstd -3 --single-thread |     234.065 |    4.069 |         1.7% | 131.49 |           5.64 |
-| zstd -3 -T4 [P]         |      82.364 |   14.601 |        17.7% | 373.69 |          54.14 |
-| xz -6 -T1               |   16744.339 |  925.039 |         5.5% |   1.84 |          93.91 |
-| xz -6 -T4 [P]           |   12824.923 |  750.892 |         5.9% |   2.40 |         218.42 |
+| mzarc lossless          |     141.210 |    8.448 |         6.0% | 217.96 |           8.72 |
+| gzip -6                 |    1809.301 |  148.359 |         8.2% |  17.01 |           1.90 |
+| pigz -6 -p1             |    1415.434 |  127.397 |         9.0% |  21.74 |           2.92 |
+| pigz -6 -p4 [P]         |     397.686 |   42.713 |        10.7% |  77.39 |           5.10 |
+| zstd -3 --single-thread |     282.445 |  182.746 |        64.7% | 108.97 |           5.64 |
+| zstd -3 -T4 [P]         |     119.835 |   13.564 |        11.3% | 256.84 |          54.44 |
+| xz -6 -T1               |   26978.865 | 2257.108 |         8.4% |   1.14 |          94.35 |
+| xz -6 -T4 [P]           |   20509.420 | 2367.939 |        11.5% |   1.50 |         217.35 |
 
 ### Decode
 
 | Method                  | Median (ms) | IQR (ms) | IQR / median |  MiB/s | Peak RSS (MiB) |
 | ----------------------- | ----------: | -------: | -----------: | -----: | -------------: |
-| mzarc lossless          |     190.404 |    8.855 |         4.7% | 161.65 |           6.79 |
-| gzip -6                 |     138.172 |    1.856 |         1.3% | 222.75 |           1.66 |
-| pigz -6 -p1             |     138.891 |    4.043 |         2.9% | 221.60 |           2.16 |
-| pigz -6 -p4 [P]         |     130.834 |    4.927 |         3.8% | 235.25 |           2.16 |
-| zstd -3 --single-thread |      69.659 |    1.306 |         1.9% | 441.85 |           4.64 |
-| zstd -3 -T4 [P]         |      72.032 |    1.221 |         1.7% | 427.29 |           4.64 |
-| xz -6 -T1               |     639.443 |   17.774 |         2.8% |  48.13 |          10.09 |
-| xz -6 -T4 [P]           |     508.895 |   11.449 |         2.2% |  60.48 |          59.34 |
+| mzarc lossless          |     198.909 |    2.275 |         1.1% | 154.74 |           6.80 |
+| gzip -6                 |     146.162 |   42.565 |        29.1% | 210.58 |           1.61 |
+| pigz -6 -p1             |     150.433 |    6.017 |         4.0% | 204.60 |           2.15 |
+| pigz -6 -p4 [P]         |     150.382 |   25.487 |        16.9% | 204.67 |           2.17 |
+| zstd -3 --single-thread |      83.083 |   15.515 |        18.7% | 370.46 |           4.68 |
+| zstd -3 -T4 [P]         |      93.664 |   17.351 |        18.5% | 328.60 |           4.64 |
+| xz -6 -T1               |     711.571 |   24.338 |         3.4% |  43.25 |          10.10 |
+| xz -6 -T4 [P]           |     600.768 |  249.360 |        41.5% |  51.23 |          59.73 |
 
 ## Original mzML round trip
 
@@ -119,31 +129,31 @@ Comparison input: original mzML, 75.55 MiB (79221306 bytes).
 
 | Method                  | Median (ms) | IQR (ms) | IQR / median |  MiB/s | Peak RSS (MiB) |
 | ----------------------- | ----------: | -------: | -----------: | -----: | -------------: |
-| mzarc exact             |     680.147 |   20.658 |         3.0% | 111.08 |           1.30 |
-| gzip -6                 |    1286.978 |   19.483 |         1.5% |  58.70 |           1.86 |
-| pigz -6 -p1             |     667.297 |   11.066 |         1.7% | 113.22 |           2.85 |
-| pigz -6 -p4 [P]         |     184.518 |   20.684 |        11.2% | 409.45 |           4.67 |
-| zstd -3 --single-thread |     229.461 |    2.057 |         0.9% | 329.26 |           5.39 |
-| zstd -3 -T4 [P]         |      86.426 |    8.232 |         9.5% | 874.18 |          74.64 |
-| xz -6 -T1               |   15512.595 |  670.148 |         4.3% |   4.87 |          94.35 |
-| xz -6 -T4 [P]           |    6078.825 |  901.505 |        14.8% |  12.43 |         426.67 |
-| MScompress -t1          |     924.930 |   25.398 |         2.7% |  81.68 |         254.03 |
-| MScompress -t4 [P]      |     374.692 |    6.763 |         1.8% | 201.64 |         271.46 |
+| mzarc exact             |     811.578 |   36.846 |         4.5% |  93.09 |           1.02 |
+| gzip -6                 |    1462.069 |   95.447 |         6.5% |  51.67 |           1.86 |
+| pigz -6 -p1             |     768.118 |   26.917 |         3.5% |  98.36 |           2.90 |
+| pigz -6 -p4 [P]         |     241.711 |   56.714 |        23.5% | 312.57 |           4.85 |
+| zstd -3 --single-thread |     283.151 |   28.743 |        10.2% | 266.82 |           5.62 |
+| zstd -3 -T4 [P]         |     113.525 |   73.268 |        64.5% | 665.50 |          74.88 |
+| xz -6 -T1               |   18290.879 | 2063.389 |        11.3% |   4.13 |          94.14 |
+| xz -6 -T4 [P]           |    6890.275 | 1050.133 |        15.2% |  10.96 |         425.91 |
+| MScompress -t1          |     935.898 |   23.070 |         2.5% |  80.73 |         254.18 |
+| MScompress -t4 [P]      |     428.221 |   35.731 |         8.3% | 176.43 |         271.39 |
 
 ### Decode
 
 | Method                  | Median (ms) | IQR (ms) | IQR / median |  MiB/s | Peak RSS (MiB) |
 | ----------------------- | ----------: | -------: | -----------: | -----: | -------------: |
-| mzarc exact             |     150.779 |    2.536 |         1.7% | 501.07 |           1.00 |
-| gzip -6                 |     181.383 |    1.119 |         0.6% | 416.53 |           1.62 |
-| pigz -6 -p1             |     174.007 |    8.378 |         4.8% | 434.19 |           2.16 |
-| pigz -6 -p4 [P]         |     154.713 |    4.572 |         3.0% | 488.33 |           2.22 |
-| zstd -3 --single-thread |      84.198 |    1.625 |         1.9% | 897.31 |           4.69 |
-| zstd -3 -T4 [P]         |      85.089 |    0.490 |         0.6% | 887.91 |           4.63 |
-| xz -6 -T1               |     938.769 |   22.387 |         2.4% |  80.48 |          10.10 |
-| xz -6 -T4 [P]           |     389.828 |   21.807 |         5.6% | 193.81 |         116.16 |
-| MScompress -t1          |    5795.242 |  224.243 |         3.9% |  13.04 |         255.56 |
-| MScompress -t4 [P]      |    2079.277 |   60.253 |         2.9% |  36.34 |         215.15 |
+| mzarc exact             |     178.914 |   24.461 |        13.7% | 422.28 |           1.27 |
+| gzip -6                 |     201.631 |    7.732 |         3.8% | 374.70 |           1.65 |
+| pigz -6 -p1             |     199.685 |   10.390 |         5.2% | 378.35 |           2.10 |
+| pigz -6 -p4 [P]         |     232.102 |   44.742 |        19.3% | 325.51 |           2.16 |
+| zstd -3 --single-thread |     104.766 |   10.137 |         9.7% | 721.15 |           4.69 |
+| zstd -3 -T4 [P]         |     101.044 |   13.659 |        13.5% | 747.70 |           4.69 |
+| xz -6 -T1               |     941.991 |   17.403 |         1.8% |  80.20 |          10.09 |
+| xz -6 -T4 [P]           |     409.244 |   21.869 |         5.3% | 184.61 |         116.66 |
+| MScompress -t1          |    5947.631 |  319.394 |         5.4% |  12.70 |         256.04 |
+| MScompress -t4 [P]      |    2181.291 |  227.830 |        10.4% |  34.64 |         214.16 |
 
 ## Lossy archives
 
@@ -158,15 +168,15 @@ Comparison input: original mzML, 75.55 MiB (79221306 bytes).
 
 | Method                      | Median (ms) | IQR (ms) | IQR / median |  MiB/s | Peak RSS (MiB) |
 | --------------------------- | ----------: | -------: | -----------: | -----: | -------------: |
-| mzarc lossy (Dump V1 input) |     217.781 |    7.887 |         3.6% | 141.33 |           9.73 |
-| mzarc lossy (mzML input)    |    1486.538 |   18.945 |         1.3% |  50.82 |           2.30 |
+| mzarc lossy (Dump V1 input) |     220.612 |   13.040 |         5.9% | 139.51 |           9.43 |
+| mzarc lossy (mzML input)    |    1461.025 |   85.834 |         5.9% |  51.71 |           2.32 |
 
 ### Decode
 
 | Method                      | Median (ms) | IQR (ms) | IQR / median |  MiB/s | Peak RSS (MiB) |
 | --------------------------- | ----------: | -------: | -----------: | -----: | -------------: |
-| mzarc lossy (Dump V1 input) |     187.016 |    6.714 |         3.6% | 164.58 |           6.79 |
-| mzarc lossy (mzML input)    |     872.714 |   28.790 |         3.3% |  86.57 |           1.50 |
+| mzarc lossy (Dump V1 input) |     191.085 |   14.138 |         7.4% | 161.07 |           6.60 |
+| mzarc lossy (mzML input)    |     912.790 |   31.618 |         3.5% |  82.77 |           1.52 |
 
 Observed errors, from `mzarc validate` after the timed runs:
 
@@ -194,9 +204,9 @@ The mzML profile keeps an array exact when the profile cannot hold it: 32-bit m/
 
 ## Tool versions
 
-- mzarc: `v0.3.0` at `387cbc6`
+- mzarc: `v0.4.0` at `daef062`
 - Build: Zig `0.16.0`; stripped ReleaseFast; single-threaded
-- Ingest and mzML reading: `mzarc dump` on zmz `1da1ae5`
+- Ingest and mzML reading: `mzarc dump` on zmz `0.1.0`
 - Measurement: `zebrac 0.6.2`
 - Compression peers: `gzip 1.14`; `pigz 2.8`; `zstd 1.5.7`; `xz 5.8.2`; `MScompress 1.0.16`
 - Report generation: `jq-1.8.1`; `gnuplot 6.0.3 patchlevel 3`
@@ -208,3 +218,4 @@ The full-precision rows are retained beside this report for direct local compari
 - [dump.tsv](dump.tsv), [mzml.tsv](mzml.tsv), and [lossy.tsv](lossy.tsv): method, thread class, validation, artifact bytes, artifact percentage of input, encode median ms, encode IQR ms, encode MiB/s, encode RSS MiB, decode median ms, decode IQR ms, decode MiB/s, decode RSS MiB, encode mean ms, encode SD ms, decode mean ms, decode SD ms, encode median instructions, decode median instructions, and input bytes.
 - [lossy-errors.tsv](lossy-errors.tsv): method, max m/z error in Da, max log1p intensity error, the format-wide log1p limit, and the arrays transformed.
 - [ingest.tsv](ingest.tsv): step, output bytes, median ms, IQR ms, mzML MiB/s, peak RSS MiB, and median instructions.
+- [commands.tsv](commands.tsv): command, input bytes, median ms, IQR ms, input MiB/s, peak RSS MiB, and median instructions.
