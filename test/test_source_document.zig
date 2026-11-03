@@ -1,5 +1,5 @@
-//! Source-document archives (format 1.0, section 11): hand-built archives, header rejection,
-//! fixture round trips, damaged archives, and the source index slack rule.
+//! Source-document archives: hand-built archives, header rejection, fixture round trips,
+//! damaged archives, and the source index slack rule.
 
 const std = @import("std");
 const codec = @import("codec");
@@ -103,7 +103,7 @@ test "[integration] - [source-document lossy]: decodes a hand-built record strea
     const archive = try handArchive(allocator, source_document.flag_source_document, 1, stream.items);
     defer allocator.free(archive);
 
-    // Independent expectation: the reconstruction formula of section 2.3, little-endian f32, Base64.
+    // Independent expectation: the lossy intensity reconstruction expm1(level / Q * L), little-endian f32, Base64.
     var values: [levels.len]f32 = undefined;
     for (levels, &values) |level, *value| {
         value.* = if (level == 0) 0 else @floatCast(std.math.expm1(@as(f64, @floatFromInt(level)) / 16384.0 * @as(f64, log_max)));

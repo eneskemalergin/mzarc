@@ -1,4 +1,4 @@
-//! Source-document archives (format 1.0, section 11): a complete mzML document in `.mzarc`.
+//! Source-document archives: a complete mzML document in a format 1.0 `.mzarc`.
 //! Exact mode stores the source bytes in one zlib stream. Lossy mode stores a record stream:
 //! untouched source spans, eligible spectrum arrays as compact codes (profile 1), and
 //! placeholders for `encodedLength`, index offsets, `indexListOffset`, and `fileChecksum`, which

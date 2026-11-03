@@ -81,7 +81,7 @@ test "[failure] - [intensity quantization]: rejects invalid parameters" {
     try std.testing.expectError(error.InvalidIntensity, quantize.dequantizeIntensityValueScaled(1, 4096, -1.0));
 }
 
-// Independent oracle: the per-value definition of the block maximum that the encoder used before Experiment 41.
+// Independent oracle: the block maximum as the format defines it, the largest log1p over every positive finite value.
 fn logMaxPerValue(values: []const f32) f32 {
     var max_log: f64 = 0.0;
     for (values) |value| {

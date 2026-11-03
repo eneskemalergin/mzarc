@@ -41,7 +41,7 @@ The `.mzarc` 1.0 format remains under development, so no mode is use-ready yet.
 
 ## Quick start
 
-mzarc uses Zig 0.16.0 from `PATH`. The build reads zmz from a checkout beside this repository (`../zmz`). Building, testing, and running mzarc do not require Python.
+mzarc uses Zig 0.16.0 from `PATH`. The build reads two path dependencies: zmz from a checkout beside this repository (`../zmz`) and wthecksum `crc32` from `../../../wthecksum/crc32`. Building, testing, and running mzarc do not require Python.
 
 ```bash
 zig build --release=fast
@@ -112,7 +112,7 @@ Lossless mode returns every accepted Dump V1 field with the same bits, including
 
 Format 1.0 is not use-ready yet. Development archives may need regeneration, and compatibility with earlier development layouts is not promised.
 
-Block checksums use CRC-32/ISO-HDLC from wthecksum `crc32`, a separate Zig library by the same author. It selects PCLMUL or VEX PCLMUL at run time on x86-64 and keeps a portable path for other processors. CI verifies Debug and ReleaseFast behavior on Ubuntu and macOS. Windows and aarch64 are not supported claims.
+Block checksums use CRC-32/ISO-HDLC from wthecksum `crc32`, a separate Zig library by the same author. It selects PCLMUL or VEX PCLMUL at run time on x86-64 and keeps a portable path for other processors. The CI workflow targets Ubuntu and macOS, but it cannot build this version while zmz and `crc32` are path dependencies; the same Debug and ReleaseFast gates run locally on Linux. Windows and aarch64 are not supported claims.
 
 ## Development
 
@@ -136,7 +136,7 @@ Repository responsibilities stay narrow:
 ```text
 src/         Zig codec and CLI
 test/        Unit, property, malformed-input, fixture, and CLI data
-tools/       Local benchmark, smoke, and reference-converter commands
+tools/       Local benchmark, smoke, and peer-build commands
 benchmark/   Reference report, baseline row, and summary figures
 ```
 
@@ -149,7 +149,6 @@ The Zig source package contains the binary build, its tests, the license, and re
 Current directions include:
 
 - Finish supported-host memory and release checks before declaring `.mzarc` use-ready.
-- Add native lossless and lossy mzML archives that restore the source document, not only the Dump V1 fields.
 - Broaden correctness, performance, and memory checks across acquisition shapes, file sizes, and supported hosts.
 - Keep improving archive size, throughput, and RSS where measurements show a material cost.
 - Explore DIA-specific coding and native vendor-format readers when representative data and stable interfaces justify them.

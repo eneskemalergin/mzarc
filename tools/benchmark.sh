@@ -1140,7 +1140,7 @@ write_comparison 'Lossy archives' 'its input' '' "$rows_lossy" '' '' ''
     echo '- mzarc exact, gzip, pigz, zstd, and xz reproduce the original mzML document byte for byte.'
     echo '- MScompress reproduces the fields retained by Dump V1 here, not necessarily the original document bytes. Its decoded mzML is converted through the same Dump V1 converter and compared byte for byte with the source dump.'
     echo '- mzarc lossy (Dump V1 input) passes `mzarc validate --mode=lossy`: metadata exact, every m/z equal to its quantized value, and intensity within the format-wide log1p limit.'
-    echo '- mzarc lossy (mzML input) passes `mzarc validate --mode=mzml-lossy` on the Dump V1 of its decoded document: every peak is unchanged or carries the same transform within the same limit. The archive format restores every other document byte; the test suite and the release sweep check that.'
+    echo '- mzarc lossy (mzML input) passes `mzarc validate --mode=mzml-lossy` on the Dump V1 of its decoded document: every peak is unchanged or carries the same transform within the same limit. The archive format restores every other document byte; the test suite checks that.'
     echo
     echo '## Limits'
     echo
@@ -1167,7 +1167,7 @@ write_comparison 'Lossy archives' 'its input' '' "$rows_lossy" '' '' ''
     if [[ "$sanity" == true ]]; then
         echo 'The full-precision rows are retained beside this report. They are sanity output, not benchmark evidence.'
     else
-        echo 'The full-precision rows are retained beside this report for direct local comparisons; the tables above are rounded. Every zebrac result is in `zebrac/`.'
+        echo 'The full-precision rows are retained beside this report for direct local comparisons; the tables above are rounded. The zebrac results behind them stay in the run directory'"'"'s `zebrac/` folder.'
     fi
     echo
     echo '- [dump.tsv](dump.tsv), [mzml.tsv](mzml.tsv), and [lossy.tsv](lossy.tsv): method, thread class, validation, artifact bytes, artifact percentage of input, encode median ms, encode IQR ms, encode MiB/s, encode RSS MiB, decode median ms, decode IQR ms, decode MiB/s, decode RSS MiB, encode mean ms, encode SD ms, decode mean ms, decode SD ms, encode median instructions, decode median instructions, and input bytes.'

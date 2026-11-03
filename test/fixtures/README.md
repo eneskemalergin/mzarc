@@ -4,7 +4,7 @@ Frozen validation fixtures used by `zig build ci` and `zig build check-fixture`.
 
 ## frozen.bin
 
-A deterministically sliced 1,000-spectrum subset of the PXD075509 `15HCD_1.bin` Dump V1 (then under the repository's `data/`, now in `~/Github/data/mzml/PXD075509/`). The original generator is no longer retained; the frozen bytes and narrow integrity check are the current contract.
+A deterministically sliced 1,000-spectrum subset of the PXD075509 `15HCD_1.bin` Dump V1 (in the benchmark data root at `PXD075509/15HCD_1.bin`). The generator is not part of this repository; the frozen bytes and narrow integrity check are the contract.
 
 ### Composition constraints
 
@@ -59,7 +59,7 @@ max peaks per spectrum: 2339
 
 ## Adversarial corpus (test/adversarial/)
 
-The files were generated deterministically with seed 42. The original generator is no longer retained.
+The files were generated deterministically with seed 42. The generator is not part of this repository; the frozen bytes are the contract.
 All files use the same flat `RawSpectrum` dump format and feed directly into `mzarc encode`.
 `mzarc validate-adversarial test/adversarial/` round-trips every file in-memory.
 
