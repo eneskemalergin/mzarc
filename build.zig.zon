@@ -5,7 +5,7 @@
     .minimum_zig_version = "0.16.0",
     .dependencies = .{
         .zmz = .{ .path = "../zmz" },
-        .crc32 = .{ .path = "../../../wthecksum/crc32" },
+        .crc32 = .{ .path = "vendor/crc32" },
     },
-    .paths = .{ "build.zig", "build.zig.zon", "src", "test", "tools/smoke_test.sh", "LICENSE", "README.md", "CHANGELOG.md" },
+    .paths = .{ "build.zig", "build.zig.zon", "src", "test", "tools/smoke_test.sh", "vendor/crc32", "LICENSE", "README.md", "CHANGELOG.md" },
 }

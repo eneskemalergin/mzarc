@@ -1,6 +1,6 @@
 # Local tools
 
-`benchmark.sh` creates one Dump V1 input with `mzarc dump`, then measures that dump and the original mzML as separate inputs. It needs `zig` 0.16.0 and `zebrac` 0.6.2 on `PATH` and the build's path dependencies: the zmz checkout at `../zmz`, whose commit the report records, and wthecksum `crc32`.
+`benchmark.sh` creates one Dump V1 input with `mzarc dump`, then measures that dump and the original mzML as separate inputs. It needs `zig` 0.16.0 and `zebrac` 0.6.2 on `PATH` and the zmz checkout at `../zmz`, whose commit the report records.
 
 The generic compressors come from `PATH`. The mass-spectrometry MScompress CLI must come from `tools/bin/mscompress-msz`; the command named `mscompress` on some Linux systems is an unrelated Microsoft compression utility.
 
