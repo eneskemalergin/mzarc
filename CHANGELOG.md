@@ -33,7 +33,7 @@ This release reads and writes mzML natively through the zmz library. `mzarc dump
 - **Benchmarking:**
   - Creates the Dump V1 input with `mzarc dump` instead of Python, and records the pinned zmz version in the report.
   - Uses `zig` and `zebrac` from `PATH` and reads local data from `~/Github/data/mzml` or `MZARC_DATA`.
-  - Measures mzarc's exact mzML archive beside the peers on the original document, both lossy profiles with their observed errors, and `mzarc dump` ingest.
+  - Measures mzarc's exact mzML archive beside the peers on the original document, both lossy profiles with their observed errors, `mzarc dump` ingest, and the wall time and peak RSS of `validate`, `dump-inspect`, and `inspect`.
   - Reports median wall time with its interquartile range, flags operations whose spread exceeds 5%, records the load average and CPU governor, and computes the key findings from the measured rows.
 
 ### Fixed

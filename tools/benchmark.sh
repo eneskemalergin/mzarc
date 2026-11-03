@@ -160,7 +160,7 @@ EOF
     for expected in '# Compression harness sanity check' 'Artifact / Dump V1' \
         'Artifact / original mzML' 'Threads (encode / decode)' '[P]' \
         'byte exact' 'Dump V1 exact' '| mzarc exact ' '## Lossy archives' \
-        'mzML lossy bounds' 'Dump V1 lossy bounds' '## mzML ingest' 'IQR / median' \
+        'mzML lossy bounds' 'Dump V1 lossy bounds' '## mzML ingest' '## Inspection and validation' 'IQR / median' \
         'Load average'; do
         [[ "$report_text" == *"$expected"* ]] || \
             fail "report is missing: $expected"
@@ -168,7 +168,7 @@ EOF
     shopt -s nullglob
     local json_files=("$benchmark_check_root/success/zebrac/"*.json)
     shopt -u nullglob
-    ((${#json_files[@]} == 41)) || fail 'sanity run did not retain 41 zebrac results'
+    ((${#json_files[@]} == 44)) || fail 'sanity run did not retain 44 zebrac results'
     rows=$(wc -l <"$benchmark_check_root/success/dump.tsv")
     ((rows == 8)) || fail 'sanity run did not retain eight Dump V1 rows'
     rows=$(wc -l <"$benchmark_check_root/success/mzml.tsv")
@@ -177,6 +177,8 @@ EOF
     ((rows == 2)) || fail 'sanity run did not retain two lossy rows'
     rows=$(wc -l <"$benchmark_check_root/success/lossy-errors.tsv")
     ((rows == 2)) || fail 'sanity run did not retain two lossy error rows'
+    rows=$(wc -l <"$benchmark_check_root/success/commands.tsv")
+    ((rows == 3)) || fail 'sanity run did not retain three command rows'
     echo 'PASS benchmark check: complete sanity run'
 }
 
@@ -405,11 +407,13 @@ readonly rows_mzml="$output_dir/mzml.tsv"
 readonly rows_lossy="$output_dir/lossy.tsv"
 readonly lossy_errors="$output_dir/lossy-errors.tsv"
 readonly rows_ingest="$output_dir/ingest.tsv"
+readonly rows_commands="$output_dir/commands.tsv"
 : >"$rows_dump"
 : >"$rows_mzml"
 : >"$rows_lossy"
 : >"$lossy_errors"
 : >"$rows_ingest"
+: >"$rows_commands"
 
 zebrac_command() {
     local command=""
@@ -817,6 +821,37 @@ run_mzarc_ingest() {
         ] | @tsv' "$output_dir/zebrac/mzml-mzarc-dump.json" >"$rows_ingest"
 }
 
+# Measures one command that reads a validated file, after an untimed run that must succeed.
+measure_command() {
+    local label=$1 input_bytes=$2 operation_id=$3
+    shift 3
+    "$@" >/dev/null
+    measure "$operation_id" "$@"
+    "$jq_bin" -r --arg label "$label" --argjson input_bytes "$input_bytes" '
+        .results[0] as $run |
+        [
+          $label,
+          $input_bytes,
+          ($run.wall_time.median / 1000000),
+          (($run.wall_time.q3 - $run.wall_time.q1) / 1000000),
+          ($input_bytes * 1000000000 / $run.wall_time.median / 1048576),
+          ($run.peak_rss.median / 1048576),
+          ($run.instructions.median // "")
+        ] | @tsv' "$output_dir/zebrac/$operation_id.json" >>"$rows_commands"
+}
+
+# Measures the commands that check and describe the lossless Dump V1 round trip, on the files that
+# run_mzarc_dump already validated.
+run_mzarc_commands() {
+    local work="$scratch/dump-mzarc"
+    measure_command 'mzarc validate --mode=lossless' "$((2 * dump_bytes))" commands-validate \
+        "$mzarc" validate "$work/source.bin" "$work/decoded.bin" --mode=lossless
+    measure_command 'mzarc dump-inspect' "$dump_bytes" commands-dump-inspect \
+        "$mzarc" dump-inspect "$work/source.bin"
+    measure_command 'mzarc inspect' "$(stat -c %s "$work/archive.mzarc")" commands-inspect \
+        "$mzarc" inspect "$work/archive.mzarc"
+}
+
 run_gzip() {
     local lane=$1
     local source=$2
@@ -945,6 +980,7 @@ run_mzarc_ingest
 
 echo "testing and measuring the Dump V1 comparison"
 run_mzarc_dump
+run_mzarc_commands
 run_gzip dump "$scratch/source.bin" "$dump_bytes" "$rows_dump"
 run_pigz dump "$scratch/source.bin" "$dump_bytes" "$rows_dump" 1 single 'pigz -6 -p1'
 run_pigz dump "$scratch/source.bin" "$dump_bytes" "$rows_dump" "$threads" "fixed-$threads" "pigz -6 -p$threads [P]"
@@ -1116,6 +1152,14 @@ findings_awk='
     echo '| --- | ---: | ---: | ---: | ---: | ---: |'
     awk -F $'\t' '{ printf "| `%s` | %d | %.3f | %.3f | %.2f | %.2f |\n", $1, $2, $3, $4, $5, $6 }' "$rows_ingest"
     echo
+    echo '## Inspection and validation'
+    echo
+    echo 'The commands that check and describe the lossless Dump V1 round trip, on the files the Dump V1 comparison validated: `validate` compares the input dump with its decoded copy (input bytes count both), `dump-inspect` reads the input dump, and `inspect` checks every block of the lossless archive. Each reads one record or one block at a time.'
+    echo
+    echo '| Command | Input bytes | Median (ms) | IQR (ms) | Input MiB/s | Peak RSS (MiB) |'
+    echo '| --- | ---: | ---: | ---: | ---: | ---: |'
+    awk -F $'\t' '{ printf "| `%s` | %d | %.3f | %.3f | %.2f | %.2f |\n", $1, $2, $3, $4, $5, $6 }' "$rows_commands"
+    echo
 } >>"$output_dir/report.md"
 
 write_comparison 'Dump V1 round trip' 'Dump V1' "$dump_bytes" "$rows_dump" \
@@ -1171,6 +1215,7 @@ write_comparison 'Lossy archives' 'its input' '' "$rows_lossy" '' '' ''
     echo '- [dump.tsv](dump.tsv), [mzml.tsv](mzml.tsv), and [lossy.tsv](lossy.tsv): method, thread class, validation, artifact bytes, artifact percentage of input, encode median ms, encode IQR ms, encode MiB/s, encode RSS MiB, decode median ms, decode IQR ms, decode MiB/s, decode RSS MiB, encode mean ms, encode SD ms, decode mean ms, decode SD ms, encode median instructions, decode median instructions, and input bytes.'
     echo '- [lossy-errors.tsv](lossy-errors.tsv): method, max m/z error in Da, max log1p intensity error, the format-wide log1p limit, and the arrays transformed.'
     echo '- [ingest.tsv](ingest.tsv): step, output bytes, median ms, IQR ms, mzML MiB/s, peak RSS MiB, and median instructions.'
+    echo '- [commands.tsv](commands.tsv): command, input bytes, median ms, IQR ms, input MiB/s, peak RSS MiB, and median instructions.'
 } >>"$output_dir/report.md"
 
 align_markdown_tables "$output_dir/report.md"
