@@ -208,7 +208,7 @@ fn commandDecode(io: std.Io, allocator: std.mem.Allocator, args: []const [:0]con
     printStdout(io, "decoded: {s} -> {s}\n", .{ input_path, output_path });
 }
 
-fn printInspectionJson(io: std.Io, path: []const u8, inspection: codec.Inspection) void {
+fn printInspectionJson(io: std.Io, path: []const u8, inspection: codec.Summary) void {
     const header = inspection.header;
     printStdout(io, "{f}\n", .{std.json.fmt(.{
         .file = path,
@@ -226,22 +226,20 @@ fn printInspectionJson(io: std.Io, path: []const u8, inspection: codec.Inspectio
     }, .{ .whitespace = .indent_2 })});
 }
 
-fn printBlockTable(out: *std.Io.Writer, inspection: codec.Inspection) !void {
+fn printBlockTable(out: *std.Io.Writer, rows: []const codec.BlockRow) !void {
     try out.print("{s:>6}  {s:>5}  {s:>6}  {s:>8}  {s:>6}  {s:>9}  {s:>9}  {s:>9}\n", .{
         "idx", "level", "nspec", "npeaks", "mz_bw", "int_bw", "mz_bytes", "int_bytes",
     });
-    for (inspection.blocks, 0..) |block_info, idx| {
-        const h = block_info.header;
-        const b = block_info.byte_breakdown;
+    for (rows, 0..) |row, idx| {
         try out.print("{:>6}  {:>5}  {:>6}  {:>8}  {:>6}  {:>9}  {:>9}  {:>9}\n", .{
             idx,
-            h.ms_level,
-            h.spectrum_count,
-            h.total_peaks,
-            h.mz_bit_width,
-            h.intensity_bit_width,
-            b.mz_payload_bytes,
-            b.intensity_payload_bytes,
+            row.ms_level,
+            row.spectrum_count,
+            row.total_peaks,
+            row.mz_bit_width,
+            row.intensity_bit_width,
+            row.mz_payload_bytes,
+            row.intensity_payload_bytes,
         });
     }
 }
@@ -280,8 +278,9 @@ fn commandInspect(io: std.Io, allocator: std.mem.Allocator, args: []const [:0]co
         return;
     }
 
-    const inspection = try codec.inspectFileAlloc(io, allocator, input_path);
-    defer codec.freeInspection(allocator, inspection);
+    var rows: std.ArrayList(codec.BlockRow) = .empty;
+    defer rows.deinit(allocator);
+    const inspection = try codec.inspectFile(io, allocator, input_path, if (show_blocks and !json_output) &rows else null);
 
     if (json_output) {
         printInspectionJson(io, input_path, inspection);
@@ -312,7 +311,7 @@ fn commandInspect(io: std.Io, allocator: std.mem.Allocator, args: []const [:0]co
 
     if (show_blocks) {
         try out.writeByte('\n');
-        try printBlockTable(out, inspection);
+        try printBlockTable(out, rows.items);
     }
     try out.flush();
 }

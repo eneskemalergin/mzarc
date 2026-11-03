@@ -302,9 +302,9 @@ bounded() {
     (ulimit -v 24576 && "$@")
 }
 
-# validate and dump-inspect hold one record at a time, so they still read a dump of 24 fixture
-# copies under the limit; reading it whole cannot. Only Linux enforces the limit, so other hosts
-# skip the check.
+# validate, dump-inspect, and inspect hold one record or block at a time, so they still read a
+# dump of 24 fixture copies and its archive under the limit; reading either whole cannot. Only
+# Linux enforces the limit, so other hosts skip the check.
 check_bounded_memory() {
     local copy
     if [[ $(uname -s) != Linux ]]; then
@@ -312,9 +312,11 @@ check_bounded_memory() {
         return
     fi
     for copy in $(seq 24); do cat "$fixture"; done >"$scratch/large.bin"
+    "$mzarc" encode "$scratch/large.bin" -o "$scratch/large.mzarc" >/dev/null
     run_quiet 'bounded validate' bounded "$mzarc" validate "$scratch/large.bin" "$scratch/large.bin" --mode=lossless
     run_quiet 'bounded dump-inspect' bounded "$mzarc" dump-inspect "$scratch/large.bin"
-    rm -f -- "$scratch/large.bin"
+    run_quiet 'bounded inspect' bounded "$mzarc" inspect "$scratch/large.mzarc" --blocks
+    rm -f -- "$scratch/large.bin" "$scratch/large.mzarc"
 }
 
 # Runs a command that must fail; checks its stdout and stderr separately.
@@ -337,12 +339,16 @@ check_rejections() {
     local size
     size=$(wc -c <"$fixture")
     head -c $((size - 1)) "$fixture" >"$scratch/short.bin"
+    "$mzarc" encode "$fixture" -o "$scratch/fixture.mzarc" >/dev/null
+    head -c 5000 "$scratch/fixture.mzarc" >"$scratch/short.mzarc"
     expect_rejection 'validate spectrum count mismatch' 'FAIL spectrum_count expected=*' 'ValidationFailed' \
         "$mzarc" validate "$mzml_expected" "$fixture" --mode=lossless
     expect_rejection 'validate truncated second dump' '' 'UnexpectedEndOfStream' \
         "$mzarc" validate "$fixture" "$scratch/short.bin" --mode=lossless
     expect_rejection 'dump-inspect truncated dump' '' 'UnexpectedEndOfStream' \
         "$mzarc" dump-inspect "$scratch/short.bin"
+    expect_rejection 'inspect truncated archive' '' 'UnexpectedEndOfStream' \
+        "$mzarc" inspect "$scratch/short.mzarc"
 }
 
 run_quiet 'help' "$mzarc" --help
