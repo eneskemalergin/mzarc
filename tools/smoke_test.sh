@@ -297,6 +297,54 @@ check_output_is_input() {
     echo "PASS commands refuse an output that is the input"
 }
 
+# Runs a command under a 24 MiB address-space limit.
+bounded() {
+    (ulimit -v 24576 && "$@")
+}
+
+# validate and dump-inspect hold one record at a time, so they still read a dump of 24 fixture
+# copies under the limit; reading it whole cannot. Only Linux enforces the limit, so other hosts
+# skip the check.
+check_bounded_memory() {
+    local copy
+    if [[ $(uname -s) != Linux ]]; then
+        echo "SKIP bounded memory (the address-space limit needs Linux)"
+        return
+    fi
+    for copy in $(seq 24); do cat "$fixture"; done >"$scratch/large.bin"
+    run_quiet 'bounded validate' bounded "$mzarc" validate "$scratch/large.bin" "$scratch/large.bin" --mode=lossless
+    run_quiet 'bounded dump-inspect' bounded "$mzarc" dump-inspect "$scratch/large.bin"
+    rm -f -- "$scratch/large.bin"
+}
+
+# Runs a command that must fail; checks its stdout and stderr separately.
+expect_rejection() {
+    local label=$1 stdout_pattern=$2 stderr_pattern=$3
+    shift 3
+    if "$@" >"$scratch/rejection.out" 2>"$scratch/rejection.err"; then
+        echo "FAIL $label accepted" >&2
+        return 1
+    fi
+    if [[ $(<"$scratch/rejection.out") != $stdout_pattern || $(<"$scratch/rejection.err") != *"$stderr_pattern"* ]]; then
+        cat "$scratch/rejection.out" "$scratch/rejection.err" >&2
+        echo "FAIL $label output" >&2
+        return 1
+    fi
+    echo "PASS $label"
+}
+
+check_rejections() {
+    local size
+    size=$(wc -c <"$fixture")
+    head -c $((size - 1)) "$fixture" >"$scratch/short.bin"
+    expect_rejection 'validate spectrum count mismatch' 'FAIL spectrum_count expected=*' 'ValidationFailed' \
+        "$mzarc" validate "$mzml_expected" "$fixture" --mode=lossless
+    expect_rejection 'validate truncated second dump' '' 'UnexpectedEndOfStream' \
+        "$mzarc" validate "$fixture" "$scratch/short.bin" --mode=lossless
+    expect_rejection 'dump-inspect truncated dump' '' 'UnexpectedEndOfStream' \
+        "$mzarc" dump-inspect "$scratch/short.bin"
+}
+
 run_quiet 'help' "$mzarc" --help
 check_dump_inspect_median
 check_mzml_dump
@@ -304,6 +352,8 @@ check_mzml_dump_peak_limit
 check_mzml_archives
 check_inspect_json_path
 check_output_is_input
+check_rejections
+check_bounded_memory
 run_quiet 'adversarial lossless round trips' "$mzarc" validate-adversarial "$adversarial"
 round_trip lossless
 round_trip lossy --lossy

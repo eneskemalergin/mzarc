@@ -216,3 +216,95 @@ test "[failure] - [Dump V1 reserved bytes]: rejects nonzero record padding" {
         binary_reader.scanFile(std.testing.allocator, std.testing.io, input, 1),
     );
 }
+
+fn streamRecords(bytes: []const u8, max_peaks: usize) !void {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    try tmp.dir.writeFile(std.testing.io, .{ .sub_path = "input.bin", .data = bytes });
+    const file = try tmp.dir.openFile(std.testing.io, "input.bin", .{});
+    defer file.close(std.testing.io);
+
+    var buffer: [16]u8 = undefined;
+    var records = binary_reader.RecordReader.init(std.testing.io, file, &buffer, max_peaks);
+    defer records.deinit(std.testing.allocator);
+    while (try records.next(std.testing.allocator)) |_| {}
+}
+
+fn countedRecords(bytes: []const u8, max_records: usize, max_peaks: usize) !usize {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    try tmp.dir.writeFile(std.testing.io, .{ .sub_path = "input.bin", .data = bytes });
+    const file = try tmp.dir.openFile(std.testing.io, "input.bin", .{});
+    defer file.close(std.testing.io);
+    return binary_reader.countRecords(std.testing.io, file, max_records, max_peaks);
+}
+
+test "[integration] - [dump V1 record reader]: streams the records parseDump returns" {
+    var mz_a = [_]f64{ 100.0, 100.5, std.math.inf(f64) };
+    var intensity_a = [_]f32{ 1.0, -0.0, std.math.nan(f32) };
+    var empty_mz: [0]f64 = .{};
+    var empty_intensity: [0]f32 = .{};
+    var mz_b = [_]f64{250.25};
+    var intensity_b = [_]f32{7.5};
+    const spectra = [_]binary_reader.RawSpectrum{
+        .{ .scan_id = 3, .rt_seconds = -0.0, .ms_level = 3, .precursor_mz = 0.0, .mz = &mz_a, .intensity = &intensity_a },
+        .{ .scan_id = 1, .rt_seconds = 2.0, .ms_level = 1, .precursor_mz = 0.0, .mz = &empty_mz, .intensity = &empty_intensity },
+        .{ .scan_id = 2, .rt_seconds = 3.0, .ms_level = 2, .precursor_mz = 412.5, .mz = &mz_b, .intensity = &intensity_b },
+    };
+    const dump = try binary_reader.writeDumpAlloc(std.testing.allocator, &spectra);
+    defer std.testing.allocator.free(dump);
+    const expected = try binary_reader.parseDump(dump, std.testing.allocator);
+    defer binary_reader.freeSpectra(std.testing.allocator, expected);
+
+    try std.testing.expectEqual(@as(usize, spectra.len), try countedRecords(dump, spectra.len, 3));
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    try tmp.dir.writeFile(std.testing.io, .{ .sub_path = "input.bin", .data = dump });
+    const file = try tmp.dir.openFile(std.testing.io, "input.bin", .{});
+    defer file.close(std.testing.io);
+    // A buffer smaller than one record makes every record cross a refill.
+    var buffer: [16]u8 = undefined;
+    var records = binary_reader.RecordReader.init(std.testing.io, file, &buffer, 3);
+    defer records.deinit(std.testing.allocator);
+    for (expected) |want| {
+        const got = (try records.next(std.testing.allocator)).?;
+        try std.testing.expectEqual(want.scan_id, got.scan_id);
+        try std.testing.expectEqual(@as(u32, @bitCast(want.rt_seconds)), @as(u32, @bitCast(got.rt_seconds)));
+        try std.testing.expectEqual(want.ms_level, got.ms_level);
+        try std.testing.expectEqual(@as(u64, @bitCast(want.precursor_mz)), @as(u64, @bitCast(got.precursor_mz)));
+        try std.testing.expectEqualSlices(u8, std.mem.sliceAsBytes(want.mz), std.mem.sliceAsBytes(got.mz));
+        try std.testing.expectEqualSlices(u8, std.mem.sliceAsBytes(want.intensity), std.mem.sliceAsBytes(got.intensity));
+    }
+    try std.testing.expectEqual(@as(?binary_reader.RawSpectrum, null), try records.next(std.testing.allocator));
+}
+
+test "[failure] - [dump V1 record reader]: rejects truncation, reserved bytes, and limits" {
+    var mz_a = [_]f64{ 100.0, 101.0 };
+    var intensity_a = [_]f32{ 1.0, 2.0 };
+    var mz_b = [_]f64{200.0};
+    var intensity_b = [_]f32{3.0};
+    const spectra = [_]binary_reader.RawSpectrum{
+        .{ .scan_id = 1, .rt_seconds = 1.0, .ms_level = 1, .precursor_mz = 0.0, .mz = &mz_a, .intensity = &intensity_a },
+        .{ .scan_id = 2, .rt_seconds = 2.0, .ms_level = 2, .precursor_mz = 300.0, .mz = &mz_b, .intensity = &intensity_b },
+    };
+    const dump = try binary_reader.writeDumpAlloc(std.testing.allocator, &spectra);
+    defer std.testing.allocator.free(dump);
+    const first_record_len: usize = @intCast(try binary_reader.recordLen(2));
+
+    for (1..dump.len) |len| {
+        if (len == first_record_len) continue;
+        try std.testing.expectError(error.UnexpectedEndOfStream, countedRecords(dump[0..len], 2, 2));
+        try std.testing.expectError(error.UnexpectedEndOfStream, streamRecords(dump[0..len], 2));
+    }
+
+    const reserved = try std.testing.allocator.dupe(u8, dump);
+    defer std.testing.allocator.free(reserved);
+    reserved[first_record_len + 25] = 1;
+    try std.testing.expectError(error.NonzeroReserved, countedRecords(reserved, 2, 2));
+    try std.testing.expectError(error.NonzeroReserved, streamRecords(reserved, 2));
+
+    try std.testing.expectError(error.BlockResourceLimit, countedRecords(dump, 2, 1));
+    try std.testing.expectError(error.BlockResourceLimit, streamRecords(dump, 1));
+    try std.testing.expectError(error.FileResourceLimit, countedRecords(dump, 1, 2));
+}
