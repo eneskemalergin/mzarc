@@ -4,7 +4,10 @@
     .fingerprint = 0x23a58e985cd2488f,
     .minimum_zig_version = "0.16.0",
     .dependencies = .{
-        .zmz = .{ .path = "../zmz" },
+        .zmz = .{
+            .url = "https://github.com/eneskemalergin/zmz/releases/download/v0.1.0/zmz-0.1.0-source.tar.gz",
+            .hash = "zmz-0.1.0-3Lt177plJACM60Yx_zZCmIxHqE7E-Yvqfcnyxlait5fG",
+        },
         .crc32 = .{ .path = "vendor/crc32" },
     },
     .paths = .{ "build.zig", "build.zig.zon", "src", "test", "tools/smoke_test.sh", "vendor/crc32", "LICENSE", "README.md", "CHANGELOG.md" },

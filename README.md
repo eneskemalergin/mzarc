@@ -41,7 +41,7 @@ The `.mzarc` 1.0 format remains under development, so no mode is use-ready yet.
 
 ## Quick start
 
-mzarc uses Zig 0.16.0 from `PATH`. The build reads zmz from a checkout beside this repository (`../zmz`); wthecksum `crc32` is vendored in `vendor/crc32`. Building, testing, and running mzarc do not require Python.
+mzarc uses Zig 0.16.0 from `PATH`. The first build fetches zmz 0.1.0 and its zipir dependency by URL and hash; wthecksum `crc32` is vendored in `vendor/crc32`. Building, testing, and running mzarc do not require Python.
 
 ```bash
 zig build --release=fast
@@ -112,7 +112,7 @@ Lossless mode returns every accepted Dump V1 field with the same bits, including
 
 Format 1.0 is not use-ready yet. Development archives may need regeneration, and compatibility with earlier development layouts is not promised.
 
-Block checksums use CRC-32/ISO-HDLC from wthecksum `crc32`, a Zig library by the same author, vendored in `vendor/crc32` until its own repository is published. It selects PCLMUL or VEX PCLMUL at run time on x86-64 and keeps a portable path for other processors. The CI workflow targets Ubuntu and macOS, but it cannot build this version while zmz is a path dependency; the same Debug and ReleaseFast gates run locally on Linux. Windows and aarch64 are not supported claims.
+Block checksums use CRC-32/ISO-HDLC from wthecksum `crc32`, a Zig library by the same author, vendored in `vendor/crc32` until its own repository is published. It selects PCLMUL or VEX PCLMUL at run time on x86-64 and keeps a portable path for other processors. The CI workflow runs the Debug and ReleaseFast gates on Ubuntu and macOS. Windows and aarch64 are not supported claims.
 
 ## Development
 

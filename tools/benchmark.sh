@@ -336,13 +336,11 @@ if [[ "$zig_version" != 0.16.0 ]]; then
     echo "error: Zig 0.16.0 is required; $zig reports $zig_version" >&2
     exit 1
 fi
-zmz_root="$repo_root/../zmz"
-if ! zmz_version=$(git -C "$zmz_root" rev-parse --short HEAD 2>/dev/null); then
-    echo "error: zmz checkout not found: $zmz_root" >&2
+# The build fetches zmz by URL and hash, so the pinned package hash names the exact zmz source.
+zmz_version=$(awk -F'"' '/^[[:space:]]*\.hash = "zmz-/ { sub(/^zmz-/, "", $2); split($2, part, "-"); print part[1]; exit }' "$repo_root/build.zig.zon")
+if [[ ! "$zmz_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    echo "error: could not read the pinned zmz version from build.zig.zon" >&2
     exit 1
-fi
-if [[ -n $(git -C "$zmz_root" status --porcelain --untracked-files=no) ]]; then
-    zmz_version+=" (dirty)"
 fi
 zebrac_version=$("$zebrac" --version)
 zebrac_json_version=${zebrac_version#zebrac }

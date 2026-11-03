@@ -26,10 +26,12 @@ This release reads and writes mzML natively through the zmz library. `mzarc dump
 - **Performance:**
   - Decodes lossy archives 17% to 31% faster on the checked inputs by computing each intensity level once per block. Decoded output is unchanged.
   - Encodes lossy archives 6% to 16% faster on the checked inputs by finding each block's intensity range with one `log1p`. Archives are unchanged.
+- **Build:**
+  - Fetches zmz 0.1.0 by URL and hash, so a fresh clone builds without a sibling checkout.
 - **Checksums:**
   - Computes block checksums with wthecksum `crc32`, the author's own CRC-32 library, vendored in `vendor/crc32`. Stored checksums and the format are unchanged.
 - **Benchmarking:**
-  - Creates the Dump V1 input with `mzarc dump` instead of Python, and records the zmz commit in the report.
+  - Creates the Dump V1 input with `mzarc dump` instead of Python, and records the pinned zmz version in the report.
   - Uses `zig` and `zebrac` from `PATH` and reads local data from `~/Github/data/mzml` or `MZARC_DATA`.
   - Measures mzarc's exact mzML archive beside the peers on the original document, both lossy profiles with their observed errors, and `mzarc dump` ingest.
   - Reports median wall time with its interquartile range, flags operations whose spread exceeds 5%, records the load average and CPU governor, and computes the key findings from the measured rows.
