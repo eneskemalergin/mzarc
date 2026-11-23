@@ -884,8 +884,17 @@ pub fn decode(io: std.Io, allocator: Allocator, input_path: []const u8, output_p
     defer atomic.deinit(io);
     var file_buffer: [64 * 1024]u8 = undefined;
     var file_writer = atomic.file.writer(io, &file_buffer);
-    var output: Output = .{ .writer = &file_writer.interface };
+    const output_bytes = try restore(allocator, &input, header, &file_writer.interface);
+    try file_writer.interface.flush();
+    try atomic.replace(io);
+    return .{ .mode = header.mode, .archive_bytes = try input_file.length(io), .output_bytes = output_bytes };
+}
 
+/// Restores the document after the header into `out` and returns its length. Every stream,
+/// record, length, and checksum check runs before this returns, so a caller that publishes `out`
+/// only on success never publishes a damaged document.
+fn restore(allocator: Allocator, input: *std.Io.File.Reader, header: Header, out: *std.Io.Writer) !u64 {
+    var output: Output = .{ .writer = out };
     var decompressor = try zlib.Decompressor.init(allocator);
     defer decompressor.deinit();
     decompressor.startReader(&input.interface);
@@ -895,7 +904,7 @@ pub fn decode(io: std.Io, allocator: Allocator, input_path: []const u8, output_p
         .exact => while (true) {
             const bytes = try stream.take(64 * 1024);
             if (bytes.len == 0) break;
-            try file_writer.interface.writeAll(bytes);
+            try out.writeAll(bytes);
             output.position += bytes.len;
         },
         .lossy => try decodeRecords(allocator, &stream, &output),
@@ -907,9 +916,7 @@ pub fn decode(io: std.Io, allocator: Allocator, input_path: []const u8, output_p
     }
     if (stream.length != header.stream_len) return error.StreamLengthMismatch;
     if (stream.crc.final() != header.stream_crc) return error.StreamChecksumMismatch;
-    try file_writer.interface.flush();
-    try atomic.replace(io);
-    return .{ .mode = header.mode, .archive_bytes = try input_file.length(io), .output_bytes = output.position };
+    return output.position;
 }
 
 fn decodeRecords(allocator: Allocator, stream: *StreamReader, output: *Output) !void {
@@ -964,11 +971,15 @@ fn decodeRecords(allocator: Allocator, stream: *StreamReader, output: *Output) !
     }
 }
 
-/// Reads a source-document header for inspection.
-pub fn inspect(io: std.Io, path: []const u8) !struct { header: Header, archive_bytes: u64 } {
+/// Checks a source-document archive as completely as `decode` does, discarding the document.
+pub fn inspect(io: std.Io, allocator: Allocator, path: []const u8) !struct { header: Header, archive_bytes: u64, output_bytes: u64 } {
     const file = try std.Io.Dir.cwd().openFile(io, path, .{});
     defer file.close(io);
-    var buffer: [codec.header_len]u8 = undefined;
-    var reader = file.reader(io, &buffer);
-    return .{ .header = try openArchive(io, file, &reader), .archive_bytes = try file.length(io) };
+    var input_buffer: [64 * 1024]u8 = undefined;
+    var input = file.reader(io, &input_buffer);
+    const header = try openArchive(io, file, &input);
+    var discard_buffer: [64 * 1024]u8 = undefined;
+    var discarding: std.Io.Writer.Discarding = .init(&discard_buffer);
+    const output_bytes = try restore(allocator, &input, header, &discarding.writer);
+    return .{ .header = header, .archive_bytes = try file.length(io), .output_bytes = output_bytes };
 }

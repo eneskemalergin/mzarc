@@ -235,12 +235,17 @@ check_mzml_archives() {
     echo "PASS mzML lossy bounds validation rejects a changed m/z"
 
     output=$("$mzarc" inspect "$scratch/lossy-doc.mzarc" 2>&1)
-    if [[ $output != *"kind: source document"* || $output != *"mode: lossy"* ]]; then
+    if [[ $output != *"kind: source document"* || $output != *"mode: lossy"* ||
+        $output != *"document bytes: $(wc -c <"$scratch/lossy.mzML" | tr -d ' ')"* ]]; then
         printf '%s\n' "$output" >&2
         echo "FAIL mzML archive inspect" >&2
         return 1
     fi
     echo "PASS mzML archive inspect"
+    # Inspect restores the whole stream, so a cut archive fails as it does in decode.
+    head -c $(($(wc -c <"$scratch/lossy-doc.mzarc") - 9)) "$scratch/lossy-doc.mzarc" >"$scratch/cut-doc.mzarc"
+    expect_rejection 'mzML archive inspect rejects a truncated archive' '' 'TruncatedInput' \
+        "$mzarc" inspect "$scratch/cut-doc.mzarc"
 
     if "$mzarc" encode "$mzml_fixture" -o "$scratch/rejected.mzarc" --intensity-quant 4096 >/dev/null 2>&1; then
         echo "FAIL mzML encode accepted a Dump V1 option" >&2

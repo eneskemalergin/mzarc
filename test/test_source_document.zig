@@ -182,6 +182,29 @@ test "[integration] - [source-document lossy]: keeps every byte outside the spec
     try std.testing.expect(std.mem.endsWith(u8, output, source[std.mem.lastIndexOf(u8, source, "</spectrumList>").?..]));
 }
 
+const Damage = struct { len: usize, index: ?usize };
+
+/// Every proper prefix, one flipped byte in each header field and across the payload, and one
+/// trailing byte. Each case must be rejected.
+fn damageCases(allocator: std.mem.Allocator, archive_len: usize) !std.ArrayList(Damage) {
+    var cases: std.ArrayList(Damage) = .empty;
+    errdefer cases.deinit(allocator);
+    for (0..archive_len) |len| try cases.append(allocator, .{ .len = len, .index = null });
+    for ([_]usize{ 0, 8, 12, 14, 16, 20, 24, 36, archive_len / 2, archive_len - 1 }) |index| {
+        try cases.append(allocator, .{ .len = archive_len, .index = index });
+    }
+    try cases.append(allocator, .{ .len = archive_len + 1, .index = archive_len });
+    return cases;
+}
+
+/// Writes `archive` damaged as `case` to `bad` in `tmp`.
+fn writeDamaged(tmp: *std.testing.TmpDir, damaged: []u8, archive: []const u8, case: Damage) !void {
+    @memcpy(damaged[0..archive.len], archive);
+    damaged[archive.len] = 0;
+    if (case.index) |index| damaged[index] ^= 0x41;
+    try tmp.dir.writeFile(std.testing.io, .{ .sub_path = "bad", .data = damaged[0..case.len] });
+}
+
 test "[failure] - [source-document decode]: rejects damaged archives and keeps the destination" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
@@ -192,19 +215,11 @@ test "[failure] - [source-document decode]: rejects damaged archives and keeps t
     defer std.testing.allocator.free(archive);
     const damaged = try std.testing.allocator.alloc(u8, archive.len + 1);
     defer std.testing.allocator.free(damaged);
-
-    const Case = struct { len: usize, index: ?usize };
-    var cases: std.ArrayList(Case) = .empty;
+    var cases = try damageCases(std.testing.allocator, archive.len);
     defer cases.deinit(std.testing.allocator);
-    for (0..archive.len) |len| try cases.append(std.testing.allocator, .{ .len = len, .index = null });
-    for ([_]usize{ 0, 8, 12, 14, 16, 20, 24, 36, archive.len / 2, archive.len - 1 }) |index| {
-        try cases.append(std.testing.allocator, .{ .len = archive.len, .index = index });
-    }
-    try cases.append(std.testing.allocator, .{ .len = archive.len + 1, .index = archive.len });
+
     for (cases.items) |case| {
-        @memcpy(damaged[0..archive.len], archive);
-        if (case.index) |index| damaged[index] ^= 0x41;
-        try tmp.dir.writeFile(std.testing.io, .{ .sub_path = "bad", .data = damaged[0..case.len] });
+        try writeDamaged(&tmp, damaged, archive, case);
         try tmp.dir.writeFile(std.testing.io, .{ .sub_path = "out", .data = "keep" });
         if (source_document.decode(std.testing.io, std.testing.allocator, try pathIn(&tmp, &a, "bad"), try pathIn(&tmp, &b, "out"))) |_| {
             std.debug.print("accepted damaged archive: length {d}, byte {?d}\n", .{ case.len, case.index });
@@ -213,6 +228,55 @@ test "[failure] - [source-document decode]: rejects damaged archives and keeps t
         const kept = try tmp.dir.readFileAlloc(std.testing.io, "out", std.testing.allocator, .unlimited);
         defer std.testing.allocator.free(kept);
         try std.testing.expectEqualStrings("keep", kept);
+    }
+}
+
+test "[failure] - [source-document inspect]: rejects every damaged archive in both modes" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    var a: [256]u8 = undefined;
+
+    for ([_]source_document.Mode{ .exact, .lossy }) |mode| {
+        const path = try pathIn(&tmp, &a, "arc");
+        _ = switch (mode) {
+            .exact => try source_document.encodeExact(std.testing.io, std.testing.allocator, fixture, path),
+            .lossy => try source_document.encodeLossy(std.testing.io, std.testing.allocator, fixture, path),
+        };
+        const archive = try tmp.dir.readFileAlloc(std.testing.io, "arc", std.testing.allocator, .unlimited);
+        defer std.testing.allocator.free(archive);
+        const damaged = try std.testing.allocator.alloc(u8, archive.len + 1);
+        defer std.testing.allocator.free(damaged);
+        var cases = try damageCases(std.testing.allocator, archive.len);
+        defer cases.deinit(std.testing.allocator);
+
+        for (cases.items) |case| {
+            try writeDamaged(&tmp, damaged, archive, case);
+            if (source_document.inspect(std.testing.io, std.testing.allocator, try pathIn(&tmp, &a, "bad"))) |_| {
+                std.debug.print("inspect accepted damaged {s} archive: length {d}, byte {?d}\n", .{ @tagName(mode), case.len, case.index });
+                return error.TestUnexpectedResult;
+            } else |_| {}
+        }
+    }
+}
+
+test "[integration] - [source-document inspect]: reports the document length that decode writes" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    var a: [256]u8 = undefined;
+    var b: [256]u8 = undefined;
+
+    for ([_]source_document.Mode{ .exact, .lossy }) |mode| {
+        const archive_path = try pathIn(&tmp, &a, "arc");
+        _ = switch (mode) {
+            .exact => try source_document.encodeExact(std.testing.io, std.testing.allocator, fixture, archive_path),
+            .lossy => try source_document.encodeLossy(std.testing.io, std.testing.allocator, fixture, archive_path),
+        };
+        const decoded = try source_document.decode(std.testing.io, std.testing.allocator, archive_path, try pathIn(&tmp, &b, "out"));
+        const info = try source_document.inspect(std.testing.io, std.testing.allocator, archive_path);
+
+        try std.testing.expectEqual(mode, info.header.mode);
+        try std.testing.expectEqual(decoded.output_bytes, info.output_bytes);
+        try std.testing.expectEqual(decoded.archive_bytes, info.archive_bytes);
     }
 }
 

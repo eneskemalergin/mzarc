@@ -265,14 +265,14 @@ fn commandInspect(io: std.Io, allocator: std.mem.Allocator, args: []const [:0]co
     const input_path = path.?;
 
     if (isSourceDocumentFile(io, input_path)) {
-        const info = try source_document.inspect(io, input_path);
+        const info = try source_document.inspect(io, allocator, input_path);
         if (json_output) {
-            printStdout(io, "{{\"file\":{f},\"kind\":\"source-document\",\"mode\":\"{s}\",\"stream_bytes\":{d},\"archive_bytes\":{d}}}\n", .{
-                std.json.fmt(input_path, .{}), @tagName(info.header.mode), info.header.stream_len, info.archive_bytes,
+            printStdout(io, "{{\"file\":{f},\"kind\":\"source-document\",\"mode\":\"{s}\",\"stream_bytes\":{d},\"archive_bytes\":{d},\"document_bytes\":{d}}}\n", .{
+                std.json.fmt(input_path, .{}), @tagName(info.header.mode), info.header.stream_len, info.archive_bytes, info.output_bytes,
             });
         } else {
-            printStdout(io, "file: {s}\nkind: source document\nmode: {s}\nstream bytes: {d}\narchive bytes: {d}\n", .{
-                input_path, @tagName(info.header.mode), info.header.stream_len, info.archive_bytes,
+            printStdout(io, "file: {s}\nkind: source document\nmode: {s}\nstream bytes: {d}\narchive bytes: {d}\ndocument bytes: {d}\n", .{
+                input_path, @tagName(info.header.mode), info.header.stream_len, info.archive_bytes, info.output_bytes,
             });
         }
         return;

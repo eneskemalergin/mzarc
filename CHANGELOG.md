@@ -13,7 +13,7 @@ This release reads and writes mzML natively through the zmz library. `mzarc dump
 ### Added
 
 - **mzML archives:**
-  - `mzarc encode input.mzML` stores a complete mzML document. Exact mode restores it byte for byte; `--lossy` quantizes spectrum m/z (f64) and intensity arrays and keeps every other byte, rebuilding `encodedLength`, index offsets, `indexListOffset`, and `fileChecksum`. `mzarc decode` and `mzarc inspect` recognize these archives.
+  - `mzarc encode input.mzML` stores a complete mzML document. Exact mode restores it byte for byte; `--lossy` quantizes spectrum m/z (f64) and intensity arrays and keeps every other byte, rebuilding `encodedLength`, index offsets, `indexListOffset`, and `fileChecksum`. `mzarc decode` restores these archives. `mzarc inspect` checks one as completely as `decode` (stream, records, lengths, and checksums) without writing the document, and reports the document's restored size.
   - Lossy mzML archives restore f64 m/z arrays that hold only f32 values exactly, so decoded documents keep their source size instead of growing 11% to 19% on zlib-compressed inputs.
   - `mzarc validate --mode=mzml-lossy` checks a lossy mzML round trip through Dump V1: every peak is either unchanged or carries the lossy m/z and intensity transform within its bound.
 - **mzML input:**
