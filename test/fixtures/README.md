@@ -13,13 +13,12 @@ A deterministically sliced 1,000-spectrum subset of the PXD075509 `15HCD_1.bin` 
 | Total spectra                    | exactly 1,000 | 1,000  |
 | MS1 spectra                      | >= 100        | 110    |
 | MS2 spectra                      | >= 800        | 890    |
-| Distinct isolation windows (MS2) | >= 3          | 430    |
+| Isolation windows (MS2)          | >= 3          | 430    |
 | Sparse spectra (< 5 peaks)       | >= 10         | 10     |
 | Dense spectra (> 1,000 peaks)    | >= 5          | 46     |
 | Empty spectra (0 peaks)          | >= 1          | 1      |
 
-Sparse and empty spectra are fabricated deterministically (`random.seed(42)`) because
-the source dump (min 16 peaks/spectrum) contains no such spectra naturally.
+Sparse and empty spectra are fabricated deterministically (`random.seed(42)`) because the source dump (min 16 peaks/spectrum) contains no such spectra naturally.
 
 ### dump-inspect summary (`mzarc dump-inspect`)
 
@@ -59,24 +58,38 @@ max peaks per spectrum: 2339
 
 ## Adversarial corpus (test/adversarial/)
 
-The files were generated deterministically with seed 42. The generator is not part of this repository; the frozen bytes are the contract.
-All files use the same flat `RawSpectrum` dump format and feed directly into `mzarc encode`.
-`mzarc validate-adversarial test/adversarial/` round-trips every file in-memory.
+The files were generated deterministically with seed 42. The generator is not part of this repository; the frozen bytes are the contract. All files use the same flat `RawSpectrum` dump format and feed directly into `mzarc encode`. `mzarc validate-adversarial test/adversarial/` round-trips every file in-memory.
 
-| File                       | Spectra | Peaks/spectrum | Purpose                                                                                    |
-| -------------------------- | ------- | -------------- | ------------------------------------------------------------------------------------------ |
-| `empty.bin`                | 100     | 0              | Empty spectra; exercises zero-peak path                                                    |
-| `single_peak.bin`          | 100     | 1              | One-peak spectra; minimal delta array                                                      |
-| `constant_mz.bin`          | 100     | 10             | All peaks at same m/z; FOR range = 0                                                       |
-| `full_range.bin`           | 100     | 2              | Peaks at m/z 50 and 6000; maximum FOR range                                                |
-| `zero_intensity.bin`       | 100     | 10             | Zero-intensity peaks mixed with normal ones                                                |
-| `near_min_intensity.bin`   | 100     | 10             | Intensity approx 1e-38 (near f32 minimum positive normal)                                  |
-| `near_max_intensity.bin`   | 100     | 10             | Intensity approx 1e+37 (near f32 maximum; avoids inf)                                      |
-| `mz_zero.bin`              | 100     | 5              | One peak at m/z 0.0                                                                        |
-| `dense.bin`                | 100     | 5,000          | Large spectra; multi-block encoding at scale                                               |
-| `identical_block.bin`      | 128     | 50             | One full block of identical spectra; zero residuals                                        |
-| `random_block.bin`         | 128     | 20-80          | Fully random m/z+intensity; worst-case residuals                                           |
-| `split_exp_narrow.bin`     | 100     | 20             | Intensities in one decade (2^16..2^17); exponent FOR bit-width = 1                         |
-| `split_exp_degenerate.bin` | 100     | 5              | All intensities identical; exponent FOR bit-width = 0, exercises zero-length payload path  |
+| File                       | Spectra | Peaks/spectrum |
+| -------------------------- | ------: | -------------: |
+| `empty.bin`                |     100 |              0 |
+| `single_peak.bin`          |     100 |              1 |
+| `constant_mz.bin`          |     100 |             10 |
+| `full_range.bin`           |     100 |              2 |
+| `zero_intensity.bin`       |     100 |             10 |
+| `near_min_intensity.bin`   |     100 |             10 |
+| `near_max_intensity.bin`   |     100 |             10 |
+| `mz_zero.bin`              |     100 |              5 |
+| `dense.bin`                |     100 |          5,000 |
+| `identical_block.bin`      |     128 |             50 |
+| `random_block.bin`         |     128 |          20-80 |
+| `split_exp_narrow.bin`     |     100 |             20 |
+| `split_exp_degenerate.bin` |     100 |              5 |
+
+What each file exercises:
+
+- `empty.bin`: empty spectra; exercises zero-peak path.
+- `single_peak.bin`: one-peak spectra; minimal delta array.
+- `constant_mz.bin`: all peaks at same m/z; FOR range = 0.
+- `full_range.bin`: peaks at m/z 50 and 6000; maximum FOR range.
+- `zero_intensity.bin`: zero-intensity peaks mixed with normal ones.
+- `near_min_intensity.bin`: intensity approx 1e-38 (near f32 minimum positive normal).
+- `near_max_intensity.bin`: intensity approx 1e+37 (near f32 maximum; avoids inf).
+- `mz_zero.bin`: one peak at m/z 0.0.
+- `dense.bin`: large spectra; multi-block encoding at scale.
+- `identical_block.bin`: one full block of identical spectra; zero residuals.
+- `random_block.bin`: fully random m/z+intensity; worst-case residuals.
+- `split_exp_narrow.bin`: intensities in one decade (2^16..2^17); exponent FOR bit-width = 1.
+- `split_exp_degenerate.bin`: all intensities identical; exponent FOR bit-width = 0, exercises zero-length payload path.
 
 Total corpus: 13 files, ~5.99 MiB. All files pass `validate-adversarial` lossless round-trip.

@@ -47,11 +47,12 @@ mzarc uses Zig 0.16.0 from `PATH`. The first build fetches zmz 0.1.0 and its zip
 zig build --release=fast
 ```
 
-Archive an mzML document exactly or lossily, then restore it:
+Archive an mzML document exactly or lossily, check the archive, then restore it. `inspect` reads the whole archive without writing the document and reports its restored size:
 
 ```bash
 ./zig-out/bin/mzarc encode input.mzML -o input.mzarc
 ./zig-out/bin/mzarc encode input.mzML -o input.lossy.mzarc --lossy
+./zig-out/bin/mzarc inspect input.mzarc
 ./zig-out/bin/mzarc decode input.mzarc -o restored.mzML
 ```
 
@@ -85,13 +86,13 @@ The release build installs a stripped ReleaseFast binary for the host architectu
 
 The [reference report](https://github.com/eneskemalergin/mzarc/blob/main/benchmark/report.md) measures `15HCD_1.mzML` from PXD075509: 9,001 spectra and 2,668,458 peaks. Each operation has five measured samples after one warmup. Rows marked `[P]` use four workers; mzarc remains single-threaded.
 
-| Representation                      | Size      | Relative to original mzML |
-| ----------------------------------- | --------: | ------------------------: |
-| Original mzML                       | 75.55 MiB |                   100.00% |
-| mzarc exact archive of the document | 24.00 MiB |                    31.77% |
-| mzarc lossy archive of the document | 15.18 MiB |                    20.10% |
-| Dump V1 retained fields             | 30.78 MiB |                    40.74% |
-| mzarc lossless archive of Dump V1   | 14.46 MiB |                    19.14% |
+| Representation           | Size      | Relative to original mzML |
+| ------------------------ | --------: | ------------------------: |
+| Original mzML            | 75.55 MiB |                   100.00% |
+| mzarc exact (document)   | 24.00 MiB |                    31.77% |
+| mzarc lossy (document)   | 15.18 MiB |                    20.10% |
+| Dump V1 retained fields  | 30.78 MiB |                    40.74% |
+| mzarc lossless (Dump V1) | 14.46 MiB |                    19.14% |
 
 Against the shared Dump V1 input, mzarc writes a 14.46 MiB artifact, 46.99% of that input and 8.22% smaller than single-threaded xz. It records the fastest single-threaded encode at 217.96 MiB/s. zstd decodes faster, while gzip records lower peak RSS.
 
@@ -127,7 +128,7 @@ zig build test --summary all
 zig build ci --release=fast --summary all
 ```
 
-The combined release gate runs ReleaseFast tests, verifies the frozen fixture, checks `mzarc dump` against a small mzML fixture, and exercises adversarial, lossless, and lossy CLI round trips against the stripped binary. It does not require Python or local mzML data.
+The combined release gate runs ReleaseFast tests, verifies the frozen fixture, checks `mzarc dump` against a small mzML fixture, exercises adversarial, lossless, and lossy CLI round trips and exact and lossy mzML archives, and checks that damaged archives and inputs are rejected, all against the stripped binary. It does not require Python or local mzML data.
 
 The local comparison requires the peer tools described in the [repository tool notes](tools/README.md) and a local copy of the reference mzML file:
 
@@ -140,8 +141,9 @@ Repository responsibilities stay narrow:
 ```text
 src/         Zig codec and CLI
 test/        Unit, property, malformed-input, fixture, and CLI data
+vendor/      wthecksum crc32, vendored unchanged
 tools/       Local benchmark, smoke, and peer-build commands
-benchmark/   Reference report, baseline row, and summary figures
+benchmark/   Reference report, its TSV rows, and summary figures
 ```
 
 Real-data inputs live outside the repository; the benchmark reads them from `~/Github/data/mzml` unless `MZARC_DATA` names another root.
