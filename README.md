@@ -1,7 +1,11 @@
 <!-- markdownlint-disable MD033 MD041 -->
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/eneskemalergin/mzarc/main/assets/mzarc-readme-header.svg" alt="mzarc" width="760" />
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/logo-readme-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="assets/logo-readme-light.svg">
+    <img src="assets/logo-readme-light.svg" alt="mzarc" width="180">
+  </picture>
 </p>
 
 <p align="center">
@@ -178,11 +182,9 @@ Concurrency remains outside the current product scope.
 - [zmz](https://github.com/eneskemalergin/zmz), the Zig mzML library behind `mzarc dump`.
 - [zebrac](https://github.com/eneskemalergin/zebrac), the Linux measurement tool used by the reference report.
 
----
-
 ## License and acknowledgements
 
-**mzarc is licensed under the MIT License.** See [LICENSE](LICENSE) for the full terms.
+**mzarc is licensed under the MIT License.** See [LICENSE](LICENSE) for the full terms. [`NOTICE`](NOTICE) carries the notices of the software compiled into the executable: zmz (Apache-2.0), zipir (MIT), and Arm's exp and log tables (MIT). Include `LICENSE` and `NOTICE` with source and binary distributions. The separator in `assets/` adapts the Zig logo; it and the logo files beside it are licensed CC BY-SA 4.0, as `NOTICE` details.
 
 **mzarc stands on the shoulders of giants.** I am building the codec in Zig, but rewriting an idea does not erase where it came from. The list below records the design references and the logic mzarc uses from each. The full bibliography, external dependencies, and benchmark peers remain in [References](#references).
 
@@ -193,7 +195,13 @@ Concurrency remains outside the current product scope.
   - **Logic used:** The reverse-order encoder, state update, and byte-renormalization model behind order-0 rANS.
   - **How it is used:** `src/rans.zig` implements a local 32-bit rANS codec with 12-bit frequency precision, its own normalized frequency table and wire layout, and mzarc-specific validation.
 
----
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/footer-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="assets/footer-light.svg">
+    <img src="assets/footer-light.svg" alt="" width="480">
+  </picture>
+</p>
 
 <p align="center">
   <em>Ions drift to ground</em><br />

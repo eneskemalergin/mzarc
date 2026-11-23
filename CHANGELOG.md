@@ -30,6 +30,9 @@ This release reads and writes mzML natively through the zmz library. `mzarc dump
   - Fetches zmz 0.1.0 by URL and hash, so a fresh clone builds without a sibling checkout.
 - **Checksums:**
   - Computes block checksums with wthecksum `crc32`, the author's own CRC-32 library, vendored in `vendor/crc32`. Stored checksums and the format are unchanged.
+- **Repository:**
+  - Replaces the README logo with the mz tool family's mark, and adds a footer separator and an icon. The separator adapts the Zig logo, and the files in `assets/` are licensed CC BY-SA 4.0 (see `NOTICE`).
+  - Adds `NOTICE` with the notices of the software compiled into the executable (zmz, zipir, and Arm's exp and log tables), and includes it in the Zig package.
 - **Benchmarking:**
   - Creates the Dump V1 input with `mzarc dump` instead of Python, and records the pinned zmz version in the report.
   - Uses `zig` and `zebrac` from `PATH` and reads local data from `~/Github/data/mzml` or `MZARC_DATA`.
