@@ -6,7 +6,7 @@ All notable changes to mzarc are documented here. The format follows [Keep a Cha
 
 ## [Unreleased]
 
-## [0.4.0] - 2026-11-03
+## [0.4.0] - 2026-11-23
 
 This release reads and writes mzML natively through the zmz library. `mzarc dump` replaces the Python converter, and `mzarc encode` and `decode` archive complete mzML documents: exactly, or with lossy spectrum arrays and every other byte kept. Every command now stays within bounded memory on large inputs. Format 1.0 remains a development format until it is declared use-ready.
 

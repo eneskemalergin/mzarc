@@ -12,7 +12,7 @@
 <p align="center">
   <a href="#quick-start"><img src="https://img.shields.io/badge/zig-0.16.0-F7A41D?style=flat-square&amp;logo=zig&amp;logoColor=white" alt="Zig 0.16.0" /></a>
   <a href="#format-and-validation"><img src="https://img.shields.io/badge/status-research%20prototype-C17D10?style=flat-square" alt="Research prototype" /></a>
-  <a href="CHANGELOG.md#040---2026-11-03"><img src="https://img.shields.io/badge/version-0.4.0-8B5CF6?style=flat-square" alt="Version 0.4.0" /></a>
+  <a href="CHANGELOG.md#040---2026-11-23"><img src="https://img.shields.io/badge/version-0.4.0-8B5CF6?style=flat-square" alt="Version 0.4.0" /></a>
   <a href="https://github.com/eneskemalergin/mzarc/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/eneskemalergin/mzarc/ci.yml?branch=main&amp;style=flat-square&amp;logo=github&amp;label=CI" alt="CI" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-4B9D6E?style=flat-square" alt="MIT License" /></a>
 </p>
