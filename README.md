@@ -99,6 +99,8 @@ On the original document, the exact archive restores every byte at 31.77% of the
 
 The checking commands read one record or one block at a time: `validate` compares the 30.78 MiB dump with its decoded copy at 0.90 MiB peak RSS, `dump-inspect` reads it at 0.90 MiB, and `inspect` checks every block of the lossless archive at 6.43 MiB.
 
+The timings come from one five-sample run on a busy shared host (the report's run context records the load). Compare methods within the report; the absolute speeds move with host load.
+
 <p align="center">
   <img src="https://raw.githubusercontent.com/eneskemalergin/mzarc/main/benchmark/dump-summary.svg" width="900" alt="Artifact size, throughput, and peak RSS for the Dump V1 comparison" />
   <br /><em>Dump V1 comparison. Lower is better for size and RSS; higher is better for throughput.</em>
@@ -114,7 +116,7 @@ Lossless mode returns every accepted Dump V1 field with the same bits, including
 
 Format 1.0 is not use-ready yet. Development archives may need regeneration, and compatibility with earlier development layouts is not promised.
 
-Block checksums use CRC-32/ISO-HDLC from wthecksum `crc32`, a Zig library by the same author, vendored in `vendor/crc32` until its own repository is published. It selects PCLMUL or VEX PCLMUL at run time on x86-64 and keeps a portable path for other processors. The CI workflow runs the Debug and ReleaseFast gates on Ubuntu and macOS. Windows and aarch64 are not supported claims.
+Block checksums use CRC-32/ISO-HDLC from wthecksum `crc32`, a Zig library by the same author, vendored in `vendor/crc32` until its own repository is published. It selects PCLMUL or VEX PCLMUL on x86-64 and the CRC32 or PMULL instructions on AArch64 at run time, and keeps a portable table path. The CI workflow runs the Debug and ReleaseFast gates on Ubuntu (x86-64) and macOS (Apple Silicon). Windows and Linux on Arm are not supported claims.
 
 ## Development
 
