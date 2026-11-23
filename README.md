@@ -27,7 +27,13 @@
   <a href="https://github.com/eneskemalergin/mzarc/issues"><img src="https://img.shields.io/badge/issues-GitHub-8B5CF6?style=flat-square" alt="GitHub issues" /></a>
 </p>
 
----
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/footer-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="assets/footer-light.svg">
+    <img src="assets/footer-light.svg" alt="" width="480">
+  </picture>
+</p>
 
 ## What mzarc does
 
