@@ -19,7 +19,8 @@ const table_entry_count = 256;
 const freq_table_bytes = table_entry_count * @sizeOf(u16);
 const state_count = 4;
 const states_bytes = state_count * @sizeOf(u32);
-const encoded_header_bytes = freq_table_bytes + states_bytes;
+/// Every non-empty stream starts with the frequency table and the four states.
+pub const encoded_header_bytes = freq_table_bytes + states_bytes;
 const rans_lower_bound: u32 = 1 << 23;
 const decode_table_mask: u32 = precision - 1;
 const reciprocal_scale: u64 = 1 << 32;
@@ -32,10 +33,6 @@ pub fn maxEncodedLen(decoded_len: usize) !usize {
 
 pub fn analyze(symbols: []const u8) Analysis {
     return buildAnalysis(countSymbols(symbols), symbols.len);
-}
-
-pub fn encodeAlloc(allocator: Allocator, symbols: []const u8) ![]u8 {
-    return encodeFromCountsAlloc(allocator, symbols, countSymbols(symbols));
 }
 
 pub fn encodeAnalyzedAlloc(allocator: Allocator, symbols: []const u8, analysis: Analysis) ![]u8 {

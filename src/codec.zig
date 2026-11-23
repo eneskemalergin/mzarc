@@ -12,13 +12,29 @@ fn monotonicNs(io: std.Io) u64 {
     return @truncate(@as(u96, @bitCast(std.Io.Clock.now(.awake, io).nanoseconds)));
 }
 
-fn nsToMs(ns: u64) f64 {
-    return @as(f64, @floatFromInt(ns)) / 1_000_000.0;
-}
-
-fn nsPct(part: u64, total: u64) f64 {
-    if (total == 0) return 0.0;
-    return @as(f64, @floatFromInt(part)) * 100.0 / @as(f64, @floatFromInt(total));
+/// Prints `[label timing]` lines for the phases between consecutive `marks`: each in milliseconds
+/// with the total, then each as a share of the total.
+fn printTiming(comptime label: []const u8, names: []const []const u8, marks: []const u64) void {
+    std.debug.assert(marks.len == names.len + 1);
+    const total = marks[marks.len - 1] - marks[0];
+    const total_f: f64 = @floatFromInt(total);
+    var buffer: [512]u8 = undefined;
+    var w: std.Io.Writer = .fixed(&buffer);
+    inline for (.{ false, true }) |shares| {
+        w.writeAll("[" ++ label ++ " timing] ") catch return;
+        for (names, 0..) |name, i| {
+            const part: f64 = @floatFromInt(marks[i + 1] - marks[i]);
+            if (i != 0) w.writeAll("  ") catch return;
+            if (shares) {
+                w.print("{s}={d:.1}%", .{ name, if (total == 0) 0.0 else part * 100.0 / total_f }) catch return;
+            } else {
+                w.print("{s}={d:.2}ms", .{ name, part / 1_000_000.0 }) catch return;
+            }
+        }
+        if (!shares) w.print("  total={d:.2}ms", .{total_f / 1_000_000.0}) catch return;
+        w.writeByte('\n') catch return;
+    }
+    std.debug.print("{s}", .{w.buffered()});
 }
 
 pub const magic = "MZAR".*;
@@ -110,18 +126,18 @@ fn maybePrintBlockStats(block_index: u32, stats: block.BlockEncodeStats, options
 }
 
 pub const FileByteBreakdown = struct {
-    file_header_bytes: usize,
-    global_order_bytes: usize,
-    block_header_bytes: usize,
-    scan_id_bytes: usize,
-    rt_bytes: usize,
-    precursor_bytes: usize,
-    peak_count_bytes: usize,
-    mz_metadata_bytes: usize,
-    mz_payload_bytes: usize,
-    intensity_metadata_bytes: usize,
-    intensity_payload_bytes: usize,
-    total_bytes: usize,
+    file_header_bytes: usize = 0,
+    global_order_bytes: usize = 0,
+    block_header_bytes: usize = 0,
+    scan_id_bytes: usize = 0,
+    rt_bytes: usize = 0,
+    precursor_bytes: usize = 0,
+    peak_count_bytes: usize = 0,
+    mz_metadata_bytes: usize = 0,
+    mz_payload_bytes: usize = 0,
+    intensity_metadata_bytes: usize = 0,
+    intensity_payload_bytes: usize = 0,
+    total_bytes: usize = 0,
 };
 
 pub const Inspection = struct {
@@ -134,34 +150,32 @@ pub const Inspection = struct {
     byte_breakdown: FileByteBreakdown,
 };
 
-fn emptyFileByteBreakdown(order_bytes: usize) !FileByteBreakdown {
-    return .{
-        .file_header_bytes = header_len,
-        .global_order_bytes = order_bytes,
-        .block_header_bytes = 0,
-        .scan_id_bytes = 0,
-        .rt_bytes = 0,
-        .precursor_bytes = 0,
-        .peak_count_bytes = 0,
-        .mz_metadata_bytes = 0,
-        .mz_payload_bytes = 0,
-        .intensity_metadata_bytes = 0,
-        .intensity_payload_bytes = 0,
-        .total_bytes = try std.math.add(usize, header_len, order_bytes),
-    };
-}
+/// What `inspect` reports about a whole file.
+pub const Summary = struct {
+    header: FileHeader,
+    ms1_block_count: usize,
+    ms2_block_count: usize,
+    ms1_spectra: usize,
+    ms2_spectra: usize,
+    byte_breakdown: FileByteBreakdown,
+};
+
+/// One row of `inspect --blocks`, kept small because a file may hold 500,000 blocks.
+pub const BlockRow = struct {
+    total_peaks: u32,
+    mz_payload_bytes: u32,
+    intensity_payload_bytes: u32,
+    spectrum_count: u16,
+    ms_level: u8,
+    mz_bit_width: u8,
+    intensity_bit_width: u8,
+};
 
 fn addBlockBytes(total: *FileByteBreakdown, block_bytes: block.BlockByteBreakdown) !void {
-    total.block_header_bytes = try std.math.add(usize, total.block_header_bytes, block_bytes.header_bytes);
-    total.scan_id_bytes = try std.math.add(usize, total.scan_id_bytes, block_bytes.scan_id_bytes);
-    total.rt_bytes = try std.math.add(usize, total.rt_bytes, block_bytes.rt_bytes);
-    total.precursor_bytes = try std.math.add(usize, total.precursor_bytes, block_bytes.precursor_bytes);
-    total.peak_count_bytes = try std.math.add(usize, total.peak_count_bytes, block_bytes.peak_count_bytes);
-    total.mz_metadata_bytes = try std.math.add(usize, total.mz_metadata_bytes, block_bytes.mz_metadata_bytes);
-    total.mz_payload_bytes = try std.math.add(usize, total.mz_payload_bytes, block_bytes.mz_payload_bytes);
-    total.intensity_metadata_bytes = try std.math.add(usize, total.intensity_metadata_bytes, block_bytes.intensity_metadata_bytes);
-    total.intensity_payload_bytes = try std.math.add(usize, total.intensity_payload_bytes, block_bytes.intensity_payload_bytes);
-    total.total_bytes = try std.math.add(usize, total.total_bytes, block_bytes.total_bytes);
+    inline for (std.meta.fields(block.BlockByteBreakdown)) |field| {
+        const name = if (comptime std.mem.eql(u8, field.name, "header_bytes")) "block_header_bytes" else field.name;
+        @field(total, name) = try std.math.add(usize, @field(total, name), @field(block_bytes, field.name));
+    }
 }
 
 fn readIntLe(comptime T: type, bytes: []const u8) T {
@@ -210,7 +224,9 @@ fn validateFileHeaderResources(header: FileHeader) !void {
     if (header.total_peaks > max_total_peaks) return error.FileResourceLimit;
 }
 
+/// Checks one block header on its own and against the file header.
 fn validateBlockForFile(header: FileHeader, block_header: block.BlockHeader) !void {
+    try block.validateBlockHeaderResources(block_header);
     if (block_header.spectrum_count > header.block_size) return error.InvalidBlockSize;
     const block_is_lossless = (block_header.flags &
         (block.flag_lossless_mz_f32 | block.flag_lossless_mz_f64)) != 0;
@@ -219,13 +235,44 @@ fn validateBlockForFile(header: FileHeader, block_header: block.BlockHeader) !vo
     }
 }
 
-fn validateContentFlags(header: FileHeader, ms1_spectra: u64, ms2_spectra: u64) !void {
-    if (((header.flags & flag_contains_ms1) != 0) != (ms1_spectra != 0) or
-        ((header.flags & flag_contains_ms2) != 0) != (ms2_spectra != 0))
-    {
-        return error.FileFlagsMismatch;
+/// Running spectrum and peak counts over a file's blocks, checked against its header.
+const BlockTally = struct {
+    header: FileHeader,
+    ms1_blocks: usize = 0,
+    ms2_blocks: usize = 0,
+    ms1_spectra: u64 = 0,
+    ms2_spectra: u64 = 0,
+    peaks: u64 = 0,
+
+    fn add(self: *BlockTally, block_header: block.BlockHeader) !void {
+        switch (block_header.ms_level) {
+            1 => {
+                self.ms1_blocks += 1;
+                self.ms1_spectra = try std.math.add(u64, self.ms1_spectra, block_header.spectrum_count);
+            },
+            2 => {
+                self.ms2_blocks += 1;
+                self.ms2_spectra = try std.math.add(u64, self.ms2_spectra, block_header.spectrum_count);
+            },
+            else => return error.UnsupportedMsLevel,
+        }
+        self.peaks = try std.math.add(u64, self.peaks, block_header.total_peaks);
+        if (self.ms1_spectra + self.ms2_spectra > self.header.spectrum_count or self.peaks > self.header.total_peaks) {
+            return error.FileCountMismatch;
+        }
     }
-}
+
+    fn finish(self: BlockTally) !void {
+        if (self.ms1_spectra + self.ms2_spectra != self.header.spectrum_count or self.peaks != self.header.total_peaks) {
+            return error.FileCountMismatch;
+        }
+        if (((self.header.flags & flag_contains_ms1) != 0) != (self.ms1_spectra != 0) or
+            ((self.header.flags & flag_contains_ms2) != 0) != (self.ms2_spectra != 0))
+        {
+            return error.FileFlagsMismatch;
+        }
+    }
+};
 
 fn writeHeaderInto(bytes: []u8, header: FileHeader) void {
     std.mem.copyForwards(u8, bytes[0..4], &header.magic_bytes);
@@ -244,42 +291,27 @@ fn writeOrderEntry(bytes: []u8, entry_index: usize, value: u32) !void {
     std.mem.writeInt(u32, bytes[start..][0..@sizeOf(u32)], value, .little);
 }
 
-fn readOrderEntry(bytes: []const u8, entry_index: usize) !u32 {
-    const start = try std.math.mul(usize, entry_index, @sizeOf(u32));
-    return readIntLe(u32, bytes[start .. start + @sizeOf(u32)]);
-}
-
 fn globalOrderTableLen(spectrum_count: u32) !usize {
     return try std.math.mul(usize, spectrum_count, @sizeOf(u32));
 }
 
-fn blocksOffset(header: FileHeader, bytes: []const u8) !usize {
-    var offset: usize = header_len;
-    if ((header.flags & flag_has_global_order) != 0) {
-        const order_len = try globalOrderTableLen(header.spectrum_count);
-        if (bytes.len - offset < order_len) return error.UnexpectedEndOfStream;
-        offset = try std.math.add(usize, offset, order_len);
+/// Fills `order` from a raw global order table, rejecting an entry out of range or repeated.
+fn decodeOrderTable(allocator: Allocator, raw: []const u8, order: []u32) !void {
+    const seen = try allocator.alloc(bool, order.len);
+    defer allocator.free(seen);
+    @memset(seen, false);
+    for (order, 0..) |*entry, file_index| {
+        const original_index = readIntLe(u32, raw[file_index * @sizeOf(u32) ..]);
+        if (original_index >= order.len or seen[original_index]) return error.InvalidOrderTable;
+        seen[original_index] = true;
+        entry.* = original_index;
     }
-    return offset;
 }
 
 fn readValidatedGlobalOrderAlloc(allocator: Allocator, header: FileHeader, bytes: []const u8) ![]u32 {
-    const order_len = try globalOrderTableLen(header.spectrum_count);
-    const order_bytes = bytes[header_len .. header_len + order_len];
     const order = try allocator.alloc(u32, header.spectrum_count);
     errdefer allocator.free(order);
-
-    const seen = try allocator.alloc(bool, header.spectrum_count);
-    defer allocator.free(seen);
-    @memset(seen, false);
-
-    for (0..order.len) |file_index| {
-        const original_index = try readOrderEntry(order_bytes, file_index);
-        if (original_index >= order.len or seen[original_index]) return error.InvalidOrderTable;
-        seen[original_index] = true;
-        order[file_index] = original_index;
-    }
-
+    try decodeOrderTable(allocator, bytes[header_len..], order);
     return order;
 }
 
@@ -410,111 +442,165 @@ pub fn encodeFileAlloc(io: std.Io, allocator: Allocator, spectra: []const binary
     writeHeaderInto(file_bytes.items[0..header_len], header);
     const result = try file_bytes.toOwnedSlice(allocator);
 
-    if (options.verbose_timing) {
-        const t4 = monotonicNs(io);
-        const total_ns = t4 - t0;
-        const setup_ns = t1 - t0;
-        const ms1_ns = t2 - t1;
-        const ms2_ns = t3 - t2;
-        const finalize_ns = t4 - t3;
-        std.debug.print(
-            "[encode timing] setup={d:.2}ms  ms1_blocks={d:.2}ms  ms2_blocks={d:.2}ms  finalize={d:.2}ms  total={d:.2}ms\n" ++
-                "[encode timing] setup={d:.1}%  ms1_blocks={d:.1}%  ms2_blocks={d:.1}%  finalize={d:.1}%\n",
-            .{
-                nsToMs(setup_ns),          nsToMs(ms1_ns),          nsToMs(ms2_ns),          nsToMs(finalize_ns),          nsToMs(total_ns),
-                nsPct(setup_ns, total_ns), nsPct(ms1_ns, total_ns), nsPct(ms2_ns, total_ns), nsPct(finalize_ns, total_ns),
-            },
-        );
-    }
+    if (options.verbose_timing) printTiming("encode", &.{ "setup", "ms1_blocks", "ms2_blocks", "finalize" }, &.{ t0, t1, t2, t3, monotonicNs(io) });
 
     return result;
 }
 
-pub fn inspectAlloc(allocator: Allocator, bytes: []const u8) !Inspection {
-    const header = try parseHeader(bytes);
-    const initial_offset = try blocksOffset(header, bytes);
+/// Archive bytes already in memory; reads are subslices.
+const MemorySource = struct {
+    bytes: []const u8,
+
+    fn len(self: MemorySource) u64 {
+        return self.bytes.len;
+    }
+
+    fn read(self: MemorySource, _: Allocator, offset: u64, n: u64) ![]const u8 {
+        if (offset > self.bytes.len or self.bytes.len - offset < n) return error.UnexpectedEndOfStream;
+        return self.bytes[@intCast(offset)..][0..@intCast(n)];
+    }
+};
+
+/// An archive file read on demand; each read is allocated from the caller's scratch arena.
+const FileSource = struct {
+    io: std.Io,
+    file: std.Io.File,
+    size: u64,
+
+    fn len(self: FileSource) u64 {
+        return self.size;
+    }
+
+    fn read(self: FileSource, scratch: Allocator, offset: u64, n: u64) ![]const u8 {
+        if (offset > self.size or self.size - offset < n) return error.UnexpectedEndOfStream;
+        const bytes = try scratch.alloc(u8, std.math.cast(usize, n) orelse return error.Overflow);
+        try binary_reader.readExactAt(self.file, self.io, bytes, offset);
+        return bytes;
+    }
+};
+
+/// Validates a whole archive: header, order table, and every block, each fully decoded. Holds
+/// one block and its decode scratch at a time and passes each block to `blocks.add` after
+/// `blocks.reserve` received the validated block count.
+fn inspectSource(allocator: Allocator, source: anytype, blocks: anytype) !Summary {
+    var scratch_arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer scratch_arena.deinit();
+    const scratch = scratch_arena.allocator();
+
+    const header = try parseHeader(try source.read(scratch, 0, header_len));
+    var offset: u64 = header_len;
     if ((header.flags & flag_has_global_order) != 0) {
-        const order = try readValidatedGlobalOrderAlloc(allocator, header, bytes);
-        allocator.free(order);
+        const order_len = try globalOrderTableLen(header.spectrum_count);
+        const raw = try source.read(scratch, offset, order_len);
+        const order = try allocator.alloc(u32, header.spectrum_count);
+        defer allocator.free(order);
+        try decodeOrderTable(allocator, raw, order);
+        offset += order_len;
     }
-    const minimum_block_bytes = try std.math.mul(usize, header.block_count, block.header_len);
-    if (bytes.len - initial_offset < minimum_block_bytes) return error.UnexpectedEndOfStream;
+    _ = scratch_arena.reset(.retain_capacity);
+    const minimum_block_bytes = try std.math.mul(u64, header.block_count, block.header_len);
+    if (source.len() - offset < minimum_block_bytes) return error.UnexpectedEndOfStream;
+    try blocks.reserve(header.block_count);
 
-    const blocks = try allocator.alloc(BlockInfo, header.block_count);
-    errdefer allocator.free(blocks);
-
-    var offset = initial_offset;
-    var ms1_block_count: usize = 0;
-    var ms2_block_count: usize = 0;
-    var ms1_spectra: usize = 0;
-    var ms2_spectra: usize = 0;
-    var total_peaks: u64 = 0;
-    var byte_breakdown = try emptyFileByteBreakdown(initial_offset - header_len);
-    var validation_arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    defer validation_arena.deinit();
-
-    for (blocks) |*block_info| {
-        if (bytes.len - offset < block.header_len) return error.UnexpectedEndOfStream;
-        const block_header = try block.parseHeader(bytes[offset .. offset + block.header_len]);
-        try block.validateBlockHeaderResources(block_header);
+    var tally: BlockTally = .{ .header = header };
+    var byte_breakdown: FileByteBreakdown = .{
+        .file_header_bytes = header_len,
+        .global_order_bytes = @intCast(offset - header_len),
+        .total_bytes = @intCast(offset),
+    };
+    for (0..header.block_count) |_| {
+        const block_header = try block.parseHeader(try source.read(scratch, offset, block.header_len));
         try validateBlockForFile(header, block_header);
-        const total_bytes = try std.math.add(usize, block.header_len, block_header.payload_bytes);
-        if (bytes.len - offset < total_bytes) return error.UnexpectedEndOfStream;
-        const block_bytes = bytes[offset .. offset + total_bytes];
-        _ = try block.decodeBlockWithScratch(
-            validation_arena.allocator(),
-            validation_arena.allocator(),
-            block_bytes,
-        );
-        _ = validation_arena.reset(.retain_capacity);
+        const total_bytes = try std.math.add(u64, block.header_len, block_header.payload_bytes);
+        const block_bytes = try source.read(scratch, offset, total_bytes);
+        _ = try block.decodeBlockWithScratch(scratch, scratch, block_bytes);
         const block_breakdown = try block.inspectBlockByteBreakdown(block_bytes);
-
-        block_info.* = .{
-            .offset = offset,
-            .total_bytes = total_bytes,
-            .header = block_header,
-            .byte_breakdown = block_breakdown,
-        };
+        try blocks.add(offset, total_bytes, block_header, block_breakdown);
         try addBlockBytes(&byte_breakdown, block_breakdown);
-
-        switch (block_header.ms_level) {
-            1 => {
-                ms1_block_count += 1;
-                ms1_spectra += block_header.spectrum_count;
-            },
-            2 => {
-                ms2_block_count += 1;
-                ms2_spectra += block_header.spectrum_count;
-            },
-            else => return error.UnsupportedMsLevel,
-        }
-        total_peaks = try std.math.add(u64, total_peaks, block_header.total_peaks);
-        if (ms1_spectra + ms2_spectra > header.spectrum_count or
-            total_peaks > header.total_peaks)
-        {
-            return error.FileCountMismatch;
-        }
-
-        offset = try std.math.add(usize, offset, total_bytes);
+        try tally.add(block_header);
+        offset = try std.math.add(u64, offset, total_bytes);
+        _ = scratch_arena.reset(.retain_capacity);
     }
 
-    if (offset != bytes.len) return error.TrailingFileData;
-    if (ms1_spectra + ms2_spectra != header.spectrum_count or
-        total_peaks != header.total_peaks)
-    {
-        return error.FileCountMismatch;
-    }
-    try validateContentFlags(header, ms1_spectra, ms2_spectra);
+    if (offset != source.len()) return error.TrailingFileData;
+    try tally.finish();
 
     return .{
         .header = header,
-        .blocks = blocks,
-        .ms1_block_count = ms1_block_count,
-        .ms2_block_count = ms2_block_count,
-        .ms1_spectra = ms1_spectra,
-        .ms2_spectra = ms2_spectra,
+        .ms1_block_count = tally.ms1_blocks,
+        .ms2_block_count = tally.ms2_blocks,
+        .ms1_spectra = tally.ms1_spectra,
+        .ms2_spectra = tally.ms2_spectra,
         .byte_breakdown = byte_breakdown,
     };
+}
+
+/// Keeps every block's position and accounting for the in-memory callers.
+const BlockInfoList = struct {
+    allocator: Allocator,
+    blocks: []BlockInfo = &.{},
+    count: usize = 0,
+
+    fn reserve(self: *BlockInfoList, block_count: usize) !void {
+        self.blocks = try self.allocator.alloc(BlockInfo, block_count);
+    }
+
+    fn add(self: *BlockInfoList, offset: u64, total_bytes: u64, header: block.BlockHeader, byte_breakdown: block.BlockByteBreakdown) !void {
+        self.blocks[self.count] = .{
+            .offset = @intCast(offset),
+            .total_bytes = @intCast(total_bytes),
+            .header = header,
+            .byte_breakdown = byte_breakdown,
+        };
+        self.count += 1;
+    }
+};
+
+/// Keeps one `BlockRow` per block, or nothing when no row list is given.
+const BlockRowList = struct {
+    allocator: Allocator,
+    rows: ?*std.ArrayList(BlockRow),
+
+    fn reserve(self: *BlockRowList, block_count: usize) !void {
+        if (self.rows) |rows| try rows.ensureTotalCapacityPrecise(self.allocator, block_count);
+    }
+
+    fn add(self: *BlockRowList, _: u64, _: u64, header: block.BlockHeader, byte_breakdown: block.BlockByteBreakdown) !void {
+        const rows = self.rows orelse return;
+        rows.appendAssumeCapacity(.{
+            .total_peaks = header.total_peaks,
+            .mz_payload_bytes = @intCast(byte_breakdown.mz_payload_bytes),
+            .intensity_payload_bytes = @intCast(byte_breakdown.intensity_payload_bytes),
+            .spectrum_count = header.spectrum_count,
+            .ms_level = header.ms_level,
+            .mz_bit_width = header.mz_bit_width,
+            .intensity_bit_width = header.intensity_bit_width,
+        });
+    }
+};
+
+pub fn inspectAlloc(allocator: Allocator, bytes: []const u8) !Inspection {
+    var list: BlockInfoList = .{ .allocator = allocator };
+    errdefer allocator.free(list.blocks);
+    const summary = try inspectSource(allocator, MemorySource{ .bytes = bytes }, &list);
+    return .{
+        .header = summary.header,
+        .blocks = list.blocks,
+        .ms1_block_count = summary.ms1_block_count,
+        .ms2_block_count = summary.ms2_block_count,
+        .ms1_spectra = summary.ms1_spectra,
+        .ms2_spectra = summary.ms2_spectra,
+        .byte_breakdown = summary.byte_breakdown,
+    };
+}
+
+/// Inspects an archive file with the same checks as `inspectAlloc`, reading one block at a
+/// time. When `rows` is given it receives one row per block and stays owned by the caller.
+pub fn inspectFile(io: std.Io, allocator: Allocator, path: []const u8, rows: ?*std.ArrayList(BlockRow)) !Summary {
+    const file = try std.Io.Dir.cwd().openFile(io, path, .{});
+    defer file.close(io);
+    var list: BlockRowList = .{ .allocator = allocator, .rows = rows };
+    return inspectSource(allocator, FileSource{ .io = io, .file = file, .size = (try file.stat(io)).size }, &list);
 }
 
 pub fn freeInspection(allocator: Allocator, inspection: Inspection) void {
@@ -578,19 +664,7 @@ pub fn decodeFileAlloc(io: std.Io, allocator: Allocator, bytes: []const u8, opti
     const t2 = monotonicNs(io);
 
     if (global_order == null) {
-        if (options.verbose_timing) {
-            const total_ns = t2 - t0;
-            const setup_ns = t1 - t0;
-            const blocks_ns = t2 - t1;
-            std.debug.print(
-                "[decode timing] setup={d:.2}ms  block_loop={d:.2}ms  reorder=0.00ms  total={d:.2}ms\n" ++
-                    "[decode timing] setup={d:.1}%  block_loop={d:.1}%  reorder=0.0%\n",
-                .{
-                    nsToMs(setup_ns),          nsToMs(blocks_ns),          nsToMs(total_ns),
-                    nsPct(setup_ns, total_ns), nsPct(blocks_ns, total_ns),
-                },
-            );
-        }
+        if (options.verbose_timing) printTiming("decode", &.{ "setup", "block_loop", "reorder" }, &.{ t0, t1, t2, t2 });
         spectra_owned = false;
         return spectra;
     }
@@ -602,21 +676,7 @@ pub fn decodeFileAlloc(io: std.Io, allocator: Allocator, bytes: []const u8, opti
     spectra_owned = false;
     allocator.free(spectra);
 
-    if (options.verbose_timing) {
-        const t3 = monotonicNs(io);
-        const total_ns = t3 - t0;
-        const setup_ns = t1 - t0;
-        const blocks_ns = t2 - t1;
-        const reorder_ns = t3 - t2;
-        std.debug.print(
-            "[decode timing] setup={d:.2}ms  block_loop={d:.2}ms  reorder={d:.2}ms  total={d:.2}ms\n" ++
-                "[decode timing] setup={d:.1}%  block_loop={d:.1}%  reorder={d:.1}%\n",
-            .{
-                nsToMs(setup_ns),          nsToMs(blocks_ns),          nsToMs(reorder_ns),          nsToMs(total_ns),
-                nsPct(setup_ns, total_ns), nsPct(blocks_ns, total_ns), nsPct(reorder_ns, total_ns),
-            },
-        );
-    }
+    if (options.verbose_timing) printTiming("decode", &.{ "setup", "block_loop", "reorder" }, &.{ t0, t1, t2, monotonicNs(io) });
 
     return reordered;
 }
@@ -643,14 +703,6 @@ const ArchiveFileIndex = struct {
         allocator.free(self.record_offsets);
     }
 };
-
-fn readExactAt(file: std.Io.File, io: std.Io, bytes: []u8, offset: u64) !void {
-    if (try file.readPositionalAll(io, bytes, offset) != bytes.len) return error.UnexpectedEndOfStream;
-}
-
-fn addU64(a: u64, b: u64) !u64 {
-    return std.math.add(u64, a, b);
-}
 
 fn levelBlockCount(entries: []const binary_reader.DumpEntry, level: u8, block_size: usize) !usize {
     var block_count: usize = 0;
@@ -694,7 +746,7 @@ fn encodeBlockToFile(
     const encoded = try block.encodeBlockDetailed(arena.allocator(), arena.allocator(), spectra, options.block_options);
     maybePrintBlockStats(block_index, encoded.stats, options);
     try output.writePositionalAll(io, encoded.bytes, file_offset.*);
-    file_offset.* = try addU64(file_offset.*, encoded.bytes.len);
+    file_offset.* = try std.math.add(u64, file_offset.*, encoded.bytes.len);
 }
 
 fn encodeLevelToFile(
@@ -800,43 +852,7 @@ pub fn encodeDumpFile(io: std.Io, allocator: Allocator, input_path: []const u8, 
     if (actual_blocks != expected_blocks) return error.BlockCountMismatch;
     try atomic.replace(io);
 
-    if (options.verbose_timing) {
-        const t4 = monotonicNs(io);
-        const total_ns = t4 - t0;
-        const setup_ns = t1 - t0;
-        const ms1_ns = t2 - t1;
-        const ms2_ns = t3 - t2;
-        const finalize_ns = t4 - t3;
-        std.debug.print(
-            "[encode timing] setup={d:.2}ms  ms1_blocks={d:.2}ms  ms2_blocks={d:.2}ms  finalize={d:.2}ms  total={d:.2}ms\n" ++
-                "[encode timing] setup={d:.1}%  ms1_blocks={d:.1}%  ms2_blocks={d:.1}%  finalize={d:.1}%\n",
-            .{
-                nsToMs(setup_ns),          nsToMs(ms1_ns),          nsToMs(ms2_ns),          nsToMs(finalize_ns),          nsToMs(total_ns),
-                nsPct(setup_ns, total_ns), nsPct(ms1_ns, total_ns), nsPct(ms2_ns, total_ns), nsPct(finalize_ns, total_ns),
-            },
-        );
-    }
-}
-
-fn skipMetadataSection(bytes: []const u8, offset: *usize, compressed: bool, spectrum_count: u16) !void {
-    if (!compressed) {
-        const section_len = try std.math.mul(usize, spectrum_count, @sizeOf(u32));
-        if (bytes.len - offset.* < section_len) return error.UnexpectedEndOfStream;
-        offset.* += section_len;
-        return;
-    }
-    if (bytes.len - offset.* < 13) return error.UnexpectedEndOfStream;
-    const bit_width = bytes[offset.*];
-    if (bit_width > 64) return error.InvalidBitWidth;
-    const packed_len = readIntLe(u32, bytes[offset.* + 9 .. offset.* + 13]);
-    const expected_len = try block.packedByteLen(bit_width, spectrum_count);
-    if (packed_len < expected_len) return error.UnexpectedEndOfStream;
-    if (packed_len != expected_len) {
-        return error.InvalidMetadataPayload;
-    }
-    const section_len = try std.math.add(usize, 13, packed_len);
-    if (bytes.len - offset.* < section_len) return error.UnexpectedEndOfStream;
-    offset.* += section_len;
+    if (options.verbose_timing) printTiming("encode", &.{ "setup", "ms1_blocks", "ms2_blocks", "finalize" }, &.{ t0, t1, t2, t3, monotonicNs(io) });
 }
 
 fn appendBlockPeakCounts(
@@ -847,8 +863,8 @@ fn appendBlockPeakCounts(
 ) !void {
     const payload = block_bytes[block.header_len..];
     var offset: usize = 0;
-    try skipMetadataSection(payload, &offset, (block_header.flags & block.flag_delta_scan_id) != 0, block_header.spectrum_count);
-    try skipMetadataSection(payload, &offset, (block_header.flags & block.flag_delta_rt) != 0, block_header.spectrum_count);
+    offset += try block.u32ColumnLen(payload, offset, block_header.spectrum_count, (block_header.flags & block.flag_delta_scan_id) != 0);
+    offset += try block.u32ColumnLen(payload, offset, block_header.spectrum_count, (block_header.flags & block.flag_delta_rt) != 0);
     const precursor_len = try std.math.mul(usize, block_header.spectrum_count, @sizeOf(f64));
     if (payload.len - offset < precursor_len) return error.UnexpectedEndOfStream;
     offset += precursor_len;
@@ -876,30 +892,22 @@ fn readArchiveOrder(
 
     const raw = try allocator.alloc(u8, order_len);
     defer allocator.free(raw);
-    try readExactAt(input, io, raw, header_len);
-    const seen = try allocator.alloc(bool, header.spectrum_count);
-    defer allocator.free(seen);
-    @memset(seen, false);
-    for (order, 0..) |*entry, file_index| {
-        const original_index = readIntLe(u32, raw[file_index * @sizeOf(u32) ..][0..@sizeOf(u32)]);
-        if (original_index >= order.len or seen[original_index]) return error.InvalidOrderTable;
-        seen[original_index] = true;
-        entry.* = original_index;
-    }
+    try binary_reader.readExactAt(input, io, raw, header_len);
+    try decodeOrderTable(allocator, raw, order);
     return order;
 }
 
 fn scanArchiveFile(allocator: Allocator, io: std.Io, input: std.Io.File) !ArchiveFileIndex {
     const file_size = (try input.stat(io)).size;
     var header_bytes: [header_len]u8 = undefined;
-    try readExactAt(input, io, &header_bytes, 0);
+    try binary_reader.readExactAt(input, io, &header_bytes, 0);
     const header = try parseHeader(&header_bytes);
 
     const order_len = if ((header.flags & flag_has_global_order) != 0)
         try globalOrderTableLen(header.spectrum_count)
     else
         0;
-    var offset = try addU64(header_len, order_len);
+    var offset = try std.math.add(u64, header_len, order_len);
     if (offset > file_size) return error.UnexpectedEndOfStream;
     const minimum_block_bytes = try std.math.mul(u64, header.block_count, block.header_len);
     if (file_size - offset < minimum_block_bytes) return error.UnexpectedEndOfStream;
@@ -913,46 +921,29 @@ fn scanArchiveFile(allocator: Allocator, io: std.Io, input: std.Io.File) !Archiv
     var scan_arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer scan_arena.deinit();
 
-    var scanned_spectra: u64 = 0;
-    var scanned_peaks: u64 = 0;
-    var ms1_spectra: u64 = 0;
-    var ms2_spectra: u64 = 0;
-
+    var tally: BlockTally = .{ .header = header };
     for (0..header.block_count) |_| {
         if (offset > file_size or file_size - offset < block.header_len) return error.UnexpectedEndOfStream;
         var block_header_bytes: [block.header_len]u8 = undefined;
-        try readExactAt(input, io, &block_header_bytes, offset);
+        try binary_reader.readExactAt(input, io, &block_header_bytes, offset);
         const block_header = try block.parseHeader(&block_header_bytes);
-        try block.validateBlockHeaderResources(block_header);
         try validateBlockForFile(header, block_header);
-        const total_bytes = try addU64(block.header_len, block_header.payload_bytes);
+        const total_bytes = try std.math.add(u64, block.header_len, block_header.payload_bytes);
         if (total_bytes > file_size - offset) return error.UnexpectedEndOfStream;
         if (total_bytes > std.math.maxInt(usize)) return error.Overflow;
 
         const bytes = try scan_arena.allocator().alloc(u8, @intCast(total_bytes));
-        try readExactAt(input, io, bytes, offset);
+        try binary_reader.readExactAt(input, io, bytes, offset);
         try block.verifyBlockChecksum(bytes);
         _ = try block.inspectBlockByteBreakdown(bytes);
-        switch (block_header.ms_level) {
-            1 => ms1_spectra = try std.math.add(u64, ms1_spectra, block_header.spectrum_count),
-            2 => ms2_spectra = try std.math.add(u64, ms2_spectra, block_header.spectrum_count),
-            else => return error.UnsupportedMsLevel,
-        }
-        scanned_spectra = try std.math.add(u64, scanned_spectra, block_header.spectrum_count);
-        scanned_peaks = try std.math.add(u64, scanned_peaks, block_header.total_peaks);
-        if (scanned_spectra > header.spectrum_count or scanned_peaks > header.total_peaks) {
-            return error.FileCountMismatch;
-        }
+        try tally.add(block_header);
         try appendBlockPeakCounts(allocator, &peak_counts, bytes, block_header);
         try blocks.append(allocator, .{ .offset = offset, .total_bytes = total_bytes });
-        offset = try addU64(offset, total_bytes);
+        offset = try std.math.add(u64, offset, total_bytes);
         _ = scan_arena.reset(.retain_capacity);
     }
     if (offset != file_size) return error.TrailingFileData;
-    if (scanned_spectra != header.spectrum_count or scanned_peaks != header.total_peaks) {
-        return error.FileCountMismatch;
-    }
-    try validateContentFlags(header, ms1_spectra, ms2_spectra);
+    try tally.finish();
 
     const order = try readArchiveOrder(allocator, io, input, header, order_len);
     errdefer allocator.free(order);
@@ -967,7 +958,7 @@ fn scanArchiveFile(allocator: Allocator, io: std.Io, input: std.Io.File) !Archiv
     for (record_offsets) |*record_offset| {
         const record_len = record_offset.*;
         record_offset.* = output_bytes;
-        output_bytes = try addU64(output_bytes, record_len);
+        output_bytes = try std.math.add(u64, output_bytes, record_len);
     }
     return .{
         .header = header,
@@ -997,7 +988,7 @@ pub fn decodeToDumpFile(io: std.Io, allocator: Allocator, input_path: []const u8
     for (index.blocks) |entry| {
         if (entry.total_bytes > std.math.maxInt(usize)) return error.Overflow;
         const block_bytes = try block_arena.allocator().alloc(u8, @intCast(entry.total_bytes));
-        try readExactAt(input, io, block_bytes, entry.offset);
+        try binary_reader.readExactAt(input, io, block_bytes, entry.offset);
         const decoded = try block.decodeBlockWithScratch(
             block_arena.allocator(),
             block_arena.allocator(),
@@ -1014,25 +1005,5 @@ pub fn decodeToDumpFile(io: std.Io, allocator: Allocator, input_path: []const u8
     const t2 = monotonicNs(io);
     try atomic.replace(io);
 
-    if (options.verbose_timing) {
-        const t3 = monotonicNs(io);
-        const total_ns = t3 - t0;
-        const setup_ns = t1 - t0;
-        const blocks_ns = t2 - t1;
-        const finalize_ns = t3 - t2;
-        std.debug.print(
-            "[decode timing] setup={d:.2}ms  block_loop={d:.2}ms  reorder={d:.2}ms  total={d:.2}ms\n" ++
-                "[decode timing] setup={d:.1}%  block_loop={d:.1}%  reorder={d:.1}%\n",
-            .{
-                nsToMs(setup_ns),          nsToMs(blocks_ns),          nsToMs(finalize_ns),          nsToMs(total_ns),
-                nsPct(setup_ns, total_ns), nsPct(blocks_ns, total_ns), nsPct(finalize_ns, total_ns),
-            },
-        );
-    }
-}
-
-pub fn inspectFileAlloc(io: std.Io, allocator: Allocator, path: []const u8) !Inspection {
-    const bytes = try readFileAlloc(io, path, allocator);
-    defer allocator.free(bytes);
-    return inspectAlloc(allocator, bytes);
+    if (options.verbose_timing) printTiming("decode", &.{ "setup", "block_loop", "reorder" }, &.{ t0, t1, t2, monotonicNs(io) });
 }

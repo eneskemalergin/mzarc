@@ -3,8 +3,13 @@
 const std = @import("std");
 const rans = @import("rans");
 
+// Encode the way production does: analyze, then encode from that analysis.
+fn encode(allocator: std.mem.Allocator, symbols: []const u8) ![]u8 {
+    return rans.encodeAnalyzedAlloc(allocator, symbols, rans.analyze(symbols));
+}
+
 fn checkAllocationFailures(allocator: std.mem.Allocator, values: []const u8) !void {
-    const encoded = try rans.encodeAlloc(allocator, values);
+    const encoded = try encode(allocator, values);
     defer allocator.free(encoded);
 
     const decoded = try rans.decodeAlloc(allocator, encoded, values.len);
@@ -16,7 +21,7 @@ test "rans round-trips uniform byte distribution" {
     var values: [4096]u8 = undefined;
     for (0..values.len) |idx| values[idx] = @truncate(idx & 0xff);
 
-    const encoded = try rans.encodeAlloc(std.testing.allocator, values[0..]);
+    const encoded = try encode(std.testing.allocator, values[0..]);
     defer std.testing.allocator.free(encoded);
 
     const decoded = try rans.decodeAlloc(std.testing.allocator, encoded, values.len);
@@ -47,7 +52,7 @@ test "rans round-trips degenerate single-symbol input" {
     var values: [8192]u8 = undefined;
     @memset(&values, 42);
 
-    const encoded = try rans.encodeAlloc(std.testing.allocator, values[0..]);
+    const encoded = try encode(std.testing.allocator, values[0..]);
     defer std.testing.allocator.free(encoded);
 
     const decoded = try rans.decodeAlloc(std.testing.allocator, encoded, values.len);
@@ -58,7 +63,7 @@ test "rans round-trips degenerate single-symbol input" {
 }
 
 test "rans empty round-trip" {
-    const encoded = try rans.encodeAlloc(std.testing.allocator, &[_]u8{});
+    const encoded = try encode(std.testing.allocator, &[_]u8{});
     defer std.testing.allocator.free(encoded);
     try std.testing.expectEqual(@as(usize, 0), encoded.len);
 
@@ -82,7 +87,7 @@ test "[unit] - [four-state rANS bytes]: matches a hand-calculated stream" {
         );
     }
 
-    const encoded = try rans.encodeAlloc(std.testing.allocator, &input);
+    const encoded = try encode(std.testing.allocator, &input);
     defer std.testing.allocator.free(encoded);
     try std.testing.expectEqualSlices(u8, &expected, encoded);
 
@@ -95,7 +100,7 @@ test "[property] - [rANS resource bound]: encoded output stays within the decode
     var values: [4096]u8 = undefined;
     for (&values, 0..) |*value, idx| value.* = @truncate(idx);
 
-    const encoded = try rans.encodeAlloc(std.testing.allocator, &values);
+    const encoded = try encode(std.testing.allocator, &values);
     defer std.testing.allocator.free(encoded);
 
     try std.testing.expect(encoded.len <= try rans.maxEncodedLen(values.len));
@@ -106,7 +111,7 @@ test "[property] - [rANS resource bound]: encoded output stays within the decode
 test "[failure] - [rANS stream]: rejects malformed bytes and analysis mismatch" {
     var values: [1024]u8 = undefined;
     for (&values, 0..) |*value, idx| value.* = if (idx % 17 == 0) @truncate(idx) else 9;
-    const encoded = try rans.encodeAlloc(std.testing.allocator, values[0..]);
+    const encoded = try encode(std.testing.allocator, values[0..]);
     defer std.testing.allocator.free(encoded);
 
     const with_trailing = try std.testing.allocator.alloc(u8, encoded.len + 1);
@@ -140,7 +145,7 @@ test "[failure] - [rANS stream]: rejects malformed bytes and analysis mismatch" 
 }
 
 test "[failure] - [rANS final states]: rejects unused state data" {
-    const encoded = try rans.encodeAlloc(std.testing.allocator, &[_]u8{7});
+    const encoded = try encode(std.testing.allocator, &[_]u8{7});
     defer std.testing.allocator.free(encoded);
     const corrupted = try std.testing.allocator.dupe(u8, encoded);
     defer std.testing.allocator.free(corrupted);
@@ -160,7 +165,7 @@ test "rans decodeInto matches decodeAlloc" {
     var values: [4096]u8 = undefined;
     for (0..values.len) |idx| values[idx] = if ((idx & 7) == 0) 5 else 9;
 
-    const encoded = try rans.encodeAlloc(std.testing.allocator, values[0..]);
+    const encoded = try encode(std.testing.allocator, values[0..]);
     defer std.testing.allocator.free(encoded);
 
     const decoded_alloc = try rans.decodeAlloc(std.testing.allocator, encoded, values.len);

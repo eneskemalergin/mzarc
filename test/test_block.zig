@@ -3,6 +3,7 @@
 const std = @import("std");
 const binary_reader = @import("binary_reader");
 const block = @import("block");
+const crc32 = @import("crc32");
 
 fn expectIntensityBits(expected: []const f32, actual: []const f32) !void {
     try std.testing.expectEqual(expected.len, actual.len);
@@ -1302,4 +1303,42 @@ test "[failure] - [block writer fields]: rejects unsupported level and zero loss
             .intensity_quant = 0,
         }),
     );
+}
+
+/// Bit-at-a-time CRC-32/ISO-HDLC, independent of every table and instruction path.
+fn crc32Reference(bytes: []const u8) u32 {
+    var value: u32 = 0xffff_ffff;
+    for (bytes) |byte| {
+        value ^= byte;
+        for (0..8) |_| value = (value >> 1) ^ (0xedb8_8320 & (0 -% (value & 1)));
+    }
+    return ~value;
+}
+
+test "[property] - [block checksum]: matches a bit-by-bit CRC-32 at every length and offset" {
+    var storage: [320]u8 = undefined;
+    var prng = std.Random.DefaultPrng.init(0x6d7a_6172_6332);
+    prng.random().bytes(&storage);
+
+    // Lengths cross the 8-byte instruction step and the 64-byte wide-kernel threshold.
+    for (0..16) |offset| {
+        for (0..301) |len| {
+            const bytes = storage[offset..][0..len];
+            const expected = crc32Reference(bytes);
+            try std.testing.expectEqual(expected, crc32.hash(bytes));
+
+            const split = len / 3;
+            try std.testing.expectEqual(expected, crc32.update(crc32.hash(bytes[0..split]), bytes[split..]));
+
+            var stream: crc32.Stream = .{};
+            var cursor: usize = 0;
+            var step: usize = 1;
+            while (cursor < len) : (step = step % 13 + 1) {
+                const end = @min(len, cursor + step);
+                stream.update(bytes[cursor..end]);
+                cursor = end;
+            }
+            try std.testing.expectEqual(expected, stream.final());
+        }
+    }
 }

@@ -56,9 +56,6 @@ pub fn freeSpectra(allocator: Allocator, spectra: []RawSpectrum) void {
 }
 
 pub fn writeDumpAlloc(allocator: Allocator, spectra: []const RawSpectrum) ![]u8 {
-    var bytes: std.ArrayList(u8) = .empty;
-    errdefer bytes.deinit(allocator);
-
     var total_len: usize = 0;
     for (spectra) |spectrum| {
         if (spectrum.mz.len != spectrum.intensity.len) return error.MismatchedPeakArrays;
@@ -67,21 +64,37 @@ pub fn writeDumpAlloc(allocator: Allocator, spectra: []const RawSpectrum) ![]u8 
         total_len = try std.math.add(usize, total_len, try std.math.mul(usize, spectrum.mz.len, @sizeOf(f64)));
         total_len = try std.math.add(usize, total_len, try std.math.mul(usize, spectrum.intensity.len, @sizeOf(f32)));
     }
-    try bytes.ensureTotalCapacityPrecise(allocator, total_len);
+    var out: std.Io.Writer.Allocating = try .initCapacity(allocator, total_len);
+    errdefer out.deinit();
+    for (spectra) |spectrum| try writeRecord(&out.writer, spectrum);
+    return out.toOwnedSlice();
+}
 
-    for (spectra) |spectrum| {
-        try appendIntLe(&bytes, allocator, u32, spectrum.scan_id);
-        try appendIntLe(&bytes, allocator, u32, @bitCast(spectrum.rt_seconds));
-        try bytes.append(allocator, spectrum.ms_level);
-        try bytes.appendSlice(allocator, &pad_after_ms_level);
-        try appendIntLe(&bytes, allocator, u64, @bitCast(spectrum.precursor_mz));
-        try appendIntLe(&bytes, allocator, u32, @intCast(spectrum.mz.len));
-        try bytes.appendSlice(allocator, &pad_after_peak_count);
-        try appendFloatsLe(&bytes, allocator, f64, spectrum.mz);
-        try appendFloatsLe(&bytes, allocator, f32, spectrum.intensity);
-    }
+/// Writes one complete Dump V1 record: the 28-byte header, then m/z as f64 and intensity as f32.
+pub fn writeRecord(out: *std.Io.Writer, spectrum: RawSpectrum) !void {
+    const header = try recordHeader(spectrum);
+    try out.writeAll(&header);
+    try writeFloatsLe(out, f64, spectrum.mz);
+    try writeFloatsLe(out, f32, spectrum.intensity);
+}
 
-    return bytes.toOwnedSlice(allocator);
+/// The only encoder of the record header; rejects mismatched arrays and counts above u32.
+fn recordHeader(spectrum: RawSpectrum) ![record_header_len]u8 {
+    if (spectrum.mz.len != spectrum.intensity.len) return error.MismatchedPeakArrays;
+    const peak_count = std.math.cast(u32, spectrum.mz.len) orelse return error.Overflow;
+    var header: [record_header_len]u8 = @splat(0);
+    std.mem.writeInt(u32, header[0..4], spectrum.scan_id, .little);
+    std.mem.writeInt(u32, header[4..8], @bitCast(spectrum.rt_seconds), .little);
+    header[8] = spectrum.ms_level;
+    std.mem.writeInt(u64, header[12..20], @bitCast(spectrum.precursor_mz), .little);
+    std.mem.writeInt(u32, header[20..24], peak_count, .little);
+    return header;
+}
+
+fn writeFloatsLe(out: *std.Io.Writer, comptime T: type, values: []const T) !void {
+    if (builtin.cpu.arch.endian() == .little) return out.writeAll(std.mem.sliceAsBytes(values));
+    const Int = std.meta.Int(.unsigned, @bitSizeOf(T));
+    for (values) |value| try out.writeInt(Int, @bitCast(value), .little);
 }
 
 pub fn parseDump(bytes: []const u8, allocator: Allocator) ![]RawSpectrum {
@@ -146,15 +159,7 @@ pub fn readBinaryDump(io: std.Io, path: []const u8, allocator: Allocator) ![]Raw
     return parseDump(bytes, allocator);
 }
 
-fn checkedAddU64(a: u64, b: u64) !u64 {
-    return std.math.add(u64, a, b);
-}
-
-fn checkedMulU64(a: u64, b: u64) !u64 {
-    return std.math.mul(u64, a, b);
-}
-
-fn readExactAt(file: std.Io.File, io: std.Io, bytes: []u8, offset: u64) !void {
+pub fn readExactAt(file: std.Io.File, io: std.Io, bytes: []u8, offset: u64) !void {
     if (try file.readPositionalAll(io, bytes, offset) != bytes.len) return error.UnexpectedEndOfStream;
 }
 
@@ -182,9 +187,9 @@ pub fn scanFile(
         try readExactAt(file, io, &header, offset);
         try validateRecordPadding(&header);
         const peak_count = readIntLe(u32, header[20..24]);
-        const payload_bytes = try checkedMulU64(peak_count, @sizeOf(f64) + @sizeOf(f32));
-        const payload_offset = try checkedAddU64(offset, record_header_len);
-        const next_offset = try checkedAddU64(payload_offset, payload_bytes);
+        const payload_bytes = try std.math.mul(u64, peak_count, @sizeOf(f64) + @sizeOf(f32));
+        const payload_offset = try std.math.add(u64, offset, record_header_len);
+        const next_offset = try std.math.add(u64, payload_offset, payload_bytes);
         if (next_offset > file_size) return error.UnexpectedEndOfStream;
 
         const ms_level = header[8];
@@ -193,7 +198,7 @@ pub fn scanFile(
             2 => ms2_count += 1,
             else => has_unsupported_ms_level = true,
         }
-        total_peaks = try checkedAddU64(total_peaks, peak_count);
+        total_peaks = try std.math.add(u64, total_peaks, peak_count);
         try entries.append(allocator, .{
             .payload_offset = payload_offset,
             .precursor_bits = readIntLe(u64, header[12..20]),
@@ -221,20 +226,12 @@ fn readExact(reader: *std.Io.File.Reader, bytes: []u8) !void {
     };
 }
 
-fn readFloatSlice(
-    scratch: Allocator,
-    comptime T: type,
-    reader: *std.Io.File.Reader,
-    values: []T,
-) !void {
-    if (builtin.cpu.arch.endian() == .little) {
-        try readExact(reader, std.mem.sliceAsBytes(values));
-        return;
-    }
-
-    const bytes = try scratch.alloc(u8, try std.math.mul(usize, values.len, @sizeOf(T)));
-    try readExact(reader, bytes);
-    readFloatsLe(T, values, bytes);
+/// Reads little-endian floats straight into `values`, swapping in place on big-endian hosts.
+fn readFloatsInto(reader: *std.Io.File.Reader, comptime T: type, values: []T) !void {
+    try readExact(reader, std.mem.sliceAsBytes(values));
+    if (builtin.cpu.arch.endian() == .little) return;
+    const Int = std.meta.Int(.unsigned, @bitSizeOf(T));
+    for (values) |*value| value.* = @bitCast(@byteSwap(@as(Int, @bitCast(value.*))));
 }
 
 /// Returned peak slices belong to `scratch`, which must outlive the active block.
@@ -246,8 +243,8 @@ pub fn readSpectrumAt(
     try reader.seekTo(entry.payload_offset);
     const mz = try scratch.alloc(f64, entry.peak_count);
     const intensity = try scratch.alloc(f32, entry.peak_count);
-    try readFloatSlice(scratch, f64, reader, mz);
-    try readFloatSlice(scratch, f32, reader, intensity);
+    try readFloatsInto(reader, f64, mz);
+    try readFloatsInto(reader, f32, intensity);
     return .{
         .scan_id = entry.scan_id,
         .rt_seconds = @bitCast(entry.rt_bits),
@@ -260,7 +257,76 @@ pub fn readSpectrumAt(
 
 /// Return the serialized Dump V1 length for one spectrum.
 pub fn recordLen(peak_count: u32) !u64 {
-    return checkedAddU64(record_header_len, try checkedMulU64(peak_count, @sizeOf(f64) + @sizeOf(f32)));
+    return std.math.add(u64, record_header_len, try std.math.mul(u64, peak_count, @sizeOf(f64) + @sizeOf(f32)));
+}
+
+/// Walks every record header of `file` and returns the record count, reading no payload.
+/// Rejects truncation, nonzero reserved bytes, more than `max_records` records, and a record
+/// with more than `max_peaks` peaks.
+pub fn countRecords(io: std.Io, file: std.Io.File, max_records: usize, max_peaks: usize) !usize {
+    const file_size = (try file.stat(io)).size;
+    var count: usize = 0;
+    var offset: u64 = 0;
+    while (offset < file_size) {
+        if (count == max_records) return error.FileResourceLimit;
+        if (file_size - offset < record_header_len) return error.UnexpectedEndOfStream;
+        var header: [record_header_len]u8 = undefined;
+        try readExactAt(file, io, &header, offset);
+        try validateRecordPadding(&header);
+        const peak_count = readIntLe(u32, header[20..24]);
+        if (peak_count > max_peaks) return error.BlockResourceLimit;
+        offset = try std.math.add(u64, offset, try recordLen(peak_count));
+        if (offset > file_size) return error.UnexpectedEndOfStream;
+        count += 1;
+    }
+    return count;
+}
+
+/// Reads records in file order through a caller-owned buffer. A returned spectrum borrows the
+/// reader's peak arrays until the next call; `max_peaks` bounds them.
+pub const RecordReader = struct {
+    file_reader: std.Io.File.Reader,
+    max_peaks: usize,
+    mz: std.ArrayList(f64) = .empty,
+    intensity: std.ArrayList(f32) = .empty,
+
+    pub fn init(io: std.Io, file: std.Io.File, buffer: []u8, max_peaks: usize) RecordReader {
+        return .{ .file_reader = file.reader(io, buffer), .max_peaks = max_peaks };
+    }
+
+    pub fn deinit(self: *RecordReader, allocator: Allocator) void {
+        self.mz.deinit(allocator);
+        self.intensity.deinit(allocator);
+    }
+
+    /// The next record, or null at the exact end of the file.
+    pub fn next(self: *RecordReader, allocator: Allocator) !?RawSpectrum {
+        _ = self.file_reader.interface.peekByte() catch |err| switch (err) {
+            error.EndOfStream => return null,
+            error.ReadFailed => return self.file_reader.err orelse error.InputOutput,
+        };
+        var header: [record_header_len]u8 = undefined;
+        try readExact(&self.file_reader, &header);
+        try validateRecordPadding(&header);
+        const peak_count = readIntLe(u32, header[20..24]);
+        if (peak_count > self.max_peaks) return error.BlockResourceLimit;
+        try self.mz.resize(allocator, peak_count);
+        try self.intensity.resize(allocator, peak_count);
+        try readFloatsInto(&self.file_reader, f64, self.mz.items);
+        try readFloatsInto(&self.file_reader, f32, self.intensity.items);
+        return .{
+            .scan_id = readIntLe(u32, header[0..4]),
+            .rt_seconds = @bitCast(readIntLe(u32, header[4..8])),
+            .ms_level = header[8],
+            .precursor_mz = @bitCast(readIntLe(u64, header[12..20])),
+            .mz = self.mz.items,
+            .intensity = self.intensity.items,
+        };
+    }
+};
+
+fn readIntLe(comptime T: type, bytes: []const u8) T {
+    return std.mem.readInt(T, bytes[0..@sizeOf(T)], .little);
 }
 
 fn floatBytesLe(scratch: Allocator, comptime T: type, values: []const T) ![]const u8 {
@@ -298,7 +364,7 @@ fn writeVectorsAll(file: std.Io.File, io: std.Io, vectors: *const [3][]const u8,
 
         var remaining = try file.writePositional(io, active[0..active_len], file_offset);
         if (remaining == 0) return error.WriteZero;
-        file_offset = try checkedAddU64(file_offset, remaining);
+        file_offset = try std.math.add(u64, file_offset, remaining);
         while (remaining != 0) {
             const available = vectors[vector_index].len - vector_offset;
             if (remaining < available) {
@@ -316,39 +382,10 @@ fn writeVectorsAll(file: std.Io.File, io: std.Io, vectors: *const [3][]const u8,
 
 /// Write one spectrum at its final Dump V1 offset. `scratch` is block-scoped.
 pub fn writeSpectrumAt(scratch: Allocator, io: std.Io, file: std.Io.File, spectrum: RawSpectrum, offset: u64) !void {
-    if (spectrum.mz.len != spectrum.intensity.len) return error.MismatchedPeakArrays;
-    if (spectrum.mz.len > std.math.maxInt(u32)) return error.Overflow;
-
-    var header: [record_header_len]u8 = @splat(0);
-    std.mem.writeInt(u32, header[0..4], spectrum.scan_id, .little);
-    std.mem.writeInt(u32, header[4..8], @bitCast(spectrum.rt_seconds), .little);
-    header[8] = spectrum.ms_level;
-    std.mem.writeInt(u64, header[12..20], @bitCast(spectrum.precursor_mz), .little);
-    std.mem.writeInt(u32, header[20..24], @intCast(spectrum.mz.len), .little);
+    const header = try recordHeader(spectrum);
     const mz_bytes = try floatBytesLe(scratch, f64, spectrum.mz);
     const intensity_bytes = try floatBytesLe(scratch, f32, spectrum.intensity);
     try writeVectorsAll(file, io, &.{ &header, mz_bytes, intensity_bytes }, offset);
-}
-
-fn appendIntLe(list: *std.ArrayList(u8), allocator: Allocator, comptime T: type, value: T) !void {
-    var buffer: [@sizeOf(T)]u8 = undefined;
-    std.mem.writeInt(T, &buffer, value, .little);
-    try list.appendSlice(allocator, &buffer);
-}
-
-fn readIntLe(comptime T: type, bytes: []const u8) T {
-    return std.mem.readInt(T, bytes[0..@sizeOf(T)], .little);
-}
-
-fn appendFloatsLe(list: *std.ArrayList(u8), allocator: Allocator, comptime T: type, values: []const T) !void {
-    if (builtin.cpu.arch.endian() == .little) {
-        try list.appendSlice(allocator, std.mem.sliceAsBytes(values));
-        return;
-    }
-    const Int = std.meta.Int(.unsigned, @bitSizeOf(T));
-    for (values) |value| {
-        try appendIntLe(list, allocator, Int, @bitCast(value));
-    }
 }
 
 fn readFloatsLe(comptime T: type, dst: []T, src: []const u8) void {

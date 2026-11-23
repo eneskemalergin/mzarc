@@ -1,2 +1,3 @@
-fixtures/*.bin binary
+test/fixtures/*.bin binary
+test/fixtures/*.mzML -text
 test/adversarial/*.bin binary

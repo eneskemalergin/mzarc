@@ -25,6 +25,15 @@ test "[failure] - [m/z quantization]: rejects invalid inputs" {
     try std.testing.expectError(error.InvalidScaleFactor, quantize.dequantizeMzValue(1, 0));
 }
 
+test "[regression] - [m/z quantization]: rejects a value that rounds to 2^64" {
+    const scale_factor: u32 = 500_000;
+    const at_limit = 0x1p64 / @as(f64, @floatFromInt(scale_factor));
+    try std.testing.expectEqual(@as(f64, 0x1p64), at_limit * @as(f64, @floatFromInt(scale_factor)));
+    try std.testing.expectError(error.Overflow, quantize.quantizeMzValue(at_limit, scale_factor));
+
+    try std.testing.expectEqual(@as(u64, 1 << 63), try quantize.quantizeMzValue(at_limit / 2, scale_factor));
+}
+
 test "[property] - [m/z quantization]: preserves ordering" {
     const input = [_]f64{ 100.0, 100.000002, 100.000004, 101.5 };
     var encoded: [input.len]u64 = undefined;
@@ -70,4 +79,38 @@ test "[failure] - [intensity quantization]: rejects invalid parameters" {
     try std.testing.expectError(error.InvalidIntensity, quantize.quantizeIntensityValueScaled(1.0, 4096, -1.0));
     try std.testing.expectError(error.InvalidIntensity, quantize.dequantizeIntensityValueScaled(1, 4096, std.math.nan(f32)));
     try std.testing.expectError(error.InvalidIntensity, quantize.dequantizeIntensityValueScaled(1, 4096, -1.0));
+}
+
+// Independent oracle: the block maximum as the format defines it, the largest log1p over every positive finite value.
+fn logMaxPerValue(values: []const f32) f32 {
+    var max_log: f64 = 0.0;
+    for (values) |value| {
+        if (value <= 0.0 or !std.math.isFinite(value)) continue;
+        max_log = @max(max_log, std.math.log1p(@as(f64, value)));
+    }
+    return @as(f32, @floatCast(max_log));
+}
+
+test "[property] - [intensity log maximum]: equals the per-value maximum bit for bit" {
+    const edges = [_]f32{
+        0.0,                               -0.0,
+        -1.0,                              std.math.nan(f32),
+        std.math.inf(f32),                 -std.math.inf(f32),
+        std.math.floatTrueMin(f32),        std.math.floatMin(f32),
+        std.math.floatMax(f32),            1.0,
+        std.math.nextAfter(f32, 1.0, 2.0), 1e7,
+    };
+    for (edges) |a| for (edges) |b| {
+        const pair = [_]f32{ a, b };
+        try std.testing.expectEqual(@as(u32, @bitCast(logMaxPerValue(&pair))), @as(u32, @bitCast(quantize.intensityLogMax(&pair))));
+    };
+    try std.testing.expectEqual(@as(f32, 0.0), quantize.intensityLogMax(&.{}));
+
+    var prng = std.Random.DefaultPrng.init(std.testing.random_seed);
+    const random = prng.random();
+    var values: [512]f32 = undefined;
+    for (0..200) |_| {
+        for (&values) |*value| value.* = @bitCast(random.int(u32));
+        try std.testing.expectEqual(@as(u32, @bitCast(logMaxPerValue(&values))), @as(u32, @bitCast(quantize.intensityLogMax(&values))));
+    }
 }

@@ -1,0 +1,23 @@
+// Package source comes from this explicit file list. Materialize packages only
+// from an isolated copy or archive with source, cache, and output paths disjoint.
+.{
+    .name = .crc32,
+    .version = "0.1.0",
+    .fingerprint = 0xafabd35e4015d30a,
+    .minimum_zig_version = "0.16.0",
+    .dependencies = .{},
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src/root.zig",
+        "src/main.zig",
+        "src/x86_fold.zig",
+        "src/x86_pclmul.zig",
+        "src/x86_vpclmul.zig",
+        "src/arm_crc.zig",
+        "src/arm_pmull.zig",
+        "tests/test_crc32.zig",
+        "tests/test_cli.zig",
+        "CHANGELOG.md",
+    },
+}

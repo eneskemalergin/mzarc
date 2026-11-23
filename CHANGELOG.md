@@ -4,6 +4,63 @@
 
 All notable changes to mzarc are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project follows [Semantic Versioning](https://semver.org/). Each version starts with a short release summary, followed by user-visible changes grouped by area.
 
+## [Unreleased]
+
+## [0.4.0] - 2026-11-23
+
+This release reads and writes mzML natively through the zmz library. `mzarc dump` replaces the Python converter, and `mzarc encode` and `decode` archive complete mzML documents: exactly, or with lossy spectrum arrays and every other byte kept. Every command now stays within bounded memory on large inputs. Format 1.0 remains a development format until it is declared use-ready.
+
+### Added
+
+- **mzML archives:**
+  - `mzarc encode input.mzML` stores a complete mzML document. Exact mode restores it byte for byte; `--lossy` quantizes spectrum m/z (f64) and intensity arrays and keeps every other byte, rebuilding `encodedLength`, index offsets, `indexListOffset`, and `fileChecksum`. `mzarc decode` restores these archives. `mzarc inspect` checks one as completely as `decode` (stream, records, lengths, and checksums) without writing the document, and reports the document's restored size.
+  - Lossy mzML archives restore f64 m/z arrays that hold only f32 values exactly, so decoded documents keep their source size instead of growing 11% to 19% on zlib-compressed inputs.
+  - `mzarc validate --mode=mzml-lossy` checks a lossy mzML round trip through Dump V1: every peak is either unchanged or carries the lossy m/z and intensity transform within its bound.
+- **mzML input:**
+  - Adds `mzarc dump <input.mzML> -o <output.bin>`, a native mzML to Dump V1 converter built on the zmz library. Its output matches the Python reference converter byte for byte on the checked inputs, and a failed dump leaves an existing destination unchanged.
+
+### Changed
+
+- **CLI:**
+  - Prints command results to standard output: the Dump V1 `encode` and `decode` confirmations, `inspect`, `dump-inspect`, and `--help`. Standard error keeps errors, usage after a mistake, and the `--verbose-*` diagnostics.
+- **Performance:**
+  - Decodes lossy archives 17% to 31% faster on the checked inputs by computing each intensity level once per block. Decoded output is unchanged.
+  - Encodes lossy archives 6% to 16% faster on the checked inputs by finding each block's intensity range with one `log1p`. Archives are unchanged.
+- **Build:**
+  - Fetches zmz 0.1.0 by URL and hash, so a fresh clone builds without a sibling checkout.
+- **Checksums:**
+  - Computes block checksums with wthecksum `crc32`, the author's own CRC-32 library, vendored in `vendor/crc32`. Stored checksums and the format are unchanged.
+- **Repository:**
+  - Replaces the README logo with the mz tool family's mark, and adds a footer separator and an icon. The separator adapts the Zig logo, and the files in `assets/` are licensed CC BY-SA 4.0 (see `NOTICE`).
+  - Adds `NOTICE` with the notices of the software compiled into the executable (zmz, zipir, and Arm's exp and log tables), and includes it in the Zig package.
+- **Benchmarking:**
+  - Creates the Dump V1 input with `mzarc dump` instead of Python, and records the pinned zmz version in the report.
+  - Uses `zig` and `zebrac` from `PATH` and reads local data from `~/Github/data/mzml` or `MZARC_DATA`.
+  - Measures mzarc's exact mzML archive beside the peers on the original document, both lossy profiles with their observed errors, `mzarc dump` ingest, and the wall time and peak RSS of `validate`, `dump-inspect`, and `inspect`.
+  - Reports median wall time with its interquartile range, flags operations whose spread exceeds 5%, records the load average and CPU governor, and computes the key findings from the measured rows.
+
+### Fixed
+
+- **Lossy m/z:**
+  - Rejects an m/z value whose quantized code rounds to 2^64 instead of crashing during lossy encode.
+- **CLI:**
+  - `mzarc encode`, `decode`, and `dump` refuse an output path that names the input file, including through a symbolic link, instead of replacing the input with their output.
+  - `mzarc dump-inspect` prints the mean of the two middle peak counts as the median for an even spectrum count.
+  - `mzarc inspect --json` escapes the file path, so a path with a quote or backslash still gives valid JSON.
+- **Memory:**
+  - `mzarc validate` and `mzarc dump-inspect` read Dump V1 files one record at a time instead of loading them whole. On a 322 MB DIA dump, peak memory falls from 1.15 GiB and 740 MiB to about 2 MiB, with the same output. Both reject a record above 524,288 peaks or a file above 500,000 records, the limits the codec accepts.
+  - `mzarc inspect` checks an archive one block at a time instead of loading it whole: about 14 MiB instead of 156 MiB on a 151 MB DIA archive, with the same output.
+
+### Removed
+
+- **Repository:**
+  - Removes the tracked zebrac binary; install zebrac 0.6.2 on `PATH` instead.
+  - Removes the CRC code adapted from `crc32fast` and its license notice.
+- **CLI:**
+  - Removes the benchmark-only `benchmark-rans-core` command.
+- **Python:**
+  - Removes the Python mzML converter, its `uv` environment, and its Dependabot group; `mzarc dump` replaces the converter.
+
 ## [0.3.0] - 2026-08-13
 
 This codec-focused release comes before native mzML I/O. It makes lossless m/z bit exact, caps file and block work so memory stays bounded, strengthens malformed-input checks, and trims the Zig source package. Format 1.0 remains a development format until it is declared use-ready.

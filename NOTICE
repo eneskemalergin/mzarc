@@ -1,0 +1,65 @@
+mzarc
+Copyright (c) 2026 Enes Kemal Ergin
+
+mzarc is licensed under the MIT License (LICENSE). The sections below carry the notices for the
+third-party software compiled into its executable, each reproduced in full, and for the Zig logo
+adapted in assets/.
+
+== zmz 0.1.0 (Apache License 2.0), used for mzML reading and writing ==
+
+zmz
+Copyright (c) 2026 eneskemalergin
+
+zmz includes the third-party software below.
+
+== zipir 0.2.1 (MIT License), used for zlib decoding and encoding ==
+
+MIT License
+
+Copyright (c) 2026 eneskemalergin
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and
+associated documentation files (the "Software"), to deal in the Software without restriction, including
+without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the
+following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial
+portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT
+LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO
+EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
+USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+== Arm optimized-routines exp and log tables (MIT License), src/binary/libm_data.zig ==
+
+Copyright (c) 2018 Arm Limited.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and
+associated documentation files (the "Software"), to deal in the Software without restriction,
+including without limitation the rights to use, copy, modify, merge, publish, distribute,
+sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or
+substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT
+NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
+DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT
+OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+== Zig logo (CC BY-SA 4.0), the logo files in assets/ ==
+
+The Z in the separator files in assets/ (footer-dark.svg and footer-light.svg) is the logomark of
+the Zig logo, https://github.com/ziglang/logo, by the Zig Software Foundation, licensed under the
+Creative Commons Attribution-ShareAlike 4.0 International License,
+https://creativecommons.org/licenses/by-sa/4.0/.
+
+Changes: the Z is scaled and recolored, and combined with mzarc's own drawing. These adapted files,
+and the logo files beside them in assets/, are licensed under CC BY-SA 4.0 as well, not under the
+MIT License; they are not compiled into the executable, and the assets/ directory is not part of the
+Zig package. The material is provided as is, without warranties, as the license states.
