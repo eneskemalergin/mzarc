@@ -966,7 +966,11 @@ fn decodeRecords(allocator: Allocator, stream: *StreamReader, output: *Output) !
                 try output.digits(positions.items[ordinal]);
             },
             .index_list_offset => try output.digits(index_list orelse return error.InvalidRecord),
-            .file_checksum => try output.write(&sha1Hex(&output.sha)),
+            .file_checksum => {
+                // Finalizing pads the state in place, so digest a copy and keep hashing what follows.
+                var prefix = output.sha;
+                try output.write(&sha1Hex(&prefix));
+            },
         }
     }
 }

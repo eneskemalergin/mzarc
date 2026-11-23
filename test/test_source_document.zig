@@ -120,6 +120,46 @@ test "[integration] - [source-document lossy]: decodes a hand-built record strea
     try std.testing.expectEqualStrings(expected, decoded);
 }
 
+fn appendRawRecord(stream: *std.ArrayList(u8), allocator: std.mem.Allocator, bytes: []const u8) !void {
+    try stream.append(allocator, 1);
+    try stream.appendSlice(allocator, &std.mem.toBytes(std.mem.nativeToLittle(u64, bytes.len)));
+    try stream.appendSlice(allocator, bytes);
+}
+
+test "[regression] - [source-document lossy]: rebuilds every fileChecksum from the bytes before it" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const allocator = std.testing.allocator;
+
+    var stream: std.ArrayList(u8) = .empty;
+    defer stream.deinit(allocator);
+    try appendRawRecord(&stream, allocator, "<first>");
+    try stream.append(allocator, 8);
+    try appendRawRecord(&stream, allocator, "</first><second>");
+    try stream.append(allocator, 8);
+    try appendRawRecord(&stream, allocator, "</second>");
+    try stream.append(allocator, 0);
+    const archive = try handArchive(allocator, source_document.flag_source_document, 1, stream.items);
+    defer allocator.free(archive);
+
+    // Independent expectation: each checksum is the standard-library SHA-1 of every output byte before it.
+    var expected: std.ArrayList(u8) = .empty;
+    defer expected.deinit(allocator);
+    for ([_][]const u8{ "<first>", "</first><second>" }) |raw| {
+        try expected.appendSlice(allocator, raw);
+        var digest: [std.crypto.hash.Sha1.digest_length]u8 = undefined;
+        std.crypto.hash.Sha1.hash(expected.items, &digest, .{});
+        var hex: [40]u8 = undefined;
+        _ = try std.fmt.bufPrint(&hex, "{x}", .{&digest});
+        try expected.appendSlice(allocator, &hex);
+    }
+    try expected.appendSlice(allocator, "</second>");
+
+    const decoded = try decodeBytes(&tmp, archive);
+    defer allocator.free(decoded);
+    try std.testing.expectEqualStrings(expected.items, decoded);
+}
+
 test "[failure] - [source-document header]: rejects every invalid field" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
