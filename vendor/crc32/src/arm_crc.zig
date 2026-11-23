@@ -20,7 +20,7 @@ fn update(start: u32, bytes: [*]const u8, len: usize) callconv(.c) u32 {
         value = asm ("crc32x w0, w1, %[word]"
             : [result] "={w0}" (-> u32),
             : [previous] "{w1}" (value),
-              [word] "{w2}" (word),
+              [word] "{x2}" (word),
         );
     }
     while (len - offset >= 4) : (offset += 4) {
